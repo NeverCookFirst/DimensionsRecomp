@@ -45,23 +45,35 @@ public sealed class WizardForm : Form
         Text = AppName + " - Setup";
         Font = BodyFont;
         ClientSize = new Size(640, 470);
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
+        // Resizable, because a page can be taller than the window on a display
+        // scaled above 100%: the content panel scrolls, and dragging the window
+        // bigger is the other way out.
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MinimumSize = new Size(560, 420);
+        MaximizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         title.Font = TitleFont;
         title.Bounds = new Rectangle(0, 0, 640, 48);
+        title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         title.Padding = new Padding(20, 0, 0, 0);
         title.TextAlign = ContentAlignment.MiddleLeft;
         title.BackColor = Color.White;
 
         content.Bounds = new Rectangle(0, 48, 640, 362);
+        content.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        // The pages lay themselves out at fixed coordinates, so anything that
+        // does not fit gets a scrollbar instead of being cut off.
+        content.AutoScroll = true;
 
-        var sep = new Label { Bounds = new Rectangle(0, 410, 640, 2), BorderStyle = BorderStyle.Fixed3D };
+        var sep = new Label { Bounds = new Rectangle(0, 410, 640, 2), BorderStyle = BorderStyle.Fixed3D,
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
         back.Bounds = new Rectangle(360, 425, 85, 30);
         next.Bounds = new Rectangle(450, 425, 85, 30);
         cancel.Bounds = new Rectangle(545, 425, 85, 30);
+        foreach (var b in new[] { back, next, cancel })
+            b.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         back.Click += (_, _) => Go(-1);
         next.Click += (_, _) => Go(+1);
         cancel.Click += (_, _) => OnCancel();
