@@ -1,7 +1,7 @@
 ﻿{
     "product":  "DimensionsRecompiled",
     "version":  "1.0.0",
-    "releasedUtc":  "2026-09-05T21:08:09.1607291Z",
+    "releasedUtc":  "2026-09-05T21:20:27.5191746Z",
     "notes":  "First public build.",
     "minVersion":  "",
     "full":  true,
@@ -38,7 +38,7 @@
                   },
                   {
                       "p":  "modcli/modcli.exe",
-                      "sha":  "7777648358dda7b006a1b0c612d8587c7d4467090e6b5108d979a4fa5c3383bb",
+                      "sha":  "566c31266508b846b14819a2d6e95affd203001d6aca4cb5fd6c259f872b6af7",
                       "len":  67519646
                   },
                   {
@@ -78,7 +78,7 @@
                   },
                   {
                       "p":  "updater/rexupdate.exe",
-                      "sha":  "439ec9d1a74f00a3d29173c473d29f30cb06c216a5487976fd1c06a934892bfb",
+                      "sha":  "7259ffb01e6f4b286391f5a91c7ea5c8b53a752f3688cd17d44249b43c871dd2",
                       "len":  66627412
                   }
               ],
