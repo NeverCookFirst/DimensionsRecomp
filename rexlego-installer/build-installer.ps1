@@ -229,4 +229,5 @@ Remove-Item $updaterHost
 Write-Host ""
 Write-Host ("== Done: {0} ({1:N0} MB)" -f (Split-Path $exe -Leaf), ((Get-Item $exe).Length / 1MB))
 if ($packed -gt 0) { Write-Host ("           {0} ({1:N0} MB)" -f (Split-Path $pack -Leaf), ((Get-Item $pack).Length / 1MB)) }
-Write-Host "   Attach BOTH to the GitHub release, and commit releases\$Version.json."
+if ($packed -gt 0) { Write-Host "   Attach BOTH to the GitHub release, and commit releases\$Version.json." }
+else { Write-Host "   Attach the installer to the GitHub release, and commit releases\$Version.json." }
