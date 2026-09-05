@@ -35,7 +35,19 @@ public sealed class InstallOptions
     public bool IncludeToypad = true;
     public bool IncludeMods = true;
     public bool IncludeSaveConverter;
+    public bool IncludeUpdater = true;
     public bool DesktopShortcut = true;
+}
+
+/// <summary>Facts about the release itself, as opposed to the game it needs.</summary>
+public static class Product
+{
+    /// <summary>
+    /// Where the updater looks for new releases. Written into legodimensions.toml
+    /// as updates_repo, so an install can be pointed elsewhere without a new
+    /// build, and into install.json so the updater still works if the toml is lost.
+    /// </summary>
+    public const string UpdateRepo = "NeverCookFirst/DimensionsRecomp";
 }
 
 public readonly record struct InstallProgress(double Fraction, string Status);
@@ -175,12 +187,17 @@ public sealed class InstallJob
     readonly PayloadSource payload;
     readonly IProgress<InstallProgress> progress;
     readonly CancellationToken ct;
+    readonly ReleaseManifest? release;
+    // What we lay down, recorded as we go: this becomes install.json, which is
+    // how the updater later knows which files are ours.
+    readonly List<InstalledFile> installed = new();
     long totalBytes = 1, doneBytes;    // 1, not 0: the first Report() runs before the estimate
     string currentStatus = "";
 
     public InstallJob(InstallOptions options, PayloadSource payload, IProgress<InstallProgress> progress, CancellationToken ct)
     {
         o = options; this.payload = payload; this.progress = progress; this.ct = ct;
+        release = ReleaseManifest.From(payload);
     }
 
     // Layout under the install folder. The .toml is the only place these
@@ -194,7 +211,20 @@ public sealed class InstallJob
     string ToolsDir => Path.Combine(o.InstallDir, "tools");
     string ModCliExe => Path.Combine(ToolsDir, "modcli", "modcli.exe");
     string ToypadDir => Path.Combine(ToolsDir, "LegoToypad");
+    string UpdaterDir => Path.Combine(ToolsDir, "rexupdate");
     public string ReadmePath => Path.Combine(o.InstallDir, "README.txt");
+
+    /// <summary>Where each payload folder lands, so one table drives install and update alike.</summary>
+    public static string DestinationFor(string payloadPrefix, string installDir) => payloadPrefix switch
+    {
+        "game" => installDir,
+        "mods" => Path.Combine(installDir, "mods"),
+        "modcli" => Path.Combine(installDir, "tools", "modcli"),
+        "toypad" => Path.Combine(installDir, "tools", "LegoToypad"),
+        "saveconverter" => Path.Combine(installDir, "tools", "SaveConverter"),
+        "updater" => Path.Combine(installDir, "tools", "rexupdate"),
+        _ => Path.Combine(installDir, payloadPrefix),
+    };
 
     /// <summary>Rough size of what will be written, for the free-space check.</summary>
     public static long EstimateBytes(InstallOptions o, PayloadSource payload, IReadOnlyList<DlcSource> dlc)
@@ -213,6 +243,7 @@ public sealed class InstallJob
         }
         if (o.IncludeToypad) n += payload.SizeUnder("toypad");
         if (o.IncludeSaveConverter) n += payload.SizeUnder("saveconverter");
+        if (o.IncludeUpdater) n += payload.SizeUnder("updater");
         return n;
     }
 
@@ -288,11 +319,18 @@ public sealed class InstallJob
         }
         if (o.IncludeToypad) CopyPayload("toypad", ToypadDir, "Installing LEGO Toypad app");
         if (o.IncludeSaveConverter) CopyPayload("saveconverter", Path.Combine(ToolsDir, "SaveConverter"), "Installing save converter");
+        if (o.IncludeUpdater) InstallUpdater();
 
-        // 6. Config + docs.
+        // 6. Config + docs. The plan is also recorded in install.json, so a later
+        //    update can tell a value the user changed from one we put there.
         Report("Writing configuration");
-        File.WriteAllText(Path.Combine(o.InstallDir, "legodimensions.toml"), BuildToml(), new UTF8Encoding(false));
+        var plan = TomlConfig.Apply(TomlConfig.Plan(BuildPaths(), BuildComponents(), Product.UpdateRepo,
+                                                    File.Exists(Path.Combine(o.InstallDir, PayloadSource.GamepadDb))),
+                                    release?.Toml);
+        File.WriteAllText(Path.Combine(o.InstallDir, TomlConfig.FileName),
+                          TomlConfig.Render(plan, WizardForm.AppName), new UTF8Encoding(false));
         File.WriteAllText(ReadmePath, BuildReadme(dlc.Count), new UTF8Encoding(false));
+        WriteInstallManifest(plan, dlc);
 
         if (o.DesktopShortcut)
         {
@@ -328,60 +366,82 @@ public sealed class InstallJob
         }
     }
 
-    string BuildToml()
+    /// <summary>
+    /// The updater is this same executable with the payload stripped off - the
+    /// binary as published, before build-installer.ps1 appended anything. Run
+    /// with no payload behind it, it starts in updater mode (see Program.Main).
+    /// A payload that ships one explicitly wins, which is how an update pack
+    /// replaces the updater itself.
+    /// </summary>
+    void InstallUpdater()
     {
-        // TOML literal strings: single quotes, no escaping, so Windows paths
-        // go in as-is. Only non-default values are listed - the game rewrites
-        // this file on exit the same way.
-        static string L(string p) => "'" + p.Replace("'", "") + "'";
-        var sb = new StringBuilder();
-        sb.AppendLine($"# {WizardForm.AppName} - written by the installer.");
-        sb.AppendLine("# The game rewrites this file on exit; press F4 in game to change most of it.");
-        sb.AppendLine();
-        sb.AppendLine("# Paths");
-        sb.AppendLine($"game_data_root = {L(GameDir)}");
-        sb.AppendLine($"update_data_root = {L(UpdateDir)}");
-        sb.AppendLine($"user_data_root = {L(ContentDir)}");
-        sb.AppendLine($"log_file = {L(Path.Combine(o.InstallDir, "game.log"))}");
-        if (File.Exists(Path.Combine(o.InstallDir, PayloadSource.GamepadDb)))
-            sb.AppendLine($"hid_mappings_file = {L(Path.Combine(o.InstallDir, PayloadSource.GamepadDb))}");   // the default is relative to the working directory
-        if (o.IncludeMods)
+        Report("Installing the updater");
+        if (payload.HasUpdater)
         {
-            sb.AppendLine();
-            sb.AppendLine("# Mods (F8). All off by default.");
-            sb.AppendLine("mods = ''");
-            sb.AppendLine($"mods_root = {L(ModsDir)}");
-            sb.AppendLine($"mods_update_root = {L(ModdedUpdateDir)}");
-            sb.AppendLine($"modcli_path = {L(ModCliExe)}");
+            CopyPayload("updater", UpdaterDir, "Installing the updater");
+            return;
         }
-        sb.AppendLine();
-        sb.AppendLine("# Display");
-        sb.AppendLine("fullscreen = true");
-        sb.AppendLine("vsync = false");
-        sb.AppendLine("framerate_limit = 60");
-        sb.AppendLine("frame_rate = '60'");
-        sb.AppendLine("present_effect = 'fsr'");
-        sb.AppendLine("present_fsr_max_upsampling_passes = 1");
-        sb.AppendLine("anisotropic_override = 5");
-        sb.AppendLine();
-        sb.AppendLine("# Compatibility - these keep the game from crashing on things the");
-        sb.AppendLine("# recompiled code does not cover yet. Do not change them.");
-        sb.AppendLine("invalid_function_nonfatal = true");
-        sb.AppendLine("license_mask = 4294967295");
-        sb.AppendLine("gpu_plugin = 'xenos'");
-        sb.AppendLine("gpu_backend = 'd3d12'");
-        sb.AppendLine("gpu_allow_invalid_fetch_constants = true");
-        sb.AppendLine("clear_memory_page_state = false");
-        sb.AppendLine("readback_resolve = 'fast'");
-        sb.AppendLine("readback_resolve_half_pixel_offset = true");
-        sb.AppendLine("readback_memexport_fast = false");
-        sb.AppendLine("readback_resolve_max_kb = 256");
-        sb.AppendLine("d3d12_readback_memexport = true");
-        sb.AppendLine("d3d12_readback_resolve = true");
-        sb.AppendLine("execute_unclipped_draw_vs_on_cpu = true");
-        sb.AppendLine("primitive_processor_cache_min_indices = 4096");
-        sb.AppendLine("non_seamless_cube_map = true");
-        return sb.ToString();
+        string dest = Path.Combine(UpdaterDir, UpdaterExeName);
+        if (!PayloadSource.TryWriteHostWithoutPayload(dest))
+        {
+            // Running from a payload folder during development, or from an exe
+            // with no footer. Not worth failing an install over.
+            Debug.WriteLine("updater: no appended payload to strip, skipping");
+            return;
+        }
+        installed.Add(new InstalledFile
+        {
+            Path = Path.GetRelativePath(o.InstallDir, dest).Replace('\\', '/'),
+            Payload = "updater/" + UpdaterExeName,
+            Sha = InstallManifest.Sha256(dest),
+            Len = new FileInfo(dest).Length,
+        });
+    }
+
+    public const string UpdaterExeName = "rexupdate.exe";
+
+    /// <summary>The layout of this install, as recorded for the updater.</summary>
+    InstalledPaths BuildPaths() => new()
+    {
+        InstallDir = o.InstallDir,
+        GameDataRoot = GameDir,
+        UpdateDataRoot = UpdateDir,
+        ModsUpdateRoot = ModdedUpdateDir,
+        ContentRoot = ContentDir,
+        ModsRoot = ModsDir,
+        ToolsRoot = ToolsDir,
+    };
+
+    InstalledComponents BuildComponents() => new()
+    {
+        Mods = o.IncludeMods,
+        Toypad = o.IncludeToypad,
+        SaveConverter = o.IncludeSaveConverter,
+        // Checked on disk, not asked of the options: stripping the payload off
+        // ourselves can fail (a dev run from a payload folder), and the config
+        // must not point at an updater that is not there.
+        Updater = o.IncludeUpdater && File.Exists(Path.Combine(UpdaterDir, UpdaterExeName)),
+    };
+
+    /// <summary>
+    /// install.json: the record of what this install is. Written last, so a
+    /// half-finished install has none and is never mistaken for a good one.
+    /// </summary>
+    void WriteInstallManifest(List<TomlItem> plan, IReadOnlyList<DlcSource> dlc)
+    {
+        var manifest = new InstallManifest
+        {
+            Version = release?.Version ?? "0.0.0",
+            InstalledUtc = DateTime.UtcNow.ToString("o"),
+            UpdatedUtc = DateTime.UtcNow.ToString("o"),
+            Components = BuildComponents(),
+            Paths = BuildPaths(),
+            Files = installed,
+            TomlWritten = TomlConfig.Record(plan),
+            Dlc = dlc.Select(d => d.Name).ToList(),
+            UpdateRepo = Product.UpdateRepo,
+        };
+        manifest.Save(o.InstallDir);
     }
 
     string BuildReadme(int dlcCount)
@@ -493,7 +553,17 @@ copy, and turning them off restores the vanilla bytes.";
             ct.ThrowIfCancellationRequested();
             string rel = entry.Path[(prefix.Length + 1)..].Replace('/', Path.DirectorySeparatorChar);
             Report($"{status}: {Path.GetFileName(rel)}");
-            payload.CopyTo(entry, Path.Combine(dstDir, rel), Advance);
+            string dest = Path.Combine(dstDir, rel);
+            payload.CopyTo(entry, dest, Advance);
+            // The hash comes from the payload manifest when there is one; only a
+            // pre-manifest payload pays for hashing 190 MB during an install.
+            installed.Add(new InstalledFile
+            {
+                Path = Path.GetRelativePath(o.InstallDir, dest).Replace('\\', '/'),
+                Payload = entry.Path,
+                Sha = release?.Find(entry.Path)?.Sha ?? InstallManifest.Sha256(dest),
+                Len = entry.Length,
+            });
         }
     }
 

@@ -10,6 +10,7 @@
 #include "discord_presence.h"
 #include "mod_menu.h"
 #include "ui_theme.h"
+#include "updates.h"
 
 class LegodimensionsApp : public rex::ReXApp {
  public:
@@ -24,7 +25,13 @@ class LegodimensionsApp : public rex::ReXApp {
   // Publish Discord Rich Presence for as long as the game is up. Started here
   // rather than earlier so a Discord that is not running yet costs nothing:
   // the connection lives on its own thread and simply keeps retrying.
-  void OnPostSetup() override { legodimensions::discord::Start(); }
+  // The update check goes out here too: by this point the window is up, so a
+  // slow network cannot be mistaken for a slow launch. It costs nothing when
+  // updates_check is off, which is the point of the setting.
+  void OnPostSetup() override {
+    legodimensions::discord::Start();
+    legodimensions::updates::CheckAtStartup();
+  }
 
   // Dropping the pipe is what clears the presence; Discord does the rest.
   void OnShutdown() override { legodimensions::discord::Stop(); }

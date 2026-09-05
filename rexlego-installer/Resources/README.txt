@@ -141,7 +141,34 @@ Installed to: {INSTALL_DIR}
 
 
 ------------------------------------------------------------------------------
-  7. REPORTING A BUG
+  7. UPDATES
+------------------------------------------------------------------------------
+
+  New releases do not need a reinstall. When the game starts it quietly asks
+  GitHub whether a newer version exists; if there is one, a small window
+  offers to download and apply it. Only the files that actually changed are
+  downloaded (usually a few MB instead of the whole 175 MB installer), your
+  settings and saves are left alone, and the files that get replaced are
+  copied to  backup\<old version>\  first.
+
+  To turn it off:  F4 -> Updates -> untick  updates_check
+  (or set  updates_check = false  in legodimensions.toml while the game is
+  closed). Nothing is contacted at all when it is off.
+
+  Also under Updates:
+    updates_repo    which GitHub repository to check (leave as it is)
+    updater_path    tools\rexupdate\rexupdate.exe - the updater itself
+
+  You can also run the updater by hand at any time: start
+  tools\rexupdate\rexupdate.exe. It is the installer with the payload cut
+  off, so it is small and it knows how to update itself too.
+
+  If an update ever fails halfway, run the full installer again over the
+  same folder - it repairs the install and keeps saves.
+
+
+------------------------------------------------------------------------------
+  8. REPORTING A BUG
 ------------------------------------------------------------------------------
 
   Please include:
@@ -158,7 +185,7 @@ Installed to: {INSTALL_DIR}
 
 
 ------------------------------------------------------------------------------
-  8. WHAT IS THIS, TECHNICALLY
+  9. WHAT IS THIS, TECHNICALLY
 ------------------------------------------------------------------------------
 
   This is a static recompilation of the Xbox 360 executable: the original
@@ -181,4 +208,6 @@ Installed to: {INSTALL_DIR}
      update-mods\                  mod-patched copy of the update (if mods installed)
      content\                      saves, achievements, DLC
      mods\, tools\                 optional components
+     tools\rexupdate\              the updater (see section 7)
+     backup\                       files replaced by an update
      game.log                      the log for bug reports

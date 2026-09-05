@@ -36,6 +36,47 @@ public abstract class PayloadSource : IDisposable
         return new FolderPayload(Path.Combine(AppContext.BaseDirectory, "payload"));
     }
 
+    /// <summary>A .rxp update pack, or any zip in the same layout.</summary>
+    public static PayloadSource OpenFile(string zipPath)
+    {
+        var file = new FileStream(zipPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return new ZipPayload(file, 0, file.Length);
+    }
+
+    /// <summary>
+    /// Writes this executable with the payload cut back off, which is exactly
+    /// the binary dotnet publish produced. That copy is what gets installed as
+    /// the updater: same code, no 175 MB of payload behind it, and nothing extra
+    /// for anyone to download.
+    /// </summary>
+    public static bool TryWriteHostWithoutPayload(string destPath)
+    {
+        string exe = Environment.ProcessPath ?? "";
+        if (!File.Exists(exe)) return false;
+        using var input = new FileStream(exe, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        if (input.Length < FooterLength + 22) return false;
+        input.Position = input.Length - FooterLength;
+        byte[] footer = new byte[FooterLength];
+        input.ReadExactly(footer);
+        if (Encoding.ASCII.GetString(footer, 0, 8) != FooterMagic) return false;
+        long hostLength = input.Length - FooterLength - BitConverter.ToInt64(footer, 8);
+        if (hostLength <= 0) return false;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        input.Position = 0;
+        using var output = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20);
+        byte[] buf = new byte[1 << 20];
+        long left = hostLength;
+        while (left > 0)
+        {
+            int n = input.Read(buf, 0, (int)Math.Min(buf.Length, left));
+            if (n <= 0) return false;
+            output.Write(buf, 0, n);
+            left -= n;
+        }
+        return true;
+    }
+
     static PayloadSource? TryOpenAppended(string exePath)
     {
         FileStream? file = null;
@@ -79,6 +120,7 @@ public abstract class PayloadSource : IDisposable
         GameFiles.Where(f => Find("game/" + f) is null).Select(f => "game/" + f).ToList();
 
     public bool HasMods => Under("mods").Any() && Find("modcli/modcli.exe") is not null;
+    public bool HasUpdater => Find("updater/rexupdate.exe") is not null;
     public bool HasToypad => Under("toypad").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
     public bool HasSaveConverter => Under("saveconverter").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
 

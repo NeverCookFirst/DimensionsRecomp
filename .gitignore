@@ -7,11 +7,12 @@
 !/.gitignore
 !/.gitattributes
 !/README.md
+!/VERSION
 !/NOTES.md
 !/GIT-SETUP.md
+!/RELEASING.md
 !/rexlego/
 !/rexlego-installer/
-!/rexlego-updater/
 !/DimensionsModManager-CLI/
 !/xexdump/
 !/tools/

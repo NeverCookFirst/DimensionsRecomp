@@ -29,7 +29,7 @@ public sealed class WizardForm : Form
     TextBox? gameBox, updateBox, dlcBox, installBox;
     Label? gameStatus, updateStatus, dlcStatus, installStatus;
     ListBox? dlcList;
-    CheckBox? cbToypad, cbMods, cbSaveConv, cbShortcut;
+    CheckBox? cbToypad, cbMods, cbSaveConv, cbUpdater, cbShortcut;
     ProgressBar? progress;
     Label? progressLabel;
     CancellationTokenSource? installCts;
@@ -317,6 +317,10 @@ public sealed class WizardForm : Form
         cbSaveConv = Row("Save converter",
             "Converts saves from xenia or a real console for use here. Only for people who already have a save to bring over.",
             opts.IncludeSaveConverter, payload.HasSaveConverter);
+        cbUpdater = Row("Automatic update checks  (recommended)",
+            "Looks for a new release when the game starts and offers to install just the files that changed. "
+            + "Can be switched off any time in the F4 menu, under Updates.",
+            opts.IncludeUpdater, true);
         cbShortcut = new CheckBox { Text = "Create a desktop shortcut", Bounds = new Rectangle(20, y, 600, 26), Checked = opts.DesktopShortcut };
         content.Controls.Add(cbShortcut);
     }
@@ -326,6 +330,7 @@ public sealed class WizardForm : Form
         opts.IncludeToypad = cbToypad!.Checked;
         opts.IncludeMods = cbMods!.Checked;
         opts.IncludeSaveConverter = cbSaveConv!.Checked;
+        opts.IncludeUpdater = cbUpdater!.Checked;
         opts.DesktopShortcut = cbShortcut!.Checked;
         return null;
     }

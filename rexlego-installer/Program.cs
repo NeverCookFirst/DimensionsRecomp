@@ -9,6 +9,11 @@ static class Program
     {
         using var payload = PayloadSource.Open();
 
+        // The installed updater is this same binary with the payload cut off, so
+        // "no payload at all" is what tells the two apart. A payload that is
+        // present but incomplete is a damaged download, and still an error.
+        if (payload.Entries.Count == 0 || args.Any(IsUpdaterArg)) return Updater.Run(args);
+
         var missing = payload.MissingRequired();
         if (missing.Count > 0)
         {
@@ -28,11 +33,15 @@ static class Program
         return 0;
     }
 
+    /// <summary>Arguments that mean "act as the updater", whatever this binary carries.</summary>
+    static bool IsUpdaterArg(string arg) =>
+        arg is "--check" or "--update" or "--apply" or "--quiet";
+
     /// <summary>
     /// Headless install, used for automated testing and by people who would
     /// rather script it:
     ///   Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR]
-    ///             [--no-toypad] [--no-mods] [--save-converter] [--no-shortcut]
+    ///             [--no-toypad] [--no-mods] [--save-converter] [--no-updater] [--no-shortcut]
     /// Runs the exact same InstallJob as the wizard, prints progress to the
     /// console it was started from.
     /// </summary>
@@ -52,9 +61,10 @@ static class Program
                 case "--no-toypad": o.IncludeToypad = false; break;
                 case "--no-mods": o.IncludeMods = false; break;
                 case "--save-converter": o.IncludeSaveConverter = true; break;
+                case "--no-updater": o.IncludeUpdater = false; break;
                 case "--no-shortcut": o.DesktopShortcut = false; break;
                 default:
-                    Console.Error.WriteLine("usage: Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR] [--no-toypad] [--no-mods] [--save-converter] [--no-shortcut]");
+                    Console.Error.WriteLine("usage: Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR] [--no-toypad] [--no-mods] [--save-converter] [--no-updater] [--no-shortcut]");
                     return 2;
             }
         }

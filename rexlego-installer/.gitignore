@@ -8,6 +8,8 @@ dist/
 staging/
 payload/
 payload.zip
+rexupdate-host.exe
+packstage/
 *.zip
 
 # The game's own binaries, if anyone drops them here by hand

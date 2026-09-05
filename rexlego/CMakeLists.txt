@@ -22,6 +22,7 @@ set(LEGODIMENSIONS_SOURCES
     src/discord_presence.cpp
     src/ui_theme.cpp
     src/mod_menu.cpp
+    src/updates.cpp
 )
 
 if(WIN32)
