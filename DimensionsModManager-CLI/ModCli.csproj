@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A headless front end for the existing ModEngine. The mod manager itself
+       is WinForms and can only apply mods through its window; the ReXGlue build
+       needs to do it from a script, so the engine sources are compiled straight
+       into this console app rather than duplicated. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>modcli</AssemblyName>
+    <RootNamespace>DimensionsModManager</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\DimensionsModManager\ModEngine.cs" />
+    <Compile Include="..\DimensionsModManager\ModInfo.cs" />
+    <Compile Include="..\DimensionsModManager\DatArchive.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,6 @@
+// Windows resources for legodimensions.exe.
+//
+// The first icon resource in an executable, by numeric ID order, is what
+// Explorer, the taskbar and Alt-Tab show - so this one is ID 1.
+#define IDI_MAIN_ICON 1
+IDI_MAIN_ICON ICON "legodimensions.ico"

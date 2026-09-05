@@ -1,0 +1,358 @@
+﻿# Manual codegen overrides for LEGO Dimensions (Default.xex, v0.0.0.3, no TU).
+# Included from legodimensions_manifest.toml -> [entrypoint].includes
+#
+# Analysis pass 1 (2026-08-31) ended with:
+#   UnresolvedCall (3):
+#     0x8307CA78 from 0x8277D4B8
+#     0x82D73A10 from 0x82D7847C
+#     0x82D73A10 from 0x82D784C8
+# All three are unconditional `b` (not `bl`) into an address the discovery pass
+# never claimed for a function - the classic tail-call-into-undiscovered-code
+# shape. Declaring the target as a function entry is the documented fix; size is
+# left out so the analyser sizes each one itself. If a size turns out to be
+# required, add `size = <bytes>` or `end = 0x...` here (they are mutually
+# exclusive) and re-run codegen.
+
+# Runtime pass 1 (2026-08-31): the guest booted, brought up D3D12, started
+# shader storage init and registered its GPU interrupt callback, then died with
+#   [FATAL] Call to invalid or unregistered function at guest address 0x83803F18
+# 0x83803F18 sits inside the module's code range (824E0000-83AABC1C) but was
+# never turned into a function, so nothing was registered in the function table.
+# Same fix as the analysis-time unresolved calls: declare it as an entry point.
+
+[functions]
+0x82D73A10 = {}
+0x8307CA78 = {}
+0x83803F18 = {}
+0x82888768 = {}
+0x838052D8 = {}
+0x8381BB80 = {}
+0x839AAE60 = {}
+0x82B68438 = {}
+0x83283438 = {}
+0x82B6B878 = {}
+0x82FD1520 = {}
+0x82B63298 = {}
+0x8361E6E8 = {}
+0x837FE708 = {}
+0x83283448 = {}
+0x8379EEF8 = {}
+0x8379EF10 = {}
+0x8379E7D0 = {}
+0x82D41F28 = {}
+0x832A2F88 = {}
+0x8361E6F8 = {}
+0x8361E6D8 = {}
+0x8284A7C8 = {}
+0x83988EB0 = {}
+0x82E70900 = {}
+0x8284A7D8 = {}
+0x8284A7B8 = {}
+0x82B888E8 = {}
+0x8284A708 = {}
+0x8284A718 = {}
+0x8284A728 = {}
+0x8284A738 = {}
+0x8284A748 = {}
+0x8284A758 = {}
+0x8284A768 = {}
+0x8284A778 = {}
+0x8284A788 = {}
+0x8284A798 = {}
+0x8284A7A8 = {}
+0x8284A7E8 = {}
+0x8284A7F8 = {}
+0x8361E688 = {}
+0x8361E698 = {}
+0x8361E6A8 = {}
+0x8361E6B8 = {}
+0x8361E6C8 = {}
+0x8361E708 = {}
+0x8361E718 = {}
+0x8361E728 = {}
+0x8361E738 = {}
+0x8361E748 = {}
+0x8361E758 = {}
+0x8361E768 = {}
+0x8361E778 = {}
+0x8379EF48 = {}
+0x8379EF70 = {}
+0x8358B0B0 = {}
+0x82ED1BA0 = {}
+0x837FE6F8 = {}
+0x837FE688 = {}
+0x837FE698 = {}
+0x837FE6A8 = {}
+0x837FE6B8 = {}
+0x837FE6C8 = {}
+0x837FE6D8 = {}
+0x837FE6E8 = {}
+0x837FE718 = {}
+0x837FE728 = {}
+0x837FE738 = {}
+0x837FE748 = {}
+0x837FE758 = {}
+0x837FE768 = {}
+0x837FE778 = {}
+0x837FE788 = {}
+0x837FE798 = {}
+0x837FE7A8 = {}
+0x837FE7B8 = {}
+0x837FE7C8 = {}
+0x837FE7D8 = {}
+0x837FE7E8 = {}
+0x837FE7F8 = {}
+0x82E8E850 = {}
+0x82D9E9F8 = {}
+0x833300E0 = {}
+0x82B88B50 = {}
+0x82E74288 = {}
+0x82E746F0 = {}
+0x8379EC10 = {}
+0x83032AA8 = {}
+0x82C3A810 = {}
+0x83029C10 = {}
+0x83E6E8F8 = {}
+0x83E6E920 = {}
+0x8407B1C0 = {}
+0x82A2E1C0 = {}
+0x82A2E1B0 = {}
+0x83FF4628 = {}
+0x82A2E190 = {}
+0x82A6FD00 = {}
+0x82E4F910 = {}
+0x83E6FD00 = {}
+0x83E867A8 = {}
+0x82DDED28 = {}
+0x82E54818 = {}
+0x838DE760 = {}
+0x838DE770 = {}
+0x82B62C1C = {}
+0x82A7AD70 = {}
+0x837F9118 = {}
+0x82D2F5A0 = {}
+0x83DB9068 = {}
+0x83A56F10 = {}
+0x83E69300 = {}
+0x839EA2F0 = {}
+0x83DFE400 = {}
+0x83DFE418 = {}
+0x83DFDD00 = {}
+0x82D8B6C0 = {}
+0x83A56F20 = {}
+0x838DE780 = {}
+0x82C11B78 = {}
+0x82C11AF8 = {}
+0x82C11B08 = {}
+0x82C11B18 = {}
+0x82C11B28 = {}
+0x82C11B38 = {}
+0x82C11B48 = {}
+0x82C11B58 = {}
+0x82C11B68 = {}
+0x82C11B88 = {}
+0x82C11B98 = {}
+0x82C11BA8 = {}
+0x82C11BB8 = {}
+0x82C11BC8 = {}
+0x82C11BD8 = {}
+0x82C11BE8 = {}
+0x82C11BF8 = {}
+0x82C11C08 = {}
+0x82C11C18 = {}
+0x82C11C28 = {}
+0x82C11C38 = {}
+0x82C11C48 = {}
+0x82C11C58 = {}
+0x82C11C68 = {}
+0x82C11C78 = {}
+0x82C11C88 = {}
+0x82C11C98 = {}
+0x82C11CA8 = {}
+0x82C11CB8 = {}
+0x82C11CC8 = {}
+0x82C11CD8 = {}
+0x82C11CE8 = {}
+0x82C11CF8 = {}
+0x82BF8F88 = {}
+0x82BF8F98 = {}
+0x82BF8FA8 = {}
+0x82BF8FB8 = {}
+0x82BF8FC8 = {}
+0x82BF8FD8 = {}
+0x82BF8FE8 = {}
+0x82BF8FF8 = {}
+0x82BF9008 = {}
+0x82BF9018 = {}
+0x82BF9028 = {}
+0x82BF9038 = {}
+0x82BF9048 = {}
+0x82BF9058 = {}
+0x82BF9068 = {}
+0x82BF9078 = {}
+0x82BF9088 = {}
+0x82BF9098 = {}
+0x82BF90A8 = {}
+0x82BF90B8 = {}
+0x82BF90C8 = {}
+0x82BF90D8 = {}
+0x82BF90E8 = {}
+0x82BF90F8 = {}
+0x82BF9108 = {}
+0x82BF9118 = {}
+0x82BF9128 = {}
+0x82BF9138 = {}
+0x82BF9148 = {}
+0x82BF9158 = {}
+0x82BF9168 = {}
+0x82BF9178 = {}
+0x82BF9188 = {}
+0x82628070 = {}
+0x82628080 = {}
+0x82628090 = {}
+0x826280A0 = {}
+0x826280B0 = {}
+0x826280C0 = {}
+0x826280D0 = {}
+0x826280E0 = {}
+0x826280F0 = {}
+0x82628100 = {}
+0x82628110 = {}
+0x82628120 = {}
+0x82628130 = {}
+0x82628140 = {}
+0x82628150 = {}
+0x82628160 = {}
+0x82628170 = {}
+0x82628180 = {}
+0x82628190 = {}
+0x826281A0 = {}
+0x826281B0 = {}
+0x826281C0 = {}
+0x826281D0 = {}
+0x826281E0 = {}
+0x826281F0 = {}
+0x82628200 = {}
+0x82628210 = {}
+0x82628220 = {}
+0x82628230 = {}
+0x82628240 = {}
+0x82628250 = {}
+0x82628260 = {}
+0x82628270 = {}
+0x82C34BA0 = {}
+0x83DC5CF8 = {}
+# 2026-09-02 entering Sonic world: [FATAL] Unresolved branch from 0x8398A800 to 0x83988648.
+0x83988648 = {}
+# 2026-09-02 loading a save on D3D12: [FATAL] Call to invalid or unregistered function at guest address 0x82E729F0.
+0x82E729F0 = {}
+# 2026-09-02 15:27 harvested: MISSING-FUNCTION 0x8305DDB0, followed 1 ms later by a read of guest 0x3F800000 (1.0f used as a pointer - the skipped function should have returned one).
+0x8305DDB0 = {}
+
+# 2026-09-02 16:15, loading the save (it drops straight into the Sonic world).
+# Harvest gave two addresses one 2 ms apart, both addr %% 0x10 == 8 like 149 of
+# the 224 already declared - the same pointer-table shape. Declaring the whole
+# surrounding range at 0x10 stride instead of one address per 7-minute pass;
+# this trick already passed codegen validation cleanly twice before.
+# MISSING-FUNCTION 0x8318C658 -> range of 24 entries around it
+0x8318C5D8 = {}
+0x8318C5E8 = {}
+0x8318C5F8 = {}
+0x8318C608 = {}
+0x8318C618 = {}
+0x8318C628 = {}
+0x8318C638 = {}
+0x8318C648 = {}
+0x8318C658 = {}
+0x8318C668 = {}
+0x8318C678 = {}
+0x8318C688 = {}
+0x8318C698 = {}
+0x8318C6A8 = {}
+0x8318C6B8 = {}
+0x8318C6C8 = {}
+0x8318C6D8 = {}
+0x8318C6E8 = {}
+0x8318C6F8 = {}
+0x8318C708 = {}
+0x8318C718 = {}
+0x8318C728 = {}
+0x8318C738 = {}
+0x8318C748 = {}
+# MISSING-FUNCTION 0x831C6898 -> range of 24 entries around it
+0x831C6818 = {}
+0x831C6828 = {}
+0x831C6838 = {}
+0x831C6848 = {}
+0x831C6858 = {}
+0x831C6868 = {}
+0x831C6878 = {}
+0x831C6888 = {}
+0x831C6898 = {}
+0x831C68A8 = {}
+0x831C68B8 = {}
+0x831C68C8 = {}
+0x831C68D8 = {}
+0x831C68E8 = {}
+0x831C68F8 = {}
+0x831C6908 = {}
+0x831C6918 = {}
+0x831C6928 = {}
+0x831C6938 = {}
+0x831C6948 = {}
+0x831C6958 = {}
+0x831C6968 = {}
+0x831C6978 = {}
+0x831C6988 = {}
+
+# 2026-09-02 16:30 harvest: nine addresses collected while the save load reached
+# the main hub. Declared ONE BY ONE on purpose. The 32-entry ranges tried at 16:41
+# regressed the intro: 0x82866C98/0x82866CA8 landed INSIDE a real function, which
+# split it, and a branch across the split became "Unresolved branch from
+# 0x82866C94 to 0x82866CB0". Only addresses seen in an actual indirect call are
+# guaranteed function starts; walking outward from one is a guess.
+0x8371B538 = {}
+0x839DFA38 = {}
+0x83E2C8B0 = {}
+0x82866BC8 = {}
+0x839E8060 = {}
+0x831C6150 = {}
+0x82621598 = {}
+0x831799E0 = {}
+0x83E692E0 = {}
+
+# 2026-09-02 17:09-17:15 harvest: eight addresses over 6.5 minutes of play after
+# the wide-range revert. Note 0x82866BD8 is exactly +0x10 from the earlier
+# 0x82866BC8 - that region really is a pointer table, but the function holding
+# 0x82866C94 sits right after it, which is what the 16:41 over-wide range broke.
+0x83061E18 = {}
+0x83DFE450 = {}
+0x83DFE080 = {}
+0x82866BD8 = {}
+0x8371B5B0 = {}
+0x82699560 = {}
+0x83155440 = {}
+0x83196218 = {}
+
+# 2026-09-02 17:34 harvest. Third address in the 0x83DFE0xx cluster and second in
+# 0x831554xx/0x8315591x - the same subsystems keep coming back one entry at a time.
+0x83155910 = {}
+0x83DFE0A8 = {}
+0x83414DE0 = {}
+# 2026-09-02 18:36 and 18:42, entering a portal from the hub - identical crash both
+# with gpu_thread_fast_wait true and false, so not the GPU-thread patches:
+# MISSING-FUNCTION 0x82E73170 then a read of guest 0x72 (a byte used as a pointer).
+0x82E73170 = {}
+# 2026-09-02 18:58, entering a level from the portal.
+0x831961C8 = {}
+
+# 2026-09-02 20:22, Sonic level, chasing the robot with the red brick.
+# All seven land in clusters already seen today (0x839DFxxx, 0x831C6xxx,
+# 0x83DFE4xx), i.e. more entries of the same pointer tables.
+0x839DFE60 = {}
+0x839DFEF0 = {}
+0x8262E420 = {}
+0x831C6038 = {}
+0x8262B5D8 = {}
+0x83DFE478 = {}
+0x831C6010 = {}

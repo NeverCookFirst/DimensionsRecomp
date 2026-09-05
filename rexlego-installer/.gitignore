@@ -1,0 +1,15 @@
+# .NET build output
+bin/
+obj/
+
+# Release staging. build-installer.ps1 rebuilds all of it, and it holds the game
+# binaries and the LEGO Toypad app - neither is ours to publish.
+dist/
+staging/
+payload/
+payload.zip
+*.zip
+
+# The game's own binaries, if anyone drops them here by hand
+legodimensions.exe
+rex*.dll

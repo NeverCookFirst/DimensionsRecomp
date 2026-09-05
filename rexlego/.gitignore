@@ -1,0 +1,32 @@
+# Build output
+out/
+build/
+
+# Recompiled C++ generated from the game executable. Regenerate it with the
+# ReXGlue codegen from your own copy of the game - it is 469 MB and it is a
+# translation of copyrighted code, so it does not belong in a repository.
+generated/
+
+# Game data and anything derived from it. None of this is ours to publish.
+content/
+tu23/
+tu23-mods/
+save-backups/
+build-snapshots/
+*.xex
+*.xexp
+*.DAT
+*.HDR
+*.DAT2
+*.HDR2
+
+# Written by the SDK codegen and full of local paths to the game dump.
+legodimensions_manifest.toml
+
+# Written by the game on exit, holds absolute paths for this machine only.
+legodimensions.toml
+
+# Logs and captures
+*.log
+*.csv
+achievements.txt

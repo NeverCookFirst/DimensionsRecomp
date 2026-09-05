@@ -1,0 +1,5 @@
+build/
+
+# 45 MB of the game's own executable image - never commit this.
+dump/
+*.bin

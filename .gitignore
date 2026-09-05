@@ -1,0 +1,26 @@
+# This repository is the Dimensions Recompiled workspace. Everything in it is
+# opt-in: the working folder is ~20 GB of game data, dumps, emulator clones and
+# other people's repositories, and none of that belongs here. So ignore the lot
+# and name the folders that are ours.
+/*
+
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/NOTES.md
+!/GIT-SETUP.md
+!/rexlego/
+!/rexlego-installer/
+!/rexlego-updater/
+!/DimensionsModManager-CLI/
+!/xexdump/
+!/tools/
+
+# Deliberately still out, even though they are ours or ours-adjacent:
+#   DimensionsModManager/    -> NeverCookFirst/DimensionsModLoader
+#   DimensionsSaveConverter/ -> NeverCookFirst/DimensionsSaveConverter
+#   rexglue-sdk/             -> our private mirror of the ReXGlue SDK
+#   xenia-canary/            -> NeverCookFirst/Xenia-Seamless-Toypad-Build
+#   LegoToypad/              -> harrysof's project, we only ship his release
+#   research/, rpcs3-ref/    -> clones of other people's code
+#   LD Backups/, xpng/       -> personal backups and artwork scratch

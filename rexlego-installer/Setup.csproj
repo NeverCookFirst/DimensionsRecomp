@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tester installer for the LEGO Dimensions ReXGlue recomp. A plain WinForms
+       wizard: validates the user's own game dump + Title Update, copies
+       everything into a folder of their choice, writes legodimensions.toml and
+       a README. Published self-contained so testers need no .NET runtime. -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DimensionsRecompiled-Setup</AssemblyName>
+    <RootNamespace>RecompSetup</RootNamespace>
+    <Version>0.1.0</Version>
+    <Authors>NeverCookFirst</Authors>
+    <Company>NeverCookFirst</Company>
+    <Product>Dimensions Recompiled</Product>
+    <AssemblyTitle>Dimensions Recompiled Setup</AssemblyTitle>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationIcon>..\rexlego\res\legodimensions.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- tools\Probe is its own project; keep its sources and obj\ out of this one. -->
+    <Compile Remove="tools\**" />
+    <EmbeddedResource Include="Resources\README.txt" LogicalName="README.txt" />
+  </ItemGroup>
+
+</Project>
