@@ -1,8 +1,8 @@
 ﻿{
     "product":  "DimensionsRecompiled",
     "version":  "1.0.2",
-    "releasedUtc":  "2026-09-06T10:49:05.8590857Z",
-    "notes":  "Physical LEGO Dimensions Toy Pad support now works: plug the real pad in, swap its driver with Zadig, untick toypad_emulation in F4. See README.txt next to the game.",
+    "releasedUtc":  "2026-09-06T11:30:49.5728615Z",
+    "notes":  "Physical LEGO Dimensions Toy Pad support now works. Wii U, PlayStation 3 and PlayStation 4 pads are supported; the Xbox 360 one is not yet. Swap the driver with Zadig, then untick toypad_emulation in F4. See README.txt next to the game.",
     "minVersion":  "",
     "full":  true,
     "files":  [
@@ -38,7 +38,7 @@
                   },
                   {
                       "p":  "modcli/modcli.exe",
-                      "sha":  "d10799f7b3b3f9d77a9138b99ff31714695f0c98e35540024fdac51230216004",
+                      "sha":  "5bdea861453c705a33042a8d72482e22c077acfc4462fd7d3d8f44e1e347da06",
                       "len":  67519646
                   },
                   {
@@ -78,7 +78,7 @@
                   },
                   {
                       "p":  "updater/rexupdate.exe",
-                      "sha":  "6308b1cb2d07c3c08b853fe3d37fbc8567f67a4e211e3c55a29b1f1cdfce4eec",
+                      "sha":  "48e1177d14078beb994ce6160a6d4bdc890621e10ae7f4e032acc793efd57bec",
                       "len":  66628948
                   }
               ],

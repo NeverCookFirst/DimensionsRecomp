@@ -32,8 +32,8 @@ Installed to: {INSTALL_DIR}
   USING YOUR REAL TOY PAD INSTEAD
 
   If you own the actual LEGO Dimensions Toy Pad you can plug it in and use
-  real figures, with no companion app at all. Any of the three consoles'
-  pads work: it is the same USB device everywhere.
+  real figures, with no companion app at all. The Wii U, PlayStation 3 and
+  PlayStation 4 pads are supported. The Xbox 360 one is not, for now.
 
   Windows gives the pad to its own driver, which will not let the game
   talk to it, so it has to be swapped once:
