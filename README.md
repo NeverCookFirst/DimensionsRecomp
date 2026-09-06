@@ -6,6 +6,14 @@
   A native PC build of LEGO Dimensions, made by statically recompiling the Xbox 360 release.
 </p>
 
+<p align="center">
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest"><b>Download</b></a>
+  &nbsp;&middot;&nbsp;
+  <a href="README-dev.md">Build it yourself</a>
+  &nbsp;&middot;&nbsp;
+  <a href="https://discord.com/invite/PuXpBMFE4P">LEGO Dimensions Discord</a>
+</p>
+
 ---
 
 ## Why this exists
@@ -13,168 +21,152 @@
 I started this to answer one question: can a toys-to-life game be recompiled, and
 is a native PC port of LEGO Dimensions actually realistic?
 
-The answer turned out to be yes, and this repository is the proof. The game boots,
-plays, saves, loads DLC, and talks to a Toy Pad, all as a normal Windows program.
+The answer is yes, and this is the proof. It boots, plays, saves, loads DLC, and
+talks to a Toy Pad, as a normal Windows program.
 
-This project does not claim to be the one correct way to play LEGO Dimensions on
-PC. Emulation works, and the people who built and maintain those emulators did the
-hard groundwork that made this possible in the first place. If xenia or RPCS3
-serves you better, use them. I have a lot of respect for every project around this
-game, and none of them are competitors.
+This is not a claim to be the one correct way to play on PC. Emulation works, and
+the emulator projects did the groundwork that made this possible. If
+[xenia](https://github.com/xenia-canary/xenia-canary) or
+[RPCS3](https://github.com/RPCS3/rpcs3) serves you better, use them. I respect
+every project around this game and none of them are competitors.
 
-## This is a public demo build. Expect bugs.
+## How Claude was used
 
-Please read this part before you install anything.
+I would rather you hear this from me than guess.
 
-This is an early public build, not a finished port. The game can crash, freeze,
-render something wrong, lose audio, or refuse to load a save. That is expected at
-this stage, and it is exactly why the build is public: more machines mean more
-bugs found.
+[Claude](https://claude.ai) was used heavily as a development tool. It read
+disassembly and file formats with me, and wrote large parts of the runtime glue,
+the installer, the mod tooling and this page.
 
-How well it runs also depends a lot on your PC. The recompiled CPU code is native
-and fast, but the graphics path still has to translate what the Xbox 360 GPU was
-asked to do into something a modern GPU understands, and that part is where the
-cost is. Two machines with similar paper specs can behave differently. If
-something looks wrong, try setting `frame_rate` back to 30 in the F4 menu before
-reporting it, because 60 FPS is an unlock the original game never ran at and most
-of the remaining problems live there.
+What it did not do is decide what to build or judge whether the result was any
+good. The goal and the scope were mine. The domain knowledge about this game,
+its Toy Pad, its saves and its archives came from years of community work, not
+from a model. And above all I played the game. Every "this is broken", "this
+feels off" and "this is finally right" came from a person in front of the actual
+thing. A model cannot tell you a world failed to load or a cutscene hung. That
+loop is what turned something that compiled into something that plays.
 
-The installer contains no game data. It reads your own disc dump and your own
-Title Update, checks that they are the right ones, and builds an install from
-them. This project is not affiliated with or endorsed by LEGO, TT Games, or
-Warner Bros.
+If you are skeptical about AI being used this way, that is fair and I will not
+argue with you. Judge it by whether it works.
 
-## What "recompiled" means here, and what actually runs natively
+## Install
 
-There is no emulator running underneath this. That is the whole point, and it is
-worth being precise about, because "recompilation" gets used loosely.
+1. Download the latest
+   [`DimensionsRecompiled-Setup.exe`](https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest).
+2. Have ready: an extracted Xbox 360 disc dump of LEGO Dimensions, Title Update
+   23, and optionally your DLC packages. **No game data is included here.** The
+   installer checks that yours are the right ones.
+3. Run it and follow the wizard. It writes a `README.txt` next to the game with
+   the hotkeys, settings and save locations.
 
-The Xbox 360 executable is PowerPC code. A tool reads that code once, ahead of
-time, translates every function it can find into C++, and that C++ is then
-compiled by a normal compiler into a native x86-64 Windows program. So when you
-run the game, your CPU is executing real x86 instructions that were generated from
-the original game logic. Nothing is being interpreted or JIT compiled at runtime,
-and there is no guest CPU to emulate.
+For the Toy Pad, use the [LEGO Toypad app](https://github.com/harrysof/LegoToypad)
+that the installer offers, or plug in a real portal and follow the USB notes in
+that `README.txt`.
 
-What could not simply be translated is everything the game asked the console to do
-for it:
+Updates are handled in game. Turn them off with `F4` &rarr; Updates &rarr;
+`updates_check`.
+
+## This is a demo build. Expect bugs.
+
+It is an early public build, not a finished port. Crashes, freezes, broken
+graphics and lost audio are all expected, and finding them is why it is public.
+How well it runs varies by machine, because the graphics path still has to
+translate what the Xbox 360 GPU was asked to do.
+
+Known issues:
+
+- Starting a **new save** and quitting before the opening cutscenes finish can
+  leave a save that will not load. Play until you are walking around first.
+- **60 FPS** is an unlock the original never ran at, and most remaining bugs
+  live there. Set `frame_rate` to 30 in `F4` before reporting anything odd.
+- Some scenes render with **wrong colours or missing effects**.
+- The **Vulkan** backend is broken. Direct3D 12 is the working one and the
+  default.
+- Not every code path has been visited, so an unexplored corner can still hit a
+  hard stop rather than a graphical glitch.
+
+## What "recompiled" means here
+
+There is no emulator running underneath, and that is the point.
+
+The Xbox 360 executable is PowerPC code. A tool translates it to C++ once, ahead
+of time, and a normal compiler turns that into a native x86-64 Windows program.
+Your CPU runs real x86 instructions. Nothing is interpreted at runtime.
+
+What could not simply be translated is everything the game asked the console for:
 
 | Part | How it works here |
 |---|---|
 | Game code (CPU) | Statically recompiled to native x86-64. No emulation. |
-| Graphics | The game still speaks to the Xbox 360 GPU. That command stream is translated at runtime into Direct3D 12. This is the part inherited from emulator work, and the part still responsible for most visual bugs. |
-| System calls, kernel, saves, achievements, DLC | Reimplemented as host functions, so saves are real files and DLC is real content on your disk. |
-| Audio, input, windowing | Native host code. Any XInput controller works, and so does keyboard and mouse. |
-| Toy Pad | Either a companion app that stands in for the portal over localhost, or a real LEGO Dimensions Toy Pad connected over USB. |
+| Graphics | The Xbox 360 GPU command stream is translated at runtime to Direct3D 12. Inherited from emulator work, and where most visual bugs still are. |
+| Kernel, saves, achievements, DLC | Reimplemented as host functions. Saves are real files. |
+| Audio, input, windowing | Native. Any XInput controller, plus keyboard and mouse. |
+| Toy Pad | A companion app over localhost, or a real portal over USB. |
 
-The runtime that provides all of that is the ReXGlue SDK, which derives from the
-xenia emulator project. So the honest summary is: the CPU side is a port, the
-graphics side still stands on emulator research, and being able to say that out
-loud is more useful than overselling it.
+The runtime providing all of that is the
+[ReXGlue SDK](https://github.com/rexglue/rexglue-sdk), which derives from
+[xenia](https://github.com/xenia-canary/xenia-canary). So: the CPU side is a
+port, the graphics side still stands on emulator research. Saying that plainly is
+more useful than overselling it.
 
-Practical consequences of doing it this way:
+Because there is no interpreter tax, it can run at 60 FPS and use modern
+upscaling (FSR 1 and CAS) and higher internal resolutions.
 
-- It can run at 60 FPS, because there is no interpreter tax to pay.
-- It can use modern upscaling (FSR 1 and CAS) and higher internal resolutions.
-- Any function the translation missed shows up as a crash here, where an emulator
-  would just have executed it. Those are the bugs worth reporting.
+## Tested on, and size
 
-## What it was tested on, and how much space it needs
+Everything was developed and tested on one machine: Ryzen 7 5700X3D, RTX 4060,
+32 GB RAM, Windows 11, 1080p. A mid range desktop, not a high end one.
 
-Everything was developed and tested on one machine:
+Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
+GPU at feature level 11_0.
 
-- AMD Ryzen 7 5700X3D (8 cores, 16 threads)
-- NVIDIA GeForce RTX 4060
-- 32 GB RAM
-- Windows 11, 1080p display
-
-That is a mid range desktop from a few years ago, not a high end one. The game
-renders internally at 1280x720, the same as the original, and is then upscaled to
-your screen, so most of the headroom on that machine goes into 60 FPS and optional
-supersampling rather than raw resolution.
-
-Minimum requirements are a 64-bit CPU with AVX2 (Intel Haswell or AMD Zen 1 and
-newer) and a GPU that supports Direct3D 12 at feature level 11_0.
-
-Disk space, once installed:
-
-| What | Size |
+| Installed | Size |
 |---|---|
 | Base game plus Title Update 23 | about 9 GB |
-| All 30 DLC packages on top of that | about 15 GB |
-| **Full install with everything** | **about 24 GB** |
+| All 30 DLC packages | about 15 GB more |
+| **Everything** | **about 24 GB** |
 
-You need a bit more than that free while installing, since the installer copies
-and extracts rather than moving your original files.
+## Reporting a bug
 
-## How Claude was used, and what came first
-
-I want to be straightforward about this, because I would rather you hear it from
-me than guess.
-
-Claude, Anthropic's model, was used heavily throughout this project, as a
-development tool. It read disassembly and file formats with me, wrote and rewrote
-large amounts of the runtime glue, the installer, the mod tooling, and the
-documentation you are reading. On a project with this much grinding through binary
-formats and unfamiliar code, it saved an enormous amount of time.
-
-What it did not do is decide what to build, or judge whether the result was any
-good.
-
-Everything started from my side. The goal, the scope, and the decision that this
-was worth attempting at all were mine. I supplied the domain knowledge about LEGO
-Dimensions, the Toy Pad protocol, the save format, and the archive formats, most
-of which came from years of community work rather than from any model. I dumped
-and prepared the data, ran the builds, and above all I played the game. Every
-single "this is broken", "this is wrong", "this feels off", and "this is finally
-correct" came from a person sitting in front of the actual game. A model cannot
-tell you that a world failed to load, that a character animates wrongly, or that a
-cutscene hangs. That loop of testing, reporting, and fixing is what turned a thing
-that compiled into a thing that plays, and none of this would exist without it.
-
-If you are skeptical about AI being used this way, that is a fair position and I
-am not going to argue with you about it. I have no grievance with anyone who feels
-that way. All I would ask is that you judge the project by whether it works: the
-code is here, the method is described above, and the build either runs on your
-machine or it does not.
+Open an [issue](https://github.com/NeverCookFirst/DimensionsRecomp/issues/new/choose).
+The template asks for the few things that actually help: `game.log`, your
+`frame_rate`, and your GPU.
 
 ## Thanks
 
-This project genuinely would not exist without other people.
+- **[Unleashed Recompiled](https://github.com/hedge-dev/UnleashedRecomp)**, first
+  and above all. This project exists because of how much I loved what they did.
+  Seeing a console game turned into a real native PC build is what made me ask
+  whether LEGO Dimensions could be next.
+- **The [LEGO Dimensions Discord](https://discord.com/invite/PuXpBMFE4P)**, for
+  years of accumulated knowledge about this game and for encouraging every one of
+  these experiments instead of dismissing them.
+- **[harrysof](https://github.com/harrysof)**, for the
+  [LEGO Toypad app](https://github.com/harrysof/LegoToypad) and the Toy Pad
+  protocol work everything portal related here builds on.
+- **[xenia](https://github.com/xenia-canary/xenia-canary)**, whose research into
+  the Xbox 360 GPU makes the graphics side possible at all.
+- Everyone who tested a broken build or said it was a good idea before it
+  obviously was one.
 
-- **The LEGO Dimensions Discord community.** For years of accumulated knowledge
-  about this game's formats, figures, and internals, for answering questions, and
-  for encouraging every one of these experiments instead of dismissing them.
-- **[harrysof](https://github.com/harrysof)**, for the LEGO Toypad companion app
-  and for the Toy Pad protocol work that everything portal related here builds on.
-- **The xenia project**, whose research into the Xbox 360 GPU is what makes the
-  graphics side of this possible at all.
-- Everyone who tested a broken build, filed a report, or just said it was a good
-  idea when it was not obviously one yet.
-
-## Repositories
-
-Dimensions Recompiled is one part of a set of related projects:
+## Related repositories
 
 | Repository | What it is |
 |---|---|
-| [DimensionsRecomp](https://github.com/NeverCookFirst/DimensionsRecomp) | This one: the recompiled game, the installer, and the updater |
 | [DimensionsModLoader](https://github.com/NeverCookFirst/DimensionsModLoader) | Mod manager that injects files into the game's DAT archives |
-| [DimensionsSaveConverter](https://github.com/NeverCookFirst/DimensionsSaveConverter) | Converts saves between the console versions |
+| [DimensionsSaveConverter](https://github.com/NeverCookFirst/DimensionsSaveConverter) | Converts saves between console versions |
 | [Xenia-Seamless-Toypad-Build](https://github.com/NeverCookFirst/Xenia-Seamless-Toypad-Build) | xenia fork with a built in emulated Toy Pad |
 | [RPCS3-Seamless-Toypad-Build](https://github.com/NeverCookFirst/RPCS3-Seamless-Toypad-Build) | The same idea for the PS3 version |
 | [shadPS4-Seamless-Toypad-Bridge](https://github.com/NeverCookFirst/shadPS4-Seamless-Toypad-Bridge) | Toy Pad bridge for the PS4 version |
 
-## Building it yourself
+## Licence and the legal bit
 
-See [README-dev.md](README-dev.md). Be warned that you cannot build this from a
-clean clone alone: the recompiled sources are generated from your own copy of the
-game and are deliberately not distributed here.
+The code here is MIT licensed, see [LICENSE](LICENSE). That covers what I wrote.
+It does not cover LEGO Dimensions or any of its data. Bring your own game.
 
-## Licence
+Not affiliated with or endorsed by LEGO, TT Games or Warner Bros.
 
-The code in this repository is MIT licensed, see [LICENSE](LICENSE). That covers
-what I wrote. It does not cover LEGO Dimensions, any of its data, or anything else
-owned by LEGO, TT Games, or Warner Bros. Bring your own game.
+**There are no donations.** Nothing here is sold, and nobody should be asking you
+for money for it.
 
 Built by [NeverCookFirst](https://github.com/NeverCookFirst).

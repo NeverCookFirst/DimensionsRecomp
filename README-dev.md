@@ -219,13 +219,23 @@ repositories:
 
 | Folder | Remote | Branch |
 |---|---|---|
-| `rexglue-sdk/` | upstream `rexglue/rexglue-sdk`, fork `NeverCookFirst/rexglue-sdk` | `toypad-ui` |
-| `xenia-canary/` | upstream `xenia-canary/xenia-canary`, fork `NeverCookFirst/Xenia-Seamless-Toypad-Build` | `toypad` |
-| `DimensionsModManager/` | `NeverCookFirst/DimensionsModLoader` | `main` |
-| `DimensionsSaveConverter/` | `NeverCookFirst/DimensionsSaveConverter` | `main` |
-| `LegoToypad/` | upstream `harrysof/LegoToypad`, fork `NeverCookFirst/LegoToypad-pr` | feature branches |
+| `rexglue-sdk/` | upstream [rexglue/rexglue-sdk](https://github.com/rexglue/rexglue-sdk), fork [NeverCookFirst/rexglue-sdk](https://github.com/NeverCookFirst/rexglue-sdk) | `toypad-ui` |
+| `xenia-canary/` | upstream [xenia-canary/xenia-canary](https://github.com/xenia-canary/xenia-canary), fork [Xenia-Seamless-Toypad-Build](https://github.com/NeverCookFirst/Xenia-Seamless-Toypad-Build) | `toypad` |
+| `DimensionsModManager/` | [NeverCookFirst/DimensionsModLoader](https://github.com/NeverCookFirst/DimensionsModLoader) | `main` |
+| `DimensionsSaveConverter/` | [NeverCookFirst/DimensionsSaveConverter](https://github.com/NeverCookFirst/DimensionsSaveConverter) | `main` |
+| `LegoToypad/` | upstream [harrysof/LegoToypad](https://github.com/harrysof/LegoToypad), fork [NeverCookFirst/LegoToypad-pr](https://github.com/NeverCookFirst/LegoToypad-pr) | feature branches |
 
 Forks push to `fork`, never to `origin`.
+
+## Prior art worth reading
+
+If you are here to do the same thing to another Xbox 360 title, read these
+first. This project would not have been attempted without the first one.
+
+- [UnleashedRecomp](https://github.com/hedge-dev/UnleashedRecomp), the one that
+  started it for me.
+- [TheSimpsonsGameRecomp](https://github.com/YesterMester/TheSimpsonsGameRecomp)
+- [reblue](https://github.com/zolaware/reblue)
 
 ## Licence
 

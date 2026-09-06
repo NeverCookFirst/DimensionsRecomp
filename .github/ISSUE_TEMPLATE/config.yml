@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions, help and general chat
+    url: https://discord.com/invite/PuXpBMFE4P
+    about: Ask in the LEGO Dimensions Discord. Please do not open an issue for support.
+  - name: Game files
+    url: https://github.com/NeverCookFirst/DimensionsRecomp#licence-and-the-legal-bit
+    about: None are provided here and requests for them will be closed. Bring your own dump.

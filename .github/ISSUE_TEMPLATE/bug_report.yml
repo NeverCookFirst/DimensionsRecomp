@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in the game is broken
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the known issues in the README first. If it is a crash on
+        start with no window at all, update your GPU driver before filing.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What were you doing? Which level, dimension, or character was on the Toy Pad?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: framerate
+    attributes:
+      label: frame_rate
+      description: In F4. Most remaining bugs only happen at 60, so please check 30 before filing.
+      options:
+        - "30"
+        - "60"
+        - "Happens at both"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver version
+      placeholder: "RTX 4060, 566.36"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: From the installer, or the version line at the top of game.log.
+      placeholder: "1.0.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: game.log
+      description: |
+        Next to the game. It is overwritten every launch, so grab it right after
+        the problem. Paste it or attach it.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshot or video for a graphics glitch, non default settings, mods you had enabled.
+
+  - type: checkboxes
+    id: data
+    attributes:
+      label: Please confirm
+      options:
+        - label: My disc dump and Title Update came from my own copy of the game.
+          required: true
+        - label: I am not asking for game files, and I understand none are provided here.
+          required: true
