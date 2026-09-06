@@ -59,7 +59,10 @@ public static class TomlConfig
         const string modsSection = "Mods (F8). All off by default.";
         if (c.Mods)
         {
-            Add(modsSection, "mods", "''");
+            // Enabled mods, comma separated. The installer has already injected
+            // them into the modded update folder, so this only records the choice.
+            Add(modsSection, "mods",
+                Literal(c.Russian ? string.Join(",", PayloadSource.RussianMods) : ""));
             Add(modsSection, "mods_root", Literal(p.ModsRoot));
             Add(modsSection, "mods_update_root", Literal(p.ModsUpdateRoot));
             Add(modsSection, "modcli_path", Literal(Path.Combine(p.ToolsRoot, "modcli", "modcli.exe")));

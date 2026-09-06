@@ -46,7 +46,7 @@ static class Program
     /// Headless install, used for automated testing and by people who would
     /// rather script it:
     ///   Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR]
-    ///             [--no-toypad] [--no-mods] [--save-converter] [--no-updater] [--no-shortcut]
+    ///             [--no-toypad] [--no-mods] [--russian] [--save-converter] [--no-updater] [--no-shortcut]
     /// Runs the exact same InstallJob as the wizard, prints progress to the
     /// console it was started from.
     /// </summary>
@@ -65,11 +65,12 @@ static class Program
                 case "--install": o.InstallDir = Next() ?? ""; break;
                 case "--no-toypad": o.IncludeToypad = false; break;
                 case "--no-mods": o.IncludeMods = false; break;
+                case "--russian": o.IncludeRussian = true; break;
                 case "--save-converter": o.IncludeSaveConverter = true; break;
                 case "--no-updater": o.IncludeUpdater = false; break;
                 case "--no-shortcut": o.DesktopShortcut = false; break;
                 default:
-                    Console.Error.WriteLine("usage: Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR] [--no-toypad] [--no-mods] [--save-converter] [--no-updater] [--no-shortcut]");
+                    Console.Error.WriteLine("usage: Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR] [--no-toypad] [--no-mods] [--russian] [--save-converter] [--no-updater] [--no-shortcut]");
                     return 2;
             }
         }
@@ -79,6 +80,8 @@ static class Program
                       ?? (o.InstallDir == "" ? "--install is required" : null)
                       ?? (o.IncludeMods && !payload.HasMods ? "payload has no mods/modcli - pass --no-mods" : null)
                       ?? (o.IncludeToypad && !payload.HasToypad ? "payload has no toypad app - pass --no-toypad" : null)
+                      ?? (o.IncludeRussian && !payload.HasRussian ? "payload has no Russian translation" : null)
+                      ?? (o.IncludeRussian && !o.IncludeMods ? "--russian needs the mods component" : null)
                       ?? (o.IncludeSaveConverter && !payload.HasSaveConverter ? "payload has no save converter" : null);
         if (err is not null) { Console.Error.WriteLine("error: " + err); return 1; }
         o.InstallDir = Path.GetFullPath(o.InstallDir);

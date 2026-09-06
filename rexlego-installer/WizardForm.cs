@@ -29,7 +29,7 @@ public sealed class WizardForm : Form
     TextBox? gameBox, updateBox, dlcBox, installBox;
     Label? gameStatus, updateStatus, dlcStatus, installStatus;
     ListBox? dlcList;
-    CheckBox? cbToypad, cbMods, cbSaveConv, cbUpdater, cbShortcut;
+    CheckBox? cbToypad, cbMods, cbRussian, cbSaveConv, cbUpdater, cbShortcut;
     ProgressBar? progress;
     Label? progressLabel;
     CancellationTokenSource? installCts;
@@ -326,6 +326,10 @@ public sealed class WizardForm : Form
         cbMods = Row("Mods and the in-game mod menu (F8)  (recommended)",
             "Two small mods, both switched off by default, and the tool that applies them. Also prepares a mod-ready copy of the update (about 850 MB extra).",
             opts.IncludeMods, payload.HasMods);
+        cbRussian = Row("Russian translation",
+            "Community translation by the LEGO Dimensions Discord. Installed as a mod, switched on, and applied for you. "
+            + "The game runs in English and reads Russian. Turn it off any time in the F8 menu. Needs the mods component above.",
+            opts.IncludeRussian, payload.HasRussian && payload.HasMods);
         cbSaveConv = Row("Save converter",
             "Converts saves from xenia or a real console for use here. Only for people who already have a save to bring over.",
             opts.IncludeSaveConverter, payload.HasSaveConverter);
@@ -341,6 +345,7 @@ public sealed class WizardForm : Form
     {
         opts.IncludeToypad = cbToypad!.Checked;
         opts.IncludeMods = cbMods!.Checked;
+        opts.IncludeRussian = cbRussian!.Checked && opts.IncludeMods;
         opts.IncludeSaveConverter = cbSaveConv!.Checked;
         opts.IncludeUpdater = cbUpdater!.Checked;
         opts.DesktopShortcut = cbShortcut!.Checked;
@@ -372,6 +377,7 @@ public sealed class WizardForm : Form
             $"DLC:             {(dlc.Count == 0 ? "none" : dlc.Count + " package(s)")}\n" +
             $"Components:      {string.Join(", ", new[] {
                 opts.IncludeToypad ? "Toypad app" : null, opts.IncludeMods ? "mods" : null,
+                opts.IncludeRussian ? "Russian translation" : null,
                 opts.IncludeSaveConverter ? "save converter" : null, opts.DesktopShortcut ? "shortcut" : null }.Where(s => s is not null))}\n\n" +
             "Click Install to begin. Copying takes a few minutes.";
         content.Controls.Add(summary);

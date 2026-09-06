@@ -120,6 +120,13 @@ public abstract class PayloadSource : IDisposable
         GameFiles.Where(f => Find("game/" + f) is null).Select(f => "game/" + f).ToList();
 
     public bool HasMods => Under("mods").Any() && Find("modcli/modcli.exe") is not null;
+
+    /// <summary>The Russian translation ships apart from the bundled mods so the
+    /// wizard can offer it as its own component.</summary>
+    public bool HasRussian => Under("rus").Any();
+
+    /// <summary>Mod folders the Russian component is made of, in load order.</summary>
+    public static readonly string[] RussianMods = { "Lang_Russian_1", "Lang_Russian_2" };
     public bool HasUpdater => Find("updater/rexupdate.exe") is not null;
     public bool HasToypad => Under("toypad").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
     public bool HasSaveConverter => Under("saveconverter").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));

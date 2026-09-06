@@ -34,6 +34,7 @@ public sealed class InstallOptions
     public string InstallDir = "";
     public bool IncludeToypad = true;
     public bool IncludeMods = true;
+    public bool IncludeRussian;
     public bool IncludeSaveConverter;
     public bool IncludeUpdater = true;
     public bool DesktopShortcut = true;
@@ -315,7 +316,15 @@ public sealed class InstallJob
         {
             CopyPayload("mods", ModsDir, "Installing mods");
             CopyPayload("modcli", Path.Combine(ToolsDir, "modcli"), "Installing mod tool");
+            if (o.IncludeRussian)
+            {
+                CopyPayload("rus", ModsDir, "Installing the Russian translation");
+            }
             BuildModdedUpdate();
+            if (o.IncludeRussian)
+            {
+                ApplyMods(PayloadSource.RussianMods);
+            }
         }
         if (o.IncludeToypad) CopyPayload("toypad", ToypadDir, "Installing LEGO Toypad app");
         if (o.IncludeSaveConverter) CopyPayload("saveconverter", Path.Combine(ToolsDir, "SaveConverter"), "Installing save converter");
@@ -363,6 +372,46 @@ public sealed class InstallJob
             if (File.Exists(dst)) File.Delete(dst);
             if (mustCopy || !CreateHardLinkW(dst, src, IntPtr.Zero))
                 CopyFile(src, dst, "Preparing mod-ready update folder");
+            // A dump taken off a disc often carries the read-only attribute, and
+            // File.Copy keeps it. modcli has to write into PATCH.DAT, so a
+            // read-only copy fails the whole apply with "access is denied".
+            var copied = new FileInfo(dst);
+            if (copied.Exists && copied.IsReadOnly) copied.IsReadOnly = false;
+        }
+    }
+
+    /// <summary>
+    /// Injects the chosen mods into the modded update folder, which is what the
+    /// F8 menu does at runtime. Without it the config would name mods that were
+    /// never applied and the game would still show vanilla text.
+    /// </summary>
+    void ApplyMods(IReadOnlyList<string> folders)
+    {
+        Report("Applying the Russian translation");
+        if (!File.Exists(ModCliExe))
+        {
+            throw new InvalidOperationException("modcli.exe is missing, so mods cannot be applied.");
+        }
+        var psi = new ProcessStartInfo(ModCliExe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        psi.ArgumentList.Add("apply");
+        psi.ArgumentList.Add(ModdedUpdateDir);
+        psi.ArgumentList.Add(ModsDir);
+        psi.ArgumentList.Add("x360");
+        foreach (string folder in folders) psi.ArgumentList.Add(folder);
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException("Could not start modcli.exe.");
+        string output = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
+        proc.WaitForExit();
+        if (proc.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                "Applying the Russian translation failed: " + output.Trim());
         }
     }
 
@@ -415,6 +464,7 @@ public sealed class InstallJob
     InstalledComponents BuildComponents() => new()
     {
         Mods = o.IncludeMods,
+        Russian = o.IncludeMods && o.IncludeRussian,
         Toypad = o.IncludeToypad,
         SaveConverter = o.IncludeSaveConverter,
         // Checked on disk, not asked of the options: stripping the payload off

@@ -91,6 +91,8 @@ public sealed class InstallManifest
 public sealed class InstalledComponents
 {
     public bool Mods { get; set; }
+    /// <summary>The community Russian translation, installed and switched on.</summary>
+    public bool Russian { get; set; }
     public bool Toypad { get; set; }
     public bool SaveConverter { get; set; }
     public bool Updater { get; set; }

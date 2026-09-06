@@ -63,7 +63,7 @@ else { Write-Host "   no previous release recorded: installer only, no update pa
 foreach ($path in @($dist, $payload, $packStage)) {
     if (Test-Path $path) { Remove-Item -Recurse -Force $path }
 }
-New-Item -ItemType Directory -Force "$payload\game", "$payload\mods", "$payload\modcli", `
+New-Item -ItemType Directory -Force "$payload\game", "$payload\mods", "$payload\modcli", "$payload\rus", `
     "$payload\toypad", "$payload\saveconverter", $releases | Out-Null
 
 # 1. The installer itself: one self-contained exe, no .NET needed on the tester's PC.
@@ -103,16 +103,24 @@ if (Test-Path "$root\rexlego\res\gamecontrollerdb.txt") {
 
 # 3. Mods + modcli (self-contained so the F8 menu works without a .NET runtime).
 Write-Host "== Mods"
-# The mods folder is shared with the RPCS3 build; ship only what this build can
-# apply (mod.json platform "any" or "x360"), so testers do not see PS3-only mods.
-foreach ($mod in Get-ChildItem "$root\DimensionsModManager\mods" -Directory) {
-    $json = Join-Path $mod.FullName "mod.json"
-    if (-not (Test-Path $json)) { continue }
+# The mods folder is shared with the RPCS3 build and with experiments, so the
+# payload takes a named list rather than everything that happens to be there:
+# each language mod is a 15 MB copy of TEXT.CSV and they would bloat the
+# installer for no reason. $RussianMods go to their own payload folder so the
+# wizard can offer them as a component of their own.
+$BundledMods = @("QuickStartup", "Recomp_TextTest")
+$RussianMods = @("Lang_Russian_1", "Lang_Russian_2")
+foreach ($entry in ($BundledMods + $RussianMods)) {
+    $mod = Join-Path "$root\DimensionsModManager\mods" $entry
+    $json = Join-Path $mod "mod.json"
+    if (-not (Test-Path $json)) { throw "mod '$entry' is missing from DimensionsModManager\mods" }
     $platform = (Get-Content $json -Raw | ConvertFrom-Json).platform
-    if ($platform -eq "any" -or $platform -eq "x360") {
-        Copy-Item -Recurse $mod.FullName "$payload\mods\$($mod.Name)"
-        Write-Host "   $($mod.Name)  [$platform]"
+    if ($platform -ne "any" -and $platform -ne "x360") {
+        throw "mod '$entry' is for '$platform', not this build"
     }
+    $dest = if ($RussianMods -contains $entry) { "$payload\rus\$entry" } else { "$payload\mods\$entry" }
+    Copy-Item -Recurse $mod $dest
+    Write-Host "   $entry  [$platform]"
 }
 dotnet publish "$root\DimensionsModManager-CLI\ModCli.csproj" -c Release -r win-x64 --self-contained `
     -p:PublishSingleFile=true -p:DebugType=none -o "$payload\modcli" -nologo -v q
