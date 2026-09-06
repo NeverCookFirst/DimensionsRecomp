@@ -92,8 +92,8 @@ once with [Zadig](https://zadig.akeo.ie): tick Options, List All Devices, pick
 Replace Driver. Then in game press `F4`, open Input, untick `toypad_emulation`
 and restart. The pad lights up and real figures work.
 
-[!NOTE]
-As for now - only toypads for Wii U, PlayStation 3 and PlayStation 4 works.
+> [!NOTE]
+> As for now - only toypads for Wii U, PlayStation 3 and PlayStation 4 works.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
