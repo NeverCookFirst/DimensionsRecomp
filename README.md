@@ -118,7 +118,7 @@ user_language = 4   # French
 | 4 | French |
 | 5 | Spanish |
 | 6 | Italian |
-| 7 | Russian |
+| 12 | Russian |
 
 > [!NOTE]
 > Russian is not one of the official languages. It exists as a community
