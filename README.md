@@ -111,7 +111,19 @@ while the game is closed, or find it in `F4` under Kernel:
 user_language = 4   # French
 ```
 
-| ID | Language |
+Some translations share a language ID and are told apart by the country instead,
+so `user_country` picks between them. Both Spanish translations sit on one ID,
+and French may behave the same way.
+
+```toml
+user_language = 5    # Spanish
+user_country  = 71   # ... as spoken in Mexico
+```
+
+<table>
+<tr><td>
+
+| `user_language` | Language |
 |---|---|
 | 1 | English (default) |
 | 3 | German |
@@ -119,6 +131,19 @@ user_language = 4   # French
 | 5 | Spanish |
 | 6 | Italian |
 | - | Russian |
+
+</td><td>
+
+| `user_country` | Country |
+|---|---|
+| 103 | USA (default) |
+| 31 | Spain |
+| 71 | Mexico |
+| 34 | France |
+| 16 | Canada |
+
+</td></tr>
+</table>
 
 > [!NOTE]
 > Russian is not one of the official languages. It exists as a community
