@@ -259,6 +259,17 @@ The template asks for the few things that actually help: `game.log`, your
 | [RPCS3-Seamless-Toypad-Build](https://github.com/NeverCookFirst/RPCS3-Seamless-Toypad-Build) | The same idea for the PS3 version |
 | [shadPS4-Seamless-Toypad-Bridge](https://github.com/NeverCookFirst/shadPS4-Seamless-Toypad-Bridge) | Toy Pad bridge for the PS4 version |
 
+## Antivirus
+
+The installer is one big unsigned executable that unpacks a payload into your
+game folder, which is exactly the shape heuristic scanners and SmartScreen do
+not like. It comes back clean:
+[VirusTotal scan](https://www.virustotal.com/gui/file/51b2d3a33affa5e22d75d0a9501c390653966f1364de17547943148f6929df10?nocache=1).
+
+Windows will still put up **"Windows protected your PC"** the first time you run
+it. That is normal for anything unsigned. Click **More info**, then **Run
+anyway**.
+
 ## Licence and the legal bit
 
 The code here is MIT licensed, see [LICENSE](LICENSE). That covers what I wrote.
