@@ -126,8 +126,7 @@ Roughly in the order I want to get to it. No dates.
 
 - **Fixing the crashes that keep coming back.** A handful of them are
   reproducible and hit a lot of people, so they matter more than anything new.
-- **Two physical Toy Pads at once**, so two people can play with real portals.
-  This is about the original Xbox 360 LEGO Toy Pad specifically.
+- **Xbox 360 and Xbox One ToyPads support**, so everyone can play the game how they want.
 - **UI fixes, and layouts for other gamepads.** Right now the button prompts
   assume an Xbox pad. PlayStation, Switch and generic controllers should show
   their own.
