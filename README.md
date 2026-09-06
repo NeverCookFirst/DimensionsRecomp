@@ -81,7 +81,10 @@ Then just run
 and follow the wizard. It writes a `README.txt` next to the game with the
 hotkeys, settings and save locations.
 
-### The Toy Pad
+Updates are handled in game. Turn them off with `F4` &rarr; Updates &rarr;
+`updates_check`.
+
+## The Toy Pad
 
 Out of the box the installer sets up the
 [LEGO Toypad app](https://github.com/harrysof/LegoToypad), which stands in for
@@ -98,7 +101,7 @@ and restart. The pad lights up and real figures work.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
-### Language
+## Languages
 
 The game ships its official translations, and the recomp picks one the way the
 console did, with a language ID. Set `user_language` in `legodimensions.toml`
@@ -115,19 +118,11 @@ user_language = 4   # French
 | 4 | French |
 | 5 | Spanish |
 | 6 | Italian |
-
-The text also carries Danish, French Canadian, Dutch and Mexican Spanish. Those
-are not part of the standard ID list, so how the game reaches them has not been
-worked out yet.
+| 7 | Russian |
 
 > [!NOTE]
 > Russian is not one of the official languages. It exists as a community
-> translation, shipped as a **mod** that replaces the English column, so you run
-> the game in English and read Russian. Drop the mod folder into `mods` and tick
-> it in `F8`, see the [mods guide](docs/how-to-mod.md).
-
-Updates are handled in game. Turn them off with `F4` &rarr; Updates &rarr;
-`updates_check`.
+> translation made by [maickdelaia](https://boosty.to/lego_dimensions_ru), shipped as a **mod** that replaces the English column.
 
 ## This is a demo build. Expect bugs.
 > [!CAUTION]
