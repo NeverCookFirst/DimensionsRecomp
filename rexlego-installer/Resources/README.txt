@@ -29,6 +29,35 @@ Installed to: {INSTALL_DIR}
   3. In the Toypad app, press BACK / SELECT on your controller to open the
      figure picker (the shortcut can be changed in the app's Settings).
 
+  USING YOUR REAL TOY PAD INSTEAD
+
+  If you own the actual LEGO Dimensions Toy Pad you can plug it in and use
+  real figures, with no companion app at all. Any of the three consoles'
+  pads work: it is the same USB device everywhere.
+
+  Windows gives the pad to its own driver, which will not let the game
+  talk to it, so it has to be swapped once:
+
+    1. Download Zadig from  https://zadig.akeo.ie
+    2. Plug the Toy Pad in. In Zadig, tick  Options -> List All Devices.
+    3. Pick  LEGO READER V2.10  in the list. Check that the USB ID reads
+       0E6F 0241, so you do not reassign the wrong device.
+    4. Choose  libusb0  as the driver and press Replace Driver.
+    5. In the game press F4, open Input, untick  toypad_emulation,
+       then restart the game.
+
+  The pad should light up a few seconds after the game starts. Place a
+  figure on it and it appears in game, exactly like on a console.
+
+  To go back to the companion app, tick toypad_emulation again. To give
+  the pad back to Windows (for a real console, or other software), open
+  Device Manager, find it, and uninstall the driver.
+
+  If it does not light up, look in game.log for lines starting "Portal:".
+  "using LEGO Dimensions ToyPad" means it was found. "could not claim it"
+  means the driver swap did not take. "no supported portal found" means
+  Windows does not see the pad at all.
+
   Controller: any XInput pad (Xbox, or anything Steam / DS4Windows presents
   as XInput). Keyboard also works - defaults: WASD = left stick, arrows =
   right stick, Shift+arrows = D-pad, Space/; = A, Backspace/' = B, L = X,
