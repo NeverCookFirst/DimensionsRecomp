@@ -106,6 +106,36 @@ Known issues:
 - Not every code path has been visited, so an unexplored corner can still hit a
   hard stop rather than a graphical glitch.
 
+## What is planned
+
+Roughly in the order I want to get to it. No dates.
+
+- **Fixing the crashes that keep coming back.** A handful of them are
+  reproducible and hit a lot of people, so they matter more than anything new.
+- **Two physical Toy Pads at once**, so two people can play with real portals.
+  This is about the original Xbox 360 LEGO Toy Pad specifically.
+- **UI fixes, and layouts for other gamepads.** Right now the button prompts
+  assume an Xbox pad. PlayStation, Switch and generic controllers should show
+  their own.
+- **Keyboard and mouse working out of the box.** It is already in there and
+  fully rebindable, but it has to be switched on first, which almost nobody
+  finds.
+- **Updating the Discord Rich Presence** so it shows more than a static line.
+- **Recompiling the GPU side too, in some form.** *Research, not a promise.*
+  Graphics is the one part still done the emulator way: the game's draw calls
+  are translated while it runs. Doing to them what was already done to the CPU
+  code, translating ahead of time instead of live, is where the remaining
+  performance and most of the visual bugs are. It is a large piece of work and
+  it may turn out not to be practical. I would rather say that now than promise
+  it.
+
+**This project needs people.** It is one person plus a lot of community
+knowledge, and that is not enough for what is left. If you know graphics work,
+profiling, or Xbox 360 internals, and you actually care about this game running
+well, the optimisation work is wide open and I would genuinely welcome the help.
+Come say hello in the [Discord](https://discord.com/invite/PuXpBMFE4P) or open an
+issue.
+
 ## What "recompiled" means here
 
 There is no emulator running underneath, and that is the point.
@@ -137,6 +167,11 @@ upscaling (FSR 1 and CAS) and higher internal resolutions.
 
 Everything was developed and tested on one machine: Ryzen 7 5700X3D, RTX 4060,
 32 GB RAM, Windows 11, 1080p. A mid range desktop, not a high end one.
+
+**That is the only machine this has been properly tested on, so I cannot promise
+stable performance on any device, including that one.** This is a public beta.
+Steam Deck and handhelds have not been tested at all, and neither has anything
+running it through Proton or Wine.
 
 Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
 GPU at feature level 11_0.
