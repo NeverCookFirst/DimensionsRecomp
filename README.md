@@ -9,6 +9,8 @@
 <p align="center">
   <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest"><b>Download</b></a>
   &nbsp;&middot;&nbsp;
+  <a href="docs/how-to-mod.md">Mods</a>
+  &nbsp;&middot;&nbsp;
   <a href="README-dev.md">Build it yourself</a>
   &nbsp;&middot;&nbsp;
   <a href="https://discord.com/invite/PuXpBMFE4P">LEGO Dimensions Discord</a>
