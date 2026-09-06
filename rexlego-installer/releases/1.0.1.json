@@ -1,0 +1,99 @@
+﻿{
+    "product":  "DimensionsRecompiled",
+    "version":  "1.0.1",
+    "releasedUtc":  "2026-09-06T07:22:35.2472735Z",
+    "notes":  "Adds USB passthrough for a real LEGO Dimensions ToyPad: install the libusb driver for the portal with Zadig, then turn toypad_emulation off in F4 and restart.",
+    "minVersion":  "",
+    "full":  true,
+    "files":  [
+                  {
+                      "p":  "game/achievement_unlocked.wav",
+                      "sha":  "a707019154484b9de0ad310826668c0b58c22b8a842227293421643901bc29a5",
+                      "len":  191018
+                  },
+                  {
+                      "p":  "game/FiraSans-Regular.ttf",
+                      "sha":  "c29556a2719bf613ef3d5e070e40d903a8965d9c081beca1375dc1e6e0f93c23",
+                      "len":  456996
+                  },
+                  {
+                      "p":  "game/gamecontrollerdb.txt",
+                      "sha":  "3e49939644cb30872144c034edf85fdfc021877bb2dfbaaf089e41ecad53a634",
+                      "len":  605295
+                  },
+                  {
+                      "p":  "game/legodimensions.exe",
+                      "sha":  "b1ed1d159da0a89ed06da1f7adf74bcf0df9b8cd7af47865752c91aa09c0361a",
+                      "len":  170169344
+                  },
+                  {
+                      "p":  "game/rexgpu-xenos.dll",
+                      "sha":  "ef828105c345d8945ef59921fc7b62c263231d4f8bbd21c7c0eb54f485d1b784",
+                      "len":  6944768
+                  },
+                  {
+                      "p":  "game/rexruntime.dll",
+                      "sha":  "d6e2a70480d35b1408bc0d13073bf5065336196e3f32d47671acc0b435655bcf",
+                      "len":  11307520
+                  },
+                  {
+                      "p":  "modcli/modcli.exe",
+                      "sha":  "89a62ce38eac1a6d2047873084bd30da24ddae7725389ffbeedfb19694f1ac81",
+                      "len":  67519646
+                  },
+                  {
+                      "p":  "mods/QuickStartup/mod.json",
+                      "sha":  "633a0bb977f7444ac49a05e84a7a7ae16c0a812ba133e30b5a247d767b46c023",
+                      "len":  379
+                  },
+                  {
+                      "p":  "mods/QuickStartup/datfiles/PATCH/GUI/SPLASH.TXT",
+                      "sha":  "6a93454a179112a75c480c3a097500672094868f0b95d3952d53c3b9791b39eb",
+                      "len":  2655
+                  },
+                  {
+                      "p":  "mods/Recomp_TextTest/mod.json",
+                      "sha":  "d34472baf61dd0ffea98d71d718d0bd61dd7d78d29f5ea6086ebc83f39ac0df4",
+                      "len":  528
+                  },
+                  {
+                      "p":  "mods/Recomp_TextTest/datfiles/PATCH/STUFF/TEXT/TEXT.CSV",
+                      "sha":  "08bb63540bceec953a1e4f8d0d076b67b5ce8a431e08e76b16a9cb9dd1cf96c7",
+                      "len":  15147733
+                  },
+                  {
+                      "p":  "saveconverter/DimensionsSaveConverter.exe",
+                      "sha":  "dc64fb3ce7679c58a513822a84fbe4dd8adf940491390453e47b90ed4adca349",
+                      "len":  257024
+                  },
+                  {
+                      "p":  "saveconverter/READ ME FIRST.txt",
+                      "sha":  "6cd483658ab399f5257a9c74a71bef586af138eeb510e2abe323449a4683fa78",
+                      "len":  7734
+                  },
+                  {
+                      "p":  "toypad/LegoToypad.exe",
+                      "sha":  "02bc9991fbedc75501cd03b168fc3d1d7d24174bdf4ec15151e18093777ff667",
+                      "len":  32822272
+                  },
+                  {
+                      "p":  "updater/rexupdate.exe",
+                      "sha":  "039f6d8941e42fb644b65c78cda64ac9f66cba0ec34f0eeb5b0112943123ad86",
+                      "len":  66627924
+                  }
+              ],
+    "removed":  [
+
+                ],
+    "toml":  {
+                 "forced":  {
+
+                            },
+                 "defaults":  {
+                                  "toypad_emulation":  "true"
+                              },
+                 "removed":  [
+
+                             ]
+             }
+}

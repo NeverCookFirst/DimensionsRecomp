@@ -19,7 +19,15 @@ param(
     [string]$GameBuild = "$PSScriptRoot\..\rexlego\out\build\win-amd64-release",
     [string]$Version = "",
     [string]$Previous = "",
-    [string]$Notes = ""
+    [string]$Notes = "",
+    # Keys this release adds to legodimensions.toml. Needed whenever the plan in
+    # TomlConfig.cs grows a key: the updater that applies this pack is still the
+    # PREVIOUS release's, so it knows nothing about the new key unless the
+    # manifest carries it. -TomlForced for compatibility switches that must be
+    # rewritten even if the user changed them, -TomlDefaults for the rest.
+    [hashtable]$TomlDefaults = @{},
+    [hashtable]$TomlForced = @{},
+    [string[]]$TomlRemoved = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -152,7 +160,11 @@ function New-Manifest([bool]$full) {
         full        = $full
         files       = $files
         removed     = @()
-        toml        = [ordered]@{ forced = @{}; defaults = @{}; removed = @() }
+        toml        = [ordered]@{
+            forced   = $TomlForced
+            defaults = $TomlDefaults
+            removed  = $TomlRemoved
+        }
     }
 }
 (New-Manifest $true) | ConvertTo-Json -Depth 6 | Set-Content "$payload\manifest.json" -Encoding UTF8

@@ -30,6 +30,19 @@ cd "E:\Claude\LEGO Dimensions\rexlego-installer"
 .\build-installer.ps1 -Notes "Fixes the X"  # notes shown in the updater
 ```
 
+**If this release adds a key to the plan in `TomlConfig.cs`, pass it here too:**
+
+```powershell
+.\build-installer.ps1 -TomlDefaults @{ toypad_emulation = "true" }
+.\build-installer.ps1 -TomlForced   @{ some_compat_switch = "false" }
+```
+
+A fresh install gets the new key from the plan compiled into `Setup.exe`, but
+an *update* is applied by the **previous** release's `rexupdate.exe`, which has
+never heard of it. Putting it in the manifest is what makes existing installs
+pick it up. `-TomlForced` for compatibility switches that must be rewritten even
+if the user changed them, `-TomlDefaults` for everything else.
+
 Out comes:
 
 | File | What it is |

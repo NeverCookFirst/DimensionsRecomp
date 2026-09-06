@@ -33,9 +33,14 @@ static class Program
         return 0;
     }
 
-    /// <summary>Arguments that mean "act as the updater", whatever this binary carries.</summary>
-    static bool IsUpdaterArg(string arg) =>
-        arg is "--check" or "--update" or "--apply" or "--quiet";
+    /// <summary>
+    /// Arguments that mean "act as the updater", whatever this binary carries.
+    /// Deliberately NOT "--update": that is also the unattended install's
+    /// update-data directory, and matching it here made a command-line install
+    /// impossible. The installed updater has no payload, so it takes the
+    /// updater route on its own.
+    /// </summary>
+    static bool IsUpdaterArg(string arg) => arg is "--check" or "--apply" or "--quiet";
 
     /// <summary>
     /// Headless install, used for automated testing and by people who would

@@ -74,6 +74,12 @@ public static class TomlConfig
             Add(updatesSection, "updater_path", Literal(Path.Combine(p.ToolsRoot, "rexupdate", "rexupdate.exe")));
         }
 
+        // Not forced: a physical portal is a hardware choice, and anyone who
+        // switches to one should keep that across updates.
+        const string toypad = "ToyPad. Turn this off to use a real LEGO portal over USB\n"
+                            + "# (needs the libusb driver, installed with Zadig).";
+        Add(toypad, "toypad_emulation", "true");
+
         Add("Display", "fullscreen", "true");
         Add("Display", "vsync", "false");
         Add("Display", "framerate_limit", "60");
