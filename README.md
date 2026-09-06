@@ -138,6 +138,10 @@ The template asks for the few things that actually help: `game.log`, your
   and above all. This project exists because of how much I loved what they did.
   Seeing a console game turned into a real native PC build is what made me ask
   whether LEGO Dimensions could be next.
+- **[ReXGlue](https://github.com/rexglue/rexglue-sdk)**, right after them. It is
+  the toolkit that does the actual recompiling and provides the runtime this
+  game sits on. Without it there would have been nothing to try in the first
+  place.
 - **The [LEGO Dimensions Discord](https://discord.com/invite/PuXpBMFE4P)**, for
   years of accumulated knowledge about this game and for encouraging every one of
   these experiments instead of dismissing them.
