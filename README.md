@@ -67,9 +67,9 @@ Have ready:
 
 - **Title Update 23. Not 24, not 22.** The recomp was built from the TU23
   executable and will not run on anything else, so this one is checked by hash
-  and a wrong update is refused. Give it either the raw package file (the one
-  with no extension) or a folder holding `Default.xexp`, `PATCH.DAT` and
-  `PATCH.HDR`.
+  and a wrong update is refused. Give it either the raw package file, which is
+  named `tu00000003_00000000` and has no extension, or a folder holding
+  `Default.xexp`, `PATCH.DAT` and `PATCH.HDR`.
 
 - **DLC, optional.** Point the installer at a folder holding your DLC packages
   and it takes all of them at once. You can also skip this and re-run the
