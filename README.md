@@ -204,6 +204,8 @@ Open an [issue](https://github.com/NeverCookFirst/DimensionsRecomp/issues/new/ch
 The template asks for the few things that actually help: `game.log`, your
 `frame_rate`, and your GPU.
 
+---
+
 ## Thanks
 
 - **[Unleashed Recompiled](https://github.com/hedge-dev/UnleashedRecomp)**, first
