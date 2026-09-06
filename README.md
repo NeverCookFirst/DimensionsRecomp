@@ -53,13 +53,32 @@ argue with you. Judge it by whether it works.
 
 ## Install
 
-1. Download the latest
-   [`DimensionsRecompiled-Setup.exe`](https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest).
-2. Have ready: an extracted Xbox 360 disc dump of LEGO Dimensions, Title Update
-   23, and optionally your DLC packages. **No game data is included here.** The
-   installer checks that yours are the right ones.
-3. Run it and follow the wizard. It writes a `README.txt` next to the game with
-   the hotkeys, settings and save locations.
+**No game data is included here.** You bring your own, and the installer checks
+that it is the right one before it does anything.
+
+Have ready:
+
+- **The Xbox 360 disc, dumped and extracted.** Dump your disc to an ISO, then
+  extract that ISO to a folder with a tool like
+  [extract-xiso](https://github.com/XboxDev/extract-xiso) or Xbox Image Browser.
+  The installer wants **the folder, not the ISO**. It is right when the folder
+  contains `Default.xex` alongside `GAME.DAT` and `GAME.HDR`. Only the original
+  release works, and the installer will tell you if yours is a different build.
+
+- **Title Update 23. Not 24, not 22.** The recomp was built from the TU23
+  executable and will not run on anything else, so this one is checked by hash
+  and a wrong update is refused. Give it either the raw package file (the one
+  with no extension) or a folder holding `Default.xexp`, `PATCH.DAT` and
+  `PATCH.HDR`.
+
+- **DLC, optional.** Point the installer at a folder holding your DLC packages
+  and it takes all of them at once. You can also skip this and re-run the
+  installer later to add them.
+
+Then just run
+[`DimensionsRecompiled-Setup.exe`](https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest)
+and follow the wizard. It writes a `README.txt` next to the game with the
+hotkeys, settings and save locations.
 
 For the Toy Pad, use the [LEGO Toypad app](https://github.com/harrysof/LegoToypad)
 that the installer offers, or plug in a real portal and follow the USB notes in
