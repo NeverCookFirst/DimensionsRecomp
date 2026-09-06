@@ -86,12 +86,14 @@ Out of the box the installer sets up the
 [LEGO Toypad app](https://github.com/harrysof/LegoToypad), which stands in for
 the portal and lets you pick figures with a controller.
 
-**Your real Toy Pad works too.** Any of the three consoles' pads will do, it is
-the same USB device everywhere. Windows hands it to its own driver, so swap that
+**Your real Toy Pad works too.** Windows hands it to its own driver, so swap that
 once with [Zadig](https://zadig.akeo.ie): tick Options, List All Devices, pick
 `LEGO READER V2.10` (check the ID reads `0E6F 0241`), choose `libusb0`, press
 Replace Driver. Then in game press `F4`, open Input, untick `toypad_emulation`
 and restart. The pad lights up and real figures work.
+
+[!NOTE]
+As for now - only toypads for Wii U, PlayStation 3 and PlayStation 4 works.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
