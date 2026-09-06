@@ -36,11 +36,12 @@ every project around this game and none of them are competitors.
 
 I would rather you hear this from me than guess.
 
-[Claude](https://claude.ai) was used heavily as a development tool. It read
+> [!WARNING]
+> [Claude](https://claude.ai) was used heavily as a development tool. It read
 disassembly and file formats with me, and wrote large parts of the runtime glue,
 the installer, the mod tooling and this page.
 
-What it did not do is decide what to build or judge whether the result was any
+**What it did not do** is decide what to build or judge whether the result was any
 good. The goal and the scope were mine. The domain knowledge about this game,
 its Toy Pad, its saves and its archives came from years of community work, not
 from a model. And above all I played the game. Every "this is broken", "this
@@ -93,7 +94,7 @@ Replace Driver. Then in game press `F4`, open Input, untick `toypad_emulation`
 and restart. The pad lights up and real figures work.
 
 > [!NOTE]
-> As for now - only toypads for Wii U, PlayStation 3 and PlayStation 4 works.
+> For now, only the Wii U, PlayStation 3 and PlayStation 4 toypads are compatible.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
@@ -101,8 +102,8 @@ Updates are handled in game. Turn them off with `F4` &rarr; Updates &rarr;
 `updates_check`.
 
 ## This is a demo build. Expect bugs.
-
-It is an early public build, not a finished port. Crashes, freezes, broken
+> [!CAUTION]
+> It is an early public build, not a finished port. Crashes, freezes, broken
 graphics and lost audio are all expected, and finding them is why it is public.
 How well it runs varies by machine, because the graphics path still has to
 translate what the Xbox 360 GPU was asked to do.
@@ -142,7 +143,8 @@ Roughly in the order I want to get to it. No dates.
   it may turn out not to be practical. I would rather say that now than promise
   it.
 
-**This project needs people.** It is one person plus a lot of community
+> [!IMPORTANT]
+> **This project needs people.** It is one person plus a lot of community
 knowledge, and that is not enough for what is left. If you know graphics work,
 profiling, or Xbox 360 internals, and you actually care about this game running
 well, the optimisation work is wide open and I would genuinely welcome the help.
@@ -186,7 +188,8 @@ stable performance on any device, including that one.** This is a public beta.
 Steam Deck and handhelds have not been tested at all, and neither has anything
 running it through Proton or Wine.
 
-Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
+> [!TIP]
+> Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
 GPU at feature level 11_0.
 
 | Installed | Size |
