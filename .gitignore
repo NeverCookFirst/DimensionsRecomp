@@ -7,9 +7,9 @@
 !/.gitignore
 !/.gitattributes
 !/README.md
+!/README-dev.md
+!/docs/
 !/VERSION
-!/NOTES.md
-!/GIT-SETUP.md
 !/RELEASING.md
 !/rexlego/
 !/rexlego-installer/
@@ -25,3 +25,4 @@
 #   LegoToypad/              -> harrysof's project, we only ship his release
 #   research/, rpcs3-ref/    -> clones of other people's code
 #   LD Backups/, xpng/       -> personal backups and artwork scratch
+#   NOTES.md, GIT-SETUP.md   -> local working notes, full of machine paths

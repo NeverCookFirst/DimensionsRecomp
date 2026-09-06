@@ -1,0 +1,21 @@
+# Copy this file to legodimensions_manifest.toml and point game_root at your own
+# dump. The real manifest is not committed because it holds absolute paths.
+#
+# Then generate the recompiled sources (this is the step that produces
+# rexlego/generated/, ~470 MB, and it is not committed either):
+#
+#     rexglue codegen legodimensions_manifest.toml
+#
+# game_root must contain the extracted disc: Default.xex, GAME*.DAT/HDR and the
+# rest. Paths are relative to this file, so a relative path keeps the manifest
+# portable; an absolute one works too.
+
+[project]
+name = "legodimensions"
+sdk_version = "0.10.0"
+game_root = "../../game/LegoDimensions"
+
+[entrypoint]
+file_path = "../../game/LegoDimensions/default.xex"
+out_directory_path = "generated/default"
+includes = ["legodimensions_config.toml"]

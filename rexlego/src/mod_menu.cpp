@@ -25,17 +25,18 @@
 // what ResolveUpdateRoot keys off at startup.
 REXCVAR_DEFINE_STRING(mods, "", "Mods", "Enabled mod folders, comma separated")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-REXCVAR_DEFINE_STRING(mods_root, "E:/Claude/LEGO Dimensions/DimensionsModManager/mods", "Mods",
+// The defaults below are relative to the working directory and match the layout
+// the installer lays down. A development tree points them somewhere else through
+// legodimensions.toml; the installer writes absolute paths there on install.
+REXCVAR_DEFINE_STRING(mods_root, "mods", "Mods",
                       "Folder containing one subfolder per mod");
 // A copy of the update folder with the mods injected. Everything in it except
 // PATCH.DAT/PATCH.HDR is a hard link back to the vanilla folder, so it costs a
 // fraction of the size and the original is never modified.
-REXCVAR_DEFINE_STRING(mods_update_root, "E:/Claude/LEGO Dimensions/rexlego/tu23-mods", "Mods",
+REXCVAR_DEFINE_STRING(mods_update_root, "update-mods", "Mods",
                       "Modded copy of the update folder, used when any mod is enabled");
-REXCVAR_DEFINE_STRING(
-    modcli_path,
-    "E:/Claude/LEGO Dimensions/DimensionsModManager-CLI/bin/Release/net8.0/modcli.exe", "Mods",
-    "Tool that performs the DAT injection");
+REXCVAR_DEFINE_STRING(modcli_path, "tools/modcli/modcli.exe", "Mods",
+                      "Tool that performs the DAT injection");
 // The mods folder is shared with the RPCS3 build, so it also holds mods that
 // target PS3 data this build does not have. Only mods declaring this platform,
 // or "any", are listed and applied.

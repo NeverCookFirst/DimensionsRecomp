@@ -10,9 +10,9 @@ updater see the new version.
    without relinking because of the space in the path:
 
    ```powershell
-   . E:\devtools\env.ps1
-   cmake --build "E:\Claude\LEGO Dimensions\rexlego\out\build\win-amd64-release" --target legodimensions
-   Get-Item "E:\Claude\LEGO Dimensions\rexlego\out\build\win-amd64-release\legodimensions.exe" |
+   # from the repository root
+   cmake --build rexlego\out\build\win-amd64-release --target legodimensions
+   Get-Item rexlego\out\build\win-amd64-release\legodimensions.exe |
        Select-Object Length, LastWriteTime
    ```
 
@@ -25,7 +25,7 @@ updater see the new version.
 ## 1. Build
 
 ```powershell
-cd "E:\Claude\LEGO Dimensions\rexlego-installer"
+cd rexlego-installer
 .\build-installer.ps1                       # version from ..\VERSION
 .\build-installer.ps1 -Notes "Fixes the X"  # notes shown in the updater
 ```
@@ -71,7 +71,7 @@ not committed, the next release ships a pack the size of the installer.
 Repository: **NeverCookFirst/DimensionsRecomp**
 
 ```powershell
-cd "E:\Claude\LEGO Dimensions"
+# from the repository root
 git add -A ; git commit -m "Release 1.0.1" ; git push
 git tag v1.0.1 ; git push origin v1.0.1
 gh release create v1.0.1 `

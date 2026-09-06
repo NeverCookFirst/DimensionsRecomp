@@ -48,9 +48,9 @@ endif()
 # The generated translation units (legodimensions_recomp) are where nearly all
 # guest CPU time goes. The SDK presets only set -march for ARM; on x86 the
 # recompiled code was built for a baseline x86-64 without AVX2/BMI2/FMA.
-# TheSimpsonsGameRecomp measured this + -O3 as a real win. x86-64-v3 is
-# Haswell/Zen1+; our 5700X3D is fine. Applied to both targets so the app's own
-# code and the recomp library agree.
+# TheSimpsonsGameRecomp measured this + -O3 as a real win. x86-64-v3 needs
+# Haswell / Zen 1 or newer, which is the same floor the runtime already has.
+# Applied to both targets so the app's own code and the recomp library agree.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"
    AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     target_compile_options(legodimensions PRIVATE -march=x86-64-v3)

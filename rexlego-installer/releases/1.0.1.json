@@ -1,7 +1,7 @@
 ﻿{
     "product":  "DimensionsRecompiled",
     "version":  "1.0.1",
-    "releasedUtc":  "2026-09-06T07:22:35.2472735Z",
+    "releasedUtc":  "2026-09-06T08:00:32.2536681Z",
     "notes":  "Adds USB passthrough for a real LEGO Dimensions ToyPad: install the libusb driver for the portal with Zadig, then turn toypad_emulation off in F4 and restart.",
     "minVersion":  "",
     "full":  true,
@@ -23,8 +23,8 @@
                   },
                   {
                       "p":  "game/legodimensions.exe",
-                      "sha":  "b1ed1d159da0a89ed06da1f7adf74bcf0df9b8cd7af47865752c91aa09c0361a",
-                      "len":  170169344
+                      "sha":  "677ee697adf62ae78a9a569c0d4afbca2b6204c990664bff46e2994ca9dae391",
+                      "len":  170168320
                   },
                   {
                       "p":  "game/rexgpu-xenos.dll",
@@ -38,7 +38,7 @@
                   },
                   {
                       "p":  "modcli/modcli.exe",
-                      "sha":  "89a62ce38eac1a6d2047873084bd30da24ddae7725389ffbeedfb19694f1ac81",
+                      "sha":  "9e1ef46039968eaa43422d0cf443ddcfd0c1cc32480a40a68f04b926b0566ed9",
                       "len":  67519646
                   },
                   {
@@ -78,7 +78,7 @@
                   },
                   {
                       "p":  "updater/rexupdate.exe",
-                      "sha":  "039f6d8941e42fb644b65c78cda64ac9f66cba0ec34f0eeb5b0112943123ad86",
+                      "sha":  "8914470898b5928656f18e7f1bedf99aa757610df984d1da6ba4f7d13c35553e",
                       "len":  66627924
                   }
               ],
