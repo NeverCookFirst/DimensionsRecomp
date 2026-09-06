@@ -98,6 +98,34 @@ and restart. The pad lights up and real figures work.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
+### Language
+
+The game ships its official translations, and the recomp picks one the way the
+console did, with a language ID. Set `user_language` in `legodimensions.toml`
+while the game is closed, or find it in `F4` under Kernel:
+
+```toml
+user_language = 4   # French
+```
+
+| ID | Language |
+|---|---|
+| 1 | English (default) |
+| 3 | German |
+| 4 | French |
+| 5 | Spanish |
+| 6 | Italian |
+
+The text also carries Danish, French Canadian, Dutch and Mexican Spanish. Those
+are not part of the standard ID list, so how the game reaches them has not been
+worked out yet.
+
+> [!NOTE]
+> Russian is not one of the official languages. It exists as a community
+> translation, shipped as a **mod** that replaces the English column, so you run
+> the game in English and read Russian. Drop the mod folder into `mods` and tick
+> it in `F8`, see the [mods guide](docs/how-to-mod.md).
+
 Updates are handled in game. Turn them off with `F4` &rarr; Updates &rarr;
 `updates_check`.
 
