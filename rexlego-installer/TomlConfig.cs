@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 namespace RecompSetup;
 
@@ -90,6 +90,12 @@ public static class TomlConfig
         Add("Display", "present_effect", "'fsr'");
         Add("Display", "present_fsr_max_upsampling_passes", "1");
         Add("Display", "anisotropic_override", "5");
+
+        // Written out explicitly rather than left to the engine's default, so it
+        // is visible in the file and in F4. Scaling the draw resolution costs
+        // GPU time quadratically - on a 4K screen a 3 is nine times the pixels,
+        // which is how installs ended up unplayably slow.
+        Add("Display", "resolution_scale", "1");
 
         const string compat = "Compatibility - these keep the game from crashing on things the\n"
                             + "# recompiled code does not cover yet. Do not change them.";
