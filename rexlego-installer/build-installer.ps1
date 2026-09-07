@@ -1,4 +1,4 @@
-# Builds a release: the one-file installer, and the small update pack that goes
+﻿# Builds a release: the one-file installer, and the small update pack that goes
 # next to it.
 #
 #   dist\DimensionsRecompiled-Setup.exe   everything, for a fresh install
@@ -8,7 +8,7 @@
 #
 #   .\build-installer.ps1                          # version from ..\VERSION
 #   .\build-installer.ps1 -Version 1.0.1           # override it
-#   .\build-installer.ps1 -Previous releases\1.0.0.json
+#   .\build-installer.ps1 -Previous releases\0.1.0.json
 #
 # The game binaries are taken from rexlego\out\build\win-amd64-release. They are
 # NOT rebuilt here - build the game first and make sure the exe/dlls are the ones
