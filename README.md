@@ -158,6 +158,14 @@ translate what the Xbox 360 GPU was asked to do.
 
 Known issues:
 
+- **Laptops with an Nvidia GPU**: if the frame rate is far worse than your
+  hardware should manage, the game is probably running on your integrated
+  graphics. With the GPU left on *auto-select*, the driver hands it the
+  integrated chip instead of your dedicated card. Fix it in **Nvidia Control
+  Panel** -> *Manage 3D settings* -> *Program Settings*: add
+  `legodimensions.exe` and set *Preferred graphics processor* to
+  *High-performance NVIDIA processor*. On AMD the same setting is *AMD Software*
+  -> *Gaming* -> add the game -> *Graphics* -> *GPU Workload*.
 - Starting a **new save** and quitting before the opening cutscenes finish can
   leave a save that will not load. Play until you are walking around first.
 - **60 FPS** is an unlock the original never ran at, and most remaining bugs
@@ -238,6 +246,22 @@ running it through Proton or Wine.
 > [!TIP]
 > Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
 GPU at feature level 11_0.
+
+> [!TIP]
+> **On a laptop, check the game is not running on your integrated GPU.** If it
+runs but the frame rate is far worse than your hardware should manage, this is
+the first thing to rule out. When the graphics setting is left on *auto-select*,
+Windows or the driver can hand the game the integrated chip instead of your
+dedicated card.
+>
+> Fix it in **Nvidia Control Panel** -> *Manage 3D settings* -> *Program
+Settings*: add `legodimensions.exe` and set *Preferred graphics processor* to
+*High-performance NVIDIA processor*. On AMD the same setting is in *AMD Software*
+-> *Gaming* -> add the game -> *Graphics* -> *GPU Workload*. Windows has its own
+copy of this under *Settings* -> *System* -> *Display* -> *Graphics*, and it is
+worth setting there too.
+>
+> Thanks to the players who worked this one out and reported it.
 
 | Installed | Size |
 |---|---|
