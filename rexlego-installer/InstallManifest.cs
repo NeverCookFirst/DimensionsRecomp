@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -75,6 +75,10 @@ public sealed class InstallManifest
         return prefix switch
         {
             "mods" or "modcli" => Components.Mods,
+            // The Russian translation is an optional component. Without this case
+            // it fell through to the catch-all below and every install that did
+            // not pick it was told the update pack was broken.
+            "rus" => Components.Russian,
             "toypad" => Components.Toypad,
             "saveconverter" => Components.SaveConverter,
             _ => true,               // game/, updater/ and the manifest always apply

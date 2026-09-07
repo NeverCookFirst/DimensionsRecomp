@@ -241,7 +241,14 @@ if ($packed -eq 0) {
     Write-Host ("   {0} file(s) -> {1} ({2:N1} MB)" -f $packed, (Split-Path $pack -Leaf), ((Get-Item $pack).Length / 1MB))
 }
 Remove-Item -Recurse -Force $packStage
-Remove-Item $updaterHost
+
+# The updater on its own. An install whose rexupdate.exe is too old to accept a
+# pack cannot repair itself through an update, so the file has to be reachable
+# without redownloading the whole installer: attach it to the release and the
+# player drops it into tools\rexupdate.
+$updaterAsset = "$dist\rexupdate.exe"
+Move-Item $updaterHost $updaterAsset -Force
+Write-Host ("== Updater: {0} ({1:N1} MB)" -f (Split-Path $updaterAsset -Leaf), ((Get-Item $updaterAsset).Length / 1MB))
 
 # 8. Record this release so the next build can diff against it. Commit it.
 (New-Manifest $true) | ConvertTo-Json -Depth 6 | Set-Content "$releases\$Version.json" -Encoding UTF8
@@ -249,5 +256,6 @@ Remove-Item $updaterHost
 Write-Host ""
 Write-Host ("== Done: {0} ({1:N0} MB)" -f (Split-Path $exe -Leaf), ((Get-Item $exe).Length / 1MB))
 if ($packed -gt 0) { Write-Host ("           {0} ({1:N0} MB)" -f (Split-Path $pack -Leaf), ((Get-Item $pack).Length / 1MB)) }
-if ($packed -gt 0) { Write-Host "   Attach BOTH to the GitHub release, and commit releases\$Version.json." }
-else { Write-Host "   Attach the installer to the GitHub release, and commit releases\$Version.json." }
+Write-Host ("           {0} ({1:N1} MB)" -f (Split-Path $updaterAsset -Leaf), ((Get-Item $updaterAsset).Length / 1MB))
+if ($packed -gt 0) { Write-Host "   Attach ALL THREE to the GitHub release, and commit releases\$Version.json." }
+else { Write-Host "   Attach the installer and rexupdate.exe to the GitHub release, and commit releases\$Version.json." }
