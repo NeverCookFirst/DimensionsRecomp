@@ -119,8 +119,10 @@ bool ReadManifest(const std::filesystem::path& mod_json, std::string& name_out,
 
 std::vector<ModEntry> Discover() {
   std::vector<ModEntry> discovered;
+  int folders = 0, without_manifest = 0, wrong_platform = 0;
   const std::string root = REXCVAR_GET(mods_root);
   if (root.empty()) {
+    REXLOG_WARN("Mods: no mods folder configured (mods_root is empty)");
     return discovered;
   }
 
@@ -136,13 +138,16 @@ std::vector<ModEntry> Discover() {
     if (!dir.is_directory()) {
       continue;
     }
+    ++folders;
     std::filesystem::path manifest = dir.path() / "mod.json";
     if (!std::filesystem::exists(manifest)) {
+      ++without_manifest;
       continue;
     }
     std::string name;
     std::string platform;
     if (!ReadManifest(manifest, name, platform)) {
+      ++without_manifest;
       continue;
     }
     // "any" is the manifest's own wildcard; an unreadable platform field is
@@ -150,6 +155,7 @@ std::vector<ModEntry> Discover() {
     // other data.
     const std::string wanted = REXCVAR_GET(mods_platform);
     if (platform != "any" && platform != wanted) {
+      ++wrong_platform;
       continue;
     }
 
@@ -162,6 +168,10 @@ std::vector<ModEntry> Discover() {
 
   std::sort(discovered.begin(), discovered.end(),
             [](const ModEntry& a, const ModEntry& b) { return a.name < b.name; });
+  // An empty list is the one thing a player cannot diagnose from the menu, so
+  // say what was in the folder and why it was passed over.
+  REXLOG_INFO("Mods: {} listed of {} folder(s) in {} ({} without a usable mod.json, {} for another platform)",
+              discovered.size(), folders, root, without_manifest, wrong_platform);
   return discovered;
 }
 
