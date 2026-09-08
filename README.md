@@ -316,5 +316,4 @@ Not affiliated with or endorsed by LEGO, TT Games or Warner Bros.
 **There are no donations.** Nothing here is sold, and nobody should be asking you
 for money for it.
 
-Built by [NeverCookFirst](https://github.com/NeverCookFirst).
-Logo by [c0mpadre](https://discord.com/users/724591495125925920).
+Built by [NeverCookFirst](https://github.com/NeverCookFirst), logo by [c0mpadre](https://discord.com/users/724591495125925920).
