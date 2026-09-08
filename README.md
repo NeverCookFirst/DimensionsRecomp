@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Dimensions Recompiled" width="820">
+  <img src="docs/logo_new.png" alt="Dimensions Recompiled" width="820">
 </p>
 
 <p align="center">
@@ -317,3 +317,4 @@ Not affiliated with or endorsed by LEGO, TT Games or Warner Bros.
 for money for it.
 
 Built by [NeverCookFirst](https://github.com/NeverCookFirst).
+Logo by [c0mpadre](https://discord.com/users/724591495125925920).
