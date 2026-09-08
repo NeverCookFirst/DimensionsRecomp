@@ -5,14 +5,21 @@
 Press **F8** in game, tick the mods you want, click **Apply**, then restart the
 game. That is it.
 
-All mods start off. Two come with the install:
+All mods start off. Four come with the install:
 
 - **QuickStartup** skips the intro splash screens.
 - **Recomp_TextTest** changes one line of text, so you can tell at a glance
   whether mods are working.
+- **SuperSonicInfinite** makes Super Sonic last until you cancel it instead of
+  draining studs. Needs the Sonic Level Pack (DLC16) installed.
+- **AllWorlds** lets every character open every adventure world, Year 1 and
+  Year 2 alike. It only rewrites the character configs, so it conflicts with a
+  mod that edits the same character file; the mod lower in the list wins.
 
 Your original game files are never touched. Mods are applied to a separate copy
-of the update folder, and unticking a mod puts the original bytes back.
+of the update folder, and unticking a mod puts the original bytes back. The one
+exception is a mod that changes a DLC archive: those are patched in place with a
+byte backup, and unticking restores them the same way.
 
 ## Installing someone else's mod
 
@@ -51,6 +58,8 @@ PS3 version.
 Everything under `datfiles/<ARCHIVE>/` is injected into `<ARCHIVE>.DAT`, keeping
 the folder structure the game uses inside that archive. `PATCH` is where most of
 the interesting things live: text, GUI scripts, character stats, abilities.
+DLC archives work too: `datfiles/DLC16/...` finds `DLC16.DAT2` inside its package
+folder under `content`, which is where DLC characters keep their abilities.
 
 ### The one rule that matters
 

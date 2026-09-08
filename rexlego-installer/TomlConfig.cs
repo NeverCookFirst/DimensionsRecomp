@@ -66,6 +66,10 @@ public static class TomlConfig
             Add(modsSection, "mods_root", Literal(p.ModsRoot));
             Add(modsSection, "mods_update_root", Literal(p.ModsUpdateRoot));
             Add(modsSection, "modcli_path", Literal(Path.Combine(p.ToolsRoot, "modcli", "modcli.exe")));
+            // Where the DLC package folders are, for mods that patch a DLC
+            // archive (Super Sonic Infinite lives in DLC16).
+            Add(modsSection, "mods_content_root",
+                Literal(Path.Combine(p.ContentRoot, "0000000000000000", "5752084B", "00000002")));
         }
 
         const string updatesSection = "Updates. Turn updates_check off (F4 -> Updates) to never look online.";

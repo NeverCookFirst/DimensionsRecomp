@@ -37,6 +37,12 @@ REXCVAR_DEFINE_STRING(mods_update_root, "update-mods", "Mods",
                       "Modded copy of the update folder, used when any mod is enabled");
 REXCVAR_DEFINE_STRING(modcli_path, "tools/modcli/modcli.exe", "Mods",
                       "Tool that performs the DAT injection");
+// DLC archives are not in the update folder: each DLC is a package folder under
+// the content root holding DLCnn.DAT2/.HDR2. A mod that targets one (Super
+// Sonic lives in DLC16) is patched there in place; modcli keeps byte backups in
+// the modded update folder and puts them back on restore.
+REXCVAR_DEFINE_STRING(mods_content_root, "content/0000000000000000/5752084B/00000002", "Mods",
+                      "Folder holding the DLC package folders, searched for archives a mod names");
 // The mods folder is shared with the RPCS3 build, so it also holds mods that
 // target PS3 data this build does not have. Only mods declaring this platform,
 // or "any", are listed and applied.
@@ -246,8 +252,21 @@ class ModMenuDialog final : public rex::ui::ImGuiDialog {
     }
 
     if (!selection.empty()) {
+      std::string search;
+      const std::string content_cvar = REXCVAR_GET(mods_content_root);
+      if (!content_cvar.empty()) {
+        // A relative content root is relative to the install, not to whatever
+        // directory the game was started from: an install updated from an
+        // older release has no absolute path written for this key and falls
+        // back to the built-in default.
+        std::filesystem::path content = content_cvar;
+        if (content.is_relative()) {
+          content = rex::filesystem::GetExecutableFolder() / content;
+        }
+        search = " --search " + Quote(content.string());
+      }
       int rc = RunQuoted(Quote(cli) + " apply " + Quote(target) + " " + Quote(root) + " " +
-                         REXCVAR_GET(mods_platform) + args);
+                         REXCVAR_GET(mods_platform) + search + args);
       if (rc != 0) {
         status_ = "modcli failed, see the log";
         REXLOG_ERROR("modcli apply returned {}", rc);

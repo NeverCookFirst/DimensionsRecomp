@@ -108,7 +108,7 @@ Write-Host "== Mods"
 # each language mod is a 15 MB copy of TEXT.CSV and they would bloat the
 # installer for no reason. $RussianMods go to their own payload folder so the
 # wizard can offer them as a component of their own.
-$BundledMods = @("QuickStartup", "Recomp_TextTest")
+$BundledMods = @("QuickStartup", "Recomp_TextTest", "SuperSonicInfinite", "AllWorlds")
 $RussianMods = @("Lang_Russian_1", "Lang_Russian_2")
 foreach ($entry in ($BundledMods + $RussianMods)) {
     $mod = Join-Path "$root\DimensionsModManager\mods" $entry
@@ -242,13 +242,12 @@ if ($packed -eq 0) {
 }
 Remove-Item -Recurse -Force $packStage
 
-# The updater on its own. An install whose rexupdate.exe is too old to accept a
-# pack cannot repair itself through an update, so the file has to be reachable
-# without redownloading the whole installer: attach it to the release and the
-# player drops it into tools\rexupdate.
-$updaterAsset = "$dist\rexupdate.exe"
-Move-Item $updaterHost $updaterAsset -Force
-Write-Host ("== Updater: {0} ({1:N1} MB)" -f (Split-Path $updaterAsset -Leaf), ((Get-Item $updaterAsset).Length / 1MB))
+# The updater is not a release asset. The feed only ever looks for two names,
+# the pack and the installer, and the new rexupdate.exe already travels inside
+# both: the pack carries it as updater/rexupdate.exe and Setup.exe writes it to
+# tools\rexupdate. Publishing a third file only invites people to install the
+# wrong one.
+Remove-Item $updaterHost -Force
 
 # 8. Record this release so the next build can diff against it. Commit it.
 (New-Manifest $true) | ConvertTo-Json -Depth 6 | Set-Content "$releases\$Version.json" -Encoding UTF8
@@ -256,6 +255,5 @@ Write-Host ("== Updater: {0} ({1:N1} MB)" -f (Split-Path $updaterAsset -Leaf), (
 Write-Host ""
 Write-Host ("== Done: {0} ({1:N0} MB)" -f (Split-Path $exe -Leaf), ((Get-Item $exe).Length / 1MB))
 if ($packed -gt 0) { Write-Host ("           {0} ({1:N0} MB)" -f (Split-Path $pack -Leaf), ((Get-Item $pack).Length / 1MB)) }
-Write-Host ("           {0} ({1:N1} MB)" -f (Split-Path $updaterAsset -Leaf), ((Get-Item $updaterAsset).Length / 1MB))
-if ($packed -gt 0) { Write-Host "   Attach ALL THREE to the GitHub release, and commit releases\$Version.json." }
-else { Write-Host "   Attach the installer and rexupdate.exe to the GitHub release, and commit releases\$Version.json." }
+if ($packed -gt 0) { Write-Host "   Attach BOTH to the GitHub release, and commit releases\$Version.json." }
+else { Write-Host "   Attach the installer to the GitHub release, and commit releases\$Version.json." }
