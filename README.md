@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo_new.png" alt="Dimensions Recompiled" width="820">
+  <img src="docs/logo_new.png" alt="Dimensions Recompiled" width="720">
 </p>
 
 <p align="center">
