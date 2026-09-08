@@ -7,6 +7,8 @@
 #include "updates.h"
 
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -72,9 +74,32 @@ bool StartDetached(const std::filesystem::path& exe, std::wstring command_line) 
 }
 #endif
 
+// The installed version, straight out of the file the installer leaves behind.
+// Every bug report starts with "which build is this", and until now the log
+// could not answer it.
+void LogInstalledVersion() {
+  const std::filesystem::path manifest = rex::filesystem::GetExecutableFolder() / "install.json";
+  std::ifstream file(manifest);
+  if (!file) {
+    REXLOG_INFO("Build: no install.json beside the game, so this is a development build");
+    return;
+  }
+  const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::string key = "\"version\"";
+  const size_t at = text.find(key);
+  const size_t open = at == std::string::npos ? std::string::npos : text.find('"', at + key.size());
+  const size_t close = open == std::string::npos ? std::string::npos : text.find('"', open + 1);
+  if (close == std::string::npos) {
+    REXLOG_WARN("Build: install.json carries no version");
+    return;
+  }
+  REXLOG_INFO("Build: Dimensions Recompiled {}", text.substr(open + 1, close - open - 1));
+}
+
 }  // namespace
 
 void CheckAtStartup() {
+  LogInstalledVersion();
   if (!REXCVAR_GET(updates_check)) {
     REXLOG_INFO("Update check disabled (updates_check = false)");
     return;

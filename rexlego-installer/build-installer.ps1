@@ -164,7 +164,9 @@ function New-Manifest([bool]$full) {
         version     = $Version
         releasedUtc = (Get-Date).ToUniversalTime().ToString("o")
         notes       = $Notes
-        minVersion  = ""
+        # A full payload updates anything; a pack only reaches back as far as
+        # the oldest release it was diffed against.
+        minVersion  = if ($full) { "" } else { [string]$script:PackUsableFrom }
         full        = $full
         files       = $files
         removed     = @()
@@ -213,9 +215,34 @@ if ($Previous -eq "" -or -not (Test-Path $Previous)) {
     # another name. The first release ships the installer alone.
     Write-Host "   skipped: no previous release to diff against"
 } else {
-    foreach ($entry in (Get-Content $Previous -Raw | ConvertFrom-Json).files) {
-        $previousShas[$entry.p] = $entry.sha
+    # A file may be left out of the pack only if EVERY shipped release has it
+    # with this exact content. Diffing against the newest release alone makes a
+    # pack that fits only an install one version behind: a player who skipped a
+    # release downloads it and the updater rightly refuses, because the files
+    # that changed in the release they skipped are not in it. The extra files
+    # this costs are the ones that ever changed, which next to the binaries is
+    # nothing.
+    $manifests = @(Get-ChildItem $releases -Filter *.json |
+        Where-Object { $_.BaseName -ne $Version } |
+        Sort-Object { [version]$_.BaseName })
+    if ($PSBoundParameters.ContainsKey('Previous')) { $manifests = @(Get-Item $Previous) }
+    $script:PackUsableFrom = $manifests[0].BaseName
+    foreach ($manifest in $manifests) {
+        $shas = @{}
+        foreach ($entry in (Get-Content $manifest.FullName -Raw | ConvertFrom-Json).files) {
+            $shas[$entry.p] = $entry.sha
+        }
+        if ($manifest.FullName -eq $manifests[0].FullName) {
+            $previousShas = $shas
+            continue
+        }
+        foreach ($path in @($previousShas.Keys)) {
+            if (-not $shas.ContainsKey($path) -or $shas[$path] -ne $previousShas[$path]) {
+                $previousShas.Remove($path)
+            }
+        }
     }
+    Write-Host "   usable from $($script:PackUsableFrom) onward, $($manifests.Count) release(s) covered"
 }
 New-Item -ItemType Directory -Force $packStage | Out-Null
 (New-Manifest $false) | ConvertTo-Json -Depth 6 | Set-Content "$packStage\manifest.json" -Encoding UTF8
