@@ -32,6 +32,18 @@ the emulator projects did the groundwork that made this possible. If
 [RPCS3](https://github.com/RPCS3/rpcs3), [Cemu](https://github.com/cemu-project/cemu) or [shadPS4](https://github.com/shadps4-emu/shadps4) serves you better, use them. I respect
 every project around this game and none of them are competitors.
 
+There is a second reason, and it matters to me more than the first one. I want
+this to make someone else want to build something. If it gets one person curious
+enough to open a disassembler for the first time, it has already paid for itself.
+
+So, to be blunt about what this is not: it is not a claim on the idea. Nobody's
+LEGO Dimensions port is blocked because this one exists. If a team gets together
+tomorrow and writes a better one from scratch, without using a single byte of
+what is here, that is exactly the outcome I was after and I will say so happily.
+Take the idea, ignore the code, do it properly.
+
+And whatever you end up building — respect what other people are working on.
+
 ## How Claude was used
 
 I would rather you hear this from me than guess.

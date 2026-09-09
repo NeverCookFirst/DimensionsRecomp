@@ -127,11 +127,28 @@ dotnet publish "$root\DimensionsModManager-CLI\ModCli.csproj" -c Release -r win-
 if ($LASTEXITCODE -ne 0) { throw "modcli publish failed" }
 if (-not (Test-Path "$payload\modcli\modcli.exe")) { throw "modcli.exe missing from payload" }
 
-# 4. Toypad app (latest release exe kept in the project root) and the save converter.
+# 4. Toypad app (downloaded from its own latest release) and the save converter.
 Write-Host "== Tools"
-$toypad = Get-ChildItem "$root\LegoToypad_*.exe" | Sort-Object Name -Descending | Select-Object -First 1
-if (-not $toypad) { throw "no LegoToypad_*.exe in $root" }
-Copy-Item $toypad.FullName "$payload\toypad\LegoToypad.exe"
+# The Toy Pad app comes straight from its own latest release, every time. It
+# used to be picked up from a file kept in the project root, and that made the
+# release depend on whichever build happened to be lying there: 0.1.9 nearly
+# shipped a 63 MB copy in place of the 33 MB published one. Downloaded to a temp
+# folder and deleted again, so nothing is left behind in the working folder.
+$toypad_temp = Join-Path ([System.IO.Path]::GetTempPath()) ("rexlego-toypad-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $toypad_temp -Force | Out-Null
+try {
+    $toypad_release = Invoke-RestMethod "https://api.github.com/repos/harrysof/LegoToypad/releases/latest" `
+        -Headers @{ "User-Agent" = "rexlego-build" }
+    $toypad_asset = $toypad_release.assets | Where-Object { $_.name -like "*.exe" } | Select-Object -First 1
+    if (-not $toypad_asset) { throw "the latest LegoToypad release has no .exe asset" }
+    Write-Host "   toypad app: $($toypad_release.tag_name) $($toypad_asset.name) ($([math]::Round($toypad_asset.size / 1MB, 1)) MB)"
+    $toypad_exe = Join-Path $toypad_temp $toypad_asset.name
+    Invoke-WebRequest $toypad_asset.browser_download_url -OutFile $toypad_exe -UseBasicParsing
+    if ((Get-Item $toypad_exe).Length -ne $toypad_asset.size) { throw "LegoToypad download is the wrong size" }
+    Copy-Item $toypad_exe "$payload\toypad\LegoToypad.exe"
+} finally {
+    Remove-Item $toypad_temp -Recurse -Force -ErrorAction SilentlyContinue
+}
 Copy-Item "$root\DimensionsSaveConverter\DimensionsSaveConverter.exe" "$payload\saveconverter\"
 Copy-Item "$root\DimensionsSaveConverter\READ ME FIRST.txt" "$payload\saveconverter\"
 
