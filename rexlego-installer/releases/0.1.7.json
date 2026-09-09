@@ -1,0 +1,649 @@
+﻿{
+    "product":  "DimensionsRecompiled",
+    "version":  "0.1.7",
+    "releasedUtc":  "2026-09-09T09:19:44.5999103Z",
+    "notes":  "Keyboard on by default and rebindable, and the Toypad app can start and stop with the game.",
+    "minVersion":  "",
+    "full":  true,
+    "files":  [
+                  {
+                      "p":  "game/achievement_unlocked.wav",
+                      "sha":  "a707019154484b9de0ad310826668c0b58c22b8a842227293421643901bc29a5",
+                      "len":  191018
+                  },
+                  {
+                      "p":  "game/FiraSans-Regular.ttf",
+                      "sha":  "c29556a2719bf613ef3d5e070e40d903a8965d9c081beca1375dc1e6e0f93c23",
+                      "len":  456996
+                  },
+                  {
+                      "p":  "game/gamecontrollerdb.txt",
+                      "sha":  "3e49939644cb30872144c034edf85fdfc021877bb2dfbaaf089e41ecad53a634",
+                      "len":  605295
+                  },
+                  {
+                      "p":  "game/legodimensions.exe",
+                      "sha":  "5ea501e384d4ea133913eae09977aa40fae6f913aacbeda8ee112484c4fb9458",
+                      "len":  170216960
+                  },
+                  {
+                      "p":  "game/rexgpu-xenos.dll",
+                      "sha":  "c0fcb93fbeae27e5e64f4417f3ffaa23ae3ee5dbe34f39ca5c135d2f9d9d8bb5",
+                      "len":  6944768
+                  },
+                  {
+                      "p":  "game/rexruntime.dll",
+                      "sha":  "ece79768897b194d1b1baf891134957f17e686d076e7bad8d2b18cb06c9697d8",
+                      "len":  11333120
+                  },
+                  {
+                      "p":  "modcli/modcli.exe",
+                      "sha":  "5024082474324b51dff6b590796fd5a0bc7517604c1adc9e492ec2e0f5249e8f",
+                      "len":  67527838
+                  },
+                  {
+                      "p":  "mods/AllWorlds/mod.json",
+                      "sha":  "69f79f47f64f1d5213352b02506a46c1cee64584994efc61e6b8eb5c12caaab0",
+                      "len":  441
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/gizmo_gremlin/gizmo_gremlin.txt",
+                      "sha":  "45b05e2e316c219759dc6cfcfa758032cd4f73bdd195daf5c564ec17a687b200",
+                      "len":  2546
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/jacobkowalski/jacobkowalski.txt",
+                      "sha":  "efba7d6be3ecb8daa60b1784ce9a1017a7e15b3af4f432b8ea47f015fb055a5c",
+                      "len":  1838
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/marceline/marceline.txt",
+                      "sha":  "472c538e47d07120582acecb903de6ef7583e360a99f54e09a8c0c1a302199da",
+                      "len":  2794
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/newtscamander/newtscamander.txt",
+                      "sha":  "1fbc14681228147b979ac228c375de2592bdfd06a8f626bfbd3f24db0ca89250",
+                      "len":  2434
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/queeniegoldstein/queeniegoldstein.txt",
+                      "sha":  "7d33e2bf64b0b988d153a5d7a2e3b491391d383f49f01ed126792b26f3b0af8f",
+                      "len":  1920
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/sonic/sonic.txt",
+                      "sha":  "7afb95e774cf15ace94d56699923a6880f17d6bb6094476c8b55a35933cac7d8",
+                      "len":  3477
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/statueofliberty/statueofliberty.txt",
+                      "sha":  "66ea2d68c653bde39ca31c3ff33c733c7f61ecf9b8a9b09e671759f329f0a748",
+                      "len":  1955
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/statueofliberty/statueofliberty_cutscene.txt",
+                      "sha":  "a8ade88d9119408324a451a8ab5d16bb74e005969b2d2a1f0261d582b6f7a395",
+                      "len":  1903
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/stripe/stripe.txt",
+                      "sha":  "4bafce44f2228bc035309a03db348b51841c6250705f2adbeeae199dc67fe7bc",
+                      "len":  2544
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC16/additionalcontent/opus_tagcharswave2/chars/minifig/tinagoldstein/tinagoldstein.txt",
+                      "sha":  "390d8d14e7e305ad3cc6ac61162b42ccaaa6e92785023e107fdd0ff44e9021ec",
+                      "len":  2466
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC18/additionalcontent/opus_fantasticbeasts/chars/minifig/tinagoldstein_hub/tinagoldstein_hub.txt",
+                      "sha":  "c7ecf7efd2aacb5554cb9f61e3ba2c193723eb1ee124f4e7a9155eb0d976a535",
+                      "len":  2194
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC2/additionalcontent/release1b/chars/minifig/docbrown_r1b/docbrown_r1b.txt",
+                      "sha":  "a6fc05eb76d4e95636794834b5ccc51835c219fee3d3ac2ccc287869b682b09a",
+                      "len":  2361
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_batgirl/lbm_batgirl.txt",
+                      "sha":  "7adea8a2552ec3ebf65aa0e60e04481fed97cd27b9c20ff4b87410d26cc14fd7",
+                      "len":  2802
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_batgirl/lbm_batgirl_cutscene.txt",
+                      "sha":  "a4d9373433615b47baabfbb09f1f7adb13633af5179e0e37a7d473b7ad373522",
+                      "len":  1680
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_batman_excalibur/lbm_batman.txt",
+                      "sha":  "abba526314daa3ec462068b213dc3562e2853fbe6e5143f65366d0585371165b",
+                      "len":  3179
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_batman_excalibur/lbm_batman_excalibur.txt",
+                      "sha":  "c6f46dc9a217f8328ebc6d618961fec5788ca78330920709997550ad5e4a7bdc",
+                      "len":  3523
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_batman_excalibur/lbm_batman_excalibur_cutscene.txt",
+                      "sha":  "aa7fbe2fbe81a26f94c2e02f65f3c87b8187284aadb700f3e3d4e1fd89b735dc",
+                      "len":  1618
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_robin/lbm_nightwing.txt",
+                      "sha":  "66eebc3243f2f9915fb5d4580627aaa736b3d9d25e718e2f4ea48f2d136f2990",
+                      "len":  2431
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_robin/lbm_nightwing_cutscene.txt",
+                      "sha":  "bed6c69db768e63695aa67bb3dd6a2e3965c5c02844c530cc9e2856dcb465861",
+                      "len":  1575
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_robin/lbm_robin.txt",
+                      "sha":  "3197f59a2ee7d4c4fc395e39c2a2228fd5e2968b4c45ad90a3f954c199490497",
+                      "len":  2775
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/lbm_robin/lbm_robin_cutscene.txt",
+                      "sha":  "4c1116954ae584d7e8185fcf5aedc6971b1ff2474bf71a9f6154496baed22778",
+                      "len":  2109
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC21/additionalcontent/opus_tagcharswave3/chars/minifig/michaelknight/michaelknight.txt",
+                      "sha":  "6b9c437db0dba7af08fdfde631ac69252a893175d6810106d102dcaafb5fdaf0",
+                      "len":  2637
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/chasemccain/chasemccain.txt",
+                      "sha":  "42fedc3f6ab4476f312b984bfb32f6d0514b000bf981a8200b5d77d918d254e8",
+                      "len":  2431
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/chasemccain/chasemccain_astonaut.txt",
+                      "sha":  "c8a9eb6a57e30c21fafffdf4e2c2f5b1691f166644bfc8de74471abbfeb777f8",
+                      "len":  2160
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/chasemccain/chasemccain_construction.txt",
+                      "sha":  "2261d679bbd5709b6b5fcefc400d9896c7095862eab2246a07c43e93ea3cac8e",
+                      "len":  1978
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/chasemccain/chasemccain_farmer.txt",
+                      "sha":  "998baf0b5a69f558ab4bce4765e165369ec086eaac43d9855eef8a6631a5718b",
+                      "len":  2116
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/chasemccain/chasemccain_fireman.txt",
+                      "sha":  "ba1b557a7b467d646d77d193dbbf31704964c241b20c834c48de183df090942c",
+                      "len":  2001
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/chasemccain/chasemccain_miner.txt",
+                      "sha":  "a0786ee59dbf549f8cd5b5eea35489df8960ac25b5ec249316b0335bb0be463d",
+                      "len":  2156
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/goonies_andy/goonies_andy.txt",
+                      "sha":  "72a8a70b6a76e1963922a82d302ecc3934341cd0215f401094aeb8b2d196c124",
+                      "len":  1679
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/goonies_brand/goonies_brand.txt",
+                      "sha":  "8766248cc935d167f66baafb68bb2a462218b274421bdfeea612961e8a36f015",
+                      "len":  1655
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/goonies_stef/goonies_stef.txt",
+                      "sha":  "b60990b95ce553e85121ff46e458f8979d1ae70d963cee6ed1613b939297de91",
+                      "len":  1716
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/hermionegrainger/hermionegrainger.txt",
+                      "sha":  "2846017dfd0149cd1eeb9441044b0760479bda2af7867d4469afff823f33d079",
+                      "len":  2075
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/sloth/sloth.txt",
+                      "sha":  "a16799313f31a7bf001dd9debc86b79462b8130537e2530e3d9c77f60e97f7cb",
+                      "len":  2401
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/sloth/sloth_cutscene.txt",
+                      "sha":  "8ff1279fbfc0bc79dfe112ecc2cddf099f2e2b667041fe178cf48736085075aa",
+                      "len":  2038
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC24/additionalcontent/opus_tagcharswave3b/chars/minifig/sloth/sloth_superman.txt",
+                      "sha":  "22f4d8d9f5d958261a120e1c12641702fc1bf260daf0405f3032fd03c39e8dea",
+                      "len":  2313
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC27/additionalcontent/opus_tagcharswave4/chars/minifig/beetlejuice/beetlejuice.txt",
+                      "sha":  "a8bcda52f58398041130b09b658e29ff2a56876f8f689de2b2524bb2a938fa98",
+                      "len":  2375
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC28/additionalcontent/opus_powerpuffgirls/chars/minifig/ppg_stripe/ppg_stripe.txt",
+                      "sha":  "654b7740a11beb0445a1952483b91e79bf12aed63bbbf34a76abd5c8f26a0695",
+                      "len":  2469
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC30/additionalcontent/opus_tagcharswave5/chars/minifig/teentitansgo_raven/teentitansgo_raven.txt",
+                      "sha":  "6bcaab42a644af8072d60eeaf11f765c4f8012b31490e194fd57797ba41187da",
+                      "len":  2196
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC30/additionalcontent/opus_tagcharswave5/chars/minifig/teentitansgo_starfire/teentitansgo_starfire.txt",
+                      "sha":  "65c3ffa142e5cb63423e1cb8fc7ec8b471e061e8c70e63f00ce499dc99ec5ae5",
+                      "len":  2644
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC5/additionalcontent/release2/chars/minifig/cyberman_hub/cyberman_hub.txt",
+                      "sha":  "262cf7d086c0abf080a21e64c5edb1fa2b922a92f2c036617ae4bffe6a970693",
+                      "len":  2615
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/abbyyates/abbyyates.txt",
+                      "sha":  "51a38216a8ef10ded143a94580ad6028590beb2aaeba87891ac004fc646e9db5",
+                      "len":  2820
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/abbyyates/abbyyates_white.txt",
+                      "sha":  "ea116c8fa46dea33329a77a6dc1bebbf4f5d0d6ae7389722691d71df398519d3",
+                      "len":  2615
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/abbyyates/newghostbusters_ref.txt",
+                      "sha":  "994b0396b8142a7d4908b8456fa351b9b1af5a4b6d5555a17a1c8c5b7c3cb51f",
+                      "len":  2221
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/ba_baracus/ba_baracus.txt",
+                      "sha":  "63c41278491fbf182584d861e3b3da17a733e21e99ee7d5ea1276b03ccd052db",
+                      "len":  2505
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/ba_baracus/ba_baracus_cutscene.txt",
+                      "sha":  "55439c55ec0ce4cd4f7f2922dc399aa92ceef2bbcf8ee53cfcb104efa824d33f",
+                      "len":  2011
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/face/templetonpeck.txt",
+                      "sha":  "ad25784d6b94c6fdfaffe9a25ec5b9ea4f97552422becefbba6c66197f53ef13",
+                      "len":  1554
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/fern/fern.txt",
+                      "sha":  "665cfdb9131554223692c74ed9d4c7ef52d3ddc04023d7bb193f3634fea25639",
+                      "len":  2883
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/finn/finn.txt",
+                      "sha":  "a7adf713a28cfe2db585112e40e340a031c24140fa50e01e9a0428b7e7d85b96",
+                      "len":  3065
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/hannibalsmith/hannibalsmith.txt",
+                      "sha":  "da19e7a30213548be083c8638bae919f422fb0077be02ef285065aaea0681f42",
+                      "len":  1575
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/harrypotter/harrypotter.txt",
+                      "sha":  "cdd2c896eaf6adbe745ab820e6df7b8ee94c1967b3a67dc8e9bbe64e58860b94",
+                      "len":  2720
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/harrypotter/harrypotter_cutscene.txt",
+                      "sha":  "69af3e9755f15f1103297d344d76c75fb9443b14ae37ea36a2aa61438a41a23c",
+                      "len":  2321
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/murdock/murdock.txt",
+                      "sha":  "32689447092f4643dfab269a92061daf81f7862aa44d38657fa02a808a43f2f5",
+                      "len":  1554
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/DLC9/additionalcontent/opus_tagcharswave1/chars/minifig/voldemort/voldemort.txt",
+                      "sha":  "3ea81a3f525f740657bb67afdcf2dd9fea3b37474d8d862a78328eb256baf847",
+                      "len":  2856
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/acu_trooper/acu_trooper.txt",
+                      "sha":  "56d60a76f6699b436eb2065d443dc793bcca37547226686d66165cf80423828a",
+                      "len":  2264
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/aquaman/aquaman.txt",
+                      "sha":  "abaf5a8317adcf7612a8808cf192817cd997d29996782a171869a131336b0fcf",
+                      "len":  2363
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/badcop/badcop.txt",
+                      "sha":  "713bdf2b4cd4e50b7d5d7db014140c7ea459891a8bac4c214af8ec371431a0d1",
+                      "len":  2534
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/bane/bane.txt",
+                      "sha":  "e1efbadce74dd44c41d6c4990846a02e580bd99fcb76595f5330aa9136f89725",
+                      "len":  2443
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/batman/batman.txt",
+                      "sha":  "1656e5ffe2f9f4c59c502e9c14de48539d36b89ebb9051a6a67a76df56b4bdd9",
+                      "len":  2376
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/batman/test_batman.txt",
+                      "sha":  "774599bb9b05ef599cb9a74b4055106495252e3e65f92076790ef36558ca40f1",
+                      "len":  2353
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/benny/benny.txt",
+                      "sha":  "8f1aeae2d0dd8a87e8decf90491d779d9eebf3e075c77dfa11877e86ad7cbcd9",
+                      "len":  2641
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/chell/chell.txt",
+                      "sha":  "952e045bce2f38c32917b212a045c2e5f6cee4029d7550aa4b2876c40afe7d37",
+                      "len":  2560
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/cole/cole.txt",
+                      "sha":  "2899349aefdfb03bfc8f841eec8096bc417dade0fed1dbd2e2bce1f7346932b8",
+                      "len":  2244
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/cragger/cragger.txt",
+                      "sha":  "dd1f0f5c81c5b1440f8273edeee90b9b079d71161b344389317785d75f3084a2",
+                      "len":  2403
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/cyberman/cyberman.txt",
+                      "sha":  "c8fa2b5f81e7ae0cb5384e4f75fbae34f64684aa44b5fb59ad60172f834b0fe7",
+                      "len":  2591
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/cyborg/cyborg.txt",
+                      "sha":  "3c5341846a57058d351660237f287c0ffc4c3d67f1af17ed2e20a7f29d2f0d93",
+                      "len":  2659
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/docbrown/docbrown.txt",
+                      "sha":  "0f6403dd0d9bd30aa17e871bb455ef736eb6487c586edc9f2be50b3f939d8057",
+                      "len":  2568
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/doctor12th/doctor_ref.txt",
+                      "sha":  "76d066ab4bd3d9ddc47d6105475ea2d5051008929f415b6debd6e82afec86ba5",
+                      "len":  1584
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/doctorwar/doctorwar.txt",
+                      "sha":  "796ebad2c8d67681c6383a687cfa9987578540880620bbb52fc3370491be665f",
+                      "len":  2294
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/emmet/emmet.txt",
+                      "sha":  "d950b6b7941b6dbbd9f9252255074150d98a9477ec73b5f205de056ac6e69309",
+                      "len":  2436
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/eris/eris.txt",
+                      "sha":  "1d550bc34e822320468f41cdb1dbf838feaba7c29ba3e264f1a005138b5a1b1b",
+                      "len":  2620
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/gandalf/gandalfthegrey.txt",
+                      "sha":  "a8df87ca680a8de4cff6ac739e0dc175b06fc7dd4c79aabf959692bc80d95792",
+                      "len":  2120
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/greenarrow/greenarrow.txt",
+                      "sha":  "c3f6e84069001e97b48dda882d7c2045b66048f8667bc01f849555963ad6a60d",
+                      "len":  2470
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/harleyquinn/harleyquinn.txt",
+                      "sha":  "66c14b5439a814898abb545d9985ca1bb9dd05be214762ff1c6cf831e69c7585",
+                      "len":  3321
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/homersimpson/homersimpson.txt",
+                      "sha":  "17b436c780b2210037a182c681fa79f925b3ee718c0f80d089de29d2a086b946",
+                      "len":  2704
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/jay/jay.txt",
+                      "sha":  "4ee434ef50cd0f9cb9257dab1879f0d250f8649e59970cdff8fe38492f9ed21f",
+                      "len":  2525
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/joker/joker.txt",
+                      "sha":  "b767eb7ed56afbecf82a2397b32eaab77db6c9e0acb35422f93554a52a90ce25",
+                      "len":  3247
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/kai/kai.txt",
+                      "sha":  "dc2fef906403dc92e3fec7b10df643c5006d0ab3d98d81146b275408c78e2b3a",
+                      "len":  2716
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/kidgamer/kidgamer.txt",
+                      "sha":  "81dd180d45bf4611c28600ad1e8cfdb1be16f66418b66e49f2041ea4580ef037",
+                      "len":  2676
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/krusty/krusty.txt",
+                      "sha":  "b47dd98819e41fe44f2fb06651165988719a0055bf5a2c53fe172dde70fdfc77",
+                      "len":  2898
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/laval/laval.txt",
+                      "sha":  "affc81a64d925c7c88c9f168b51800439766a27089e3103b655a2ebde5d4d53b",
+                      "len":  2594
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/legolas/legolas.txt",
+                      "sha":  "e1b5e9b8945db47d8342d39af7b14a6e87b4140eb7f65c7e1159362409169216",
+                      "len":  2659
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/lloyd/lloyd.txt",
+                      "sha":  "f2c6289e40a7d1dbf3d006a2c0c7fe64406675a2b78add600a30e7d341988558",
+                      "len":  2702
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/marty/marty.txt",
+                      "sha":  "e1808983b144e10db8e22da4cf1d088b85a16cab985a891e3eaa6e33b3f8635e",
+                      "len":  2052
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/nya/nya.txt",
+                      "sha":  "77dae028348fd4c7552cbd9737624910b829f6f176bb53530745db9d86df11f1",
+                      "len":  2359
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/owen/owen.txt",
+                      "sha":  "2e9d847fe123db614b9e3eb87e19c3bb7f03c8928cb46e3963aec97e14ed1539",
+                      "len":  2489
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/petervenkman/ghostbusters_ref.txt",
+                      "sha":  "712517b65a82735ba7d655bafda7977d40c08c159b8eac47da134b22df500881",
+                      "len":  2655
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/petervenkman/petervenkman_cutscene.txt",
+                      "sha":  "60e04d9b8afb568aa979edbbcb0e5218e170653e599f68ddb4c4225afda38e0d",
+                      "len":  2172
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/senseiwu/senseiwu.txt",
+                      "sha":  "e44ce2ac33572639fc01591ed84d6dbcd2b189a5700fab43e8f844ebdc75c90d",
+                      "len":  2681
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/shaggy/shaggy.txt",
+                      "sha":  "91c2d95b8746bb9cf1d84967d3d6b3c53f302eb1db9dc773e8939268f69abd09",
+                      "len":  2555
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/staypuft/staypuft.txt",
+                      "sha":  "68b4bd73bf608bb0eb3345ef8ae3d2000a023cbe34f4b98767e8d574af5a7030",
+                      "len":  2687
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/staypuft/staypuft_angry.txt",
+                      "sha":  "31c9816bd212d52c788f49d19fea8b1517f015b20488c87abf26740dda387c75",
+                      "len":  2746
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/staypuft/staypuft_big.txt",
+                      "sha":  "77ee0a9f5d20d3cec6e9029ec9114060fa57bfd8420d802d5744ec13df8b079b",
+                      "len":  2675
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/staypuft/staypuft_reallybig.txt",
+                      "sha":  "842662d331c5a405deab6f8c2b941ca67230e72230cc8f7b0ab2d786419d1b55",
+                      "len":  2548
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/supergirl/supergirl.txt",
+                      "sha":  "b7155f39dbbd1ebace5c3052abcd16d6a7d0400c76dfbcb1bda3bb23d3524bab",
+                      "len":  3387
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/supergirlredlantern/supergirlredlantern.txt",
+                      "sha":  "be4821ea0cf6f4eddb21958738dbe09541017e395de465e2df7215726e837a5b",
+                      "len":  3705
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/superman/superman.txt",
+                      "sha":  "7dcaf1d64f9a6a55962f5cec0c25e3eb376b6e606213c2b8cc5e403e7bb85339",
+                      "len":  3719
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/wickedwitch/wickedwitch.txt",
+                      "sha":  "6042102fb4d7e3d0e1d85865714e8c46839864fac85baaf0cbe809e52b5d119a",
+                      "len":  2977
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/wildstyle/test_wildstyle.txt",
+                      "sha":  "caa36169fedbf1b6f69a891ef474c8ec7a06a44f14b142c7bb519dc484da0134",
+                      "len":  2502
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/wildstyle/wildstyle.txt",
+                      "sha":  "7cc68cbcbd4dfae16f058214cc1692b62a470bb8f29a5183d6848674680b611e",
+                      "len":  2525
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/wonderwoman/wonderwoman.txt",
+                      "sha":  "025d689340897710caea3e828cc0ef3e0736a29d6694b2fabcb4266d8edef967",
+                      "len":  3230
+                  },
+                  {
+                      "p":  "mods/AllWorlds/datfiles/PATCH/chars/minifig/zane/zane.txt",
+                      "sha":  "67eb55de7d3de96557c7501e1168e41d38f5a2fedf9b005c92cf25c0b85f8bec",
+                      "len":  2974
+                  },
+                  {
+                      "p":  "mods/QuickStartup/mod.json",
+                      "sha":  "633a0bb977f7444ac49a05e84a7a7ae16c0a812ba133e30b5a247d767b46c023",
+                      "len":  379
+                  },
+                  {
+                      "p":  "mods/QuickStartup/datfiles/PATCH/GUI/SPLASH.TXT",
+                      "sha":  "6a93454a179112a75c480c3a097500672094868f0b95d3952d53c3b9791b39eb",
+                      "len":  2655
+                  },
+                  {
+                      "p":  "mods/Recomp_TextTest/mod.json",
+                      "sha":  "d34472baf61dd0ffea98d71d718d0bd61dd7d78d29f5ea6086ebc83f39ac0df4",
+                      "len":  528
+                  },
+                  {
+                      "p":  "mods/Recomp_TextTest/datfiles/PATCH/STUFF/TEXT/TEXT.CSV",
+                      "sha":  "08bb63540bceec953a1e4f8d0d076b67b5ce8a431e08e76b16a9cb9dd1cf96c7",
+                      "len":  15147733
+                  },
+                  {
+                      "p":  "mods/SuperSonicInfinite/mod.json",
+                      "sha":  "da70a3ae61fb1ceed89534d06bdd510b2e3ed8d358815e7f86cea317bbdb7f29",
+                      "len":  368
+                  },
+                  {
+                      "p":  "mods/SuperSonicInfinite/datfiles/DLC16/additionalcontent/opus_tagcharswave2/abilities/opus_sonic/characters/transform~.abilities",
+                      "sha":  "56584b5944d7d21719616cd3a04e478358fc8f1ddd5b8382e00178a167e900c6",
+                      "len":  6703
+                  },
+                  {
+                      "p":  "mods/SuperSonicInfinite/datfiles/DLC16/additionalcontent/opus_tagcharswave2/abilities/opus_sonic/characters/transform~supersonictransform.ability",
+                      "sha":  "2fbfeb15b8cbd32a754160a3d698abda127f5287a19f35ed9f3a7104e7c3a64f",
+                      "len":  656
+                  },
+                  {
+                      "p":  "mods/SuperSonicInfinite/datfiles/DLC16/additionalcontent/opus_tagcharswave2/charcache/sonic/additionalcontent/opus_tagcharswave2/abilities/opus_sonic/characters/transform~supersonictransform.ability",
+                      "sha":  "6237ea379623df0017b4f33b09f90a9a1febaebceda869d32f0c571caad8fbfb",
+                      "len":  867
+                  },
+                  {
+                      "p":  "rus/Lang_Russian_1/mod.json",
+                      "sha":  "6de887036a4c37f8695f9484659a0719c587cfd1fb4b3607e5297510f5da215f",
+                      "len":  402
+                  },
+                  {
+                      "p":  "rus/Lang_Russian_1/datfiles/PATCH/GUI/FONT/FONT_NXG.FT2",
+                      "sha":  "07e71d94411d5e3e3841ecda38897a545c2c52fa42af340ddb0c7a60babde69e",
+                      "len":  529314
+                  },
+                  {
+                      "p":  "rus/Lang_Russian_2/mod.json",
+                      "sha":  "39dc4cc6e2622361de2ff17120e4c469f52eceb455736d126dde73393ee04f3c",
+                      "len":  401
+                  },
+                  {
+                      "p":  "rus/Lang_Russian_2/datfiles/PATCH/STUFF/TEXT/TEXT.CSV",
+                      "sha":  "8aab93cabc24e74715761079c86629555f87aa708d7de081be407e1d703cc017",
+                      "len":  15143344
+                  },
+                  {
+                      "p":  "saveconverter/DimensionsSaveConverter.exe",
+                      "sha":  "dc64fb3ce7679c58a513822a84fbe4dd8adf940491390453e47b90ed4adca349",
+                      "len":  257024
+                  },
+                  {
+                      "p":  "saveconverter/READ ME FIRST.txt",
+                      "sha":  "6cd483658ab399f5257a9c74a71bef586af138eeb510e2abe323449a4683fa78",
+                      "len":  7734
+                  },
+                  {
+                      "p":  "toypad/LegoToypad.exe",
+                      "sha":  "02bc9991fbedc75501cd03b168fc3d1d7d24174bdf4ec15151e18093777ff667",
+                      "len":  32822272
+                  },
+                  {
+                      "p":  "updater/rexupdate.exe",
+                      "sha":  "e44af25361ff1c796fc0d7f53924f2fc06f38761daafb8283b5859801a768040",
+                      "len":  66632532
+                  }
+              ],
+    "removed":  [
+
+                ],
+    "toml":  {
+                 "forced":  {
+
+                            },
+                 "defaults":  {
+
+                              },
+                 "removed":  [
+
+                             ]
+             }
+}

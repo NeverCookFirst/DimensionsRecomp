@@ -101,6 +101,28 @@ and restart. The pad lights up and real figures work.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
+The game can also start and stop the companion app for you: `F4` &rarr; Toypad
+&rarr; `toypad_app_autostart`. It launches with the game and closes with it, and
+an app you started yourself is left alone.
+
+## Controls
+
+Any XInput pad works, and so does the keyboard, with no setting to find first:
+
+| Keyboard | Controller |
+|---|---|
+| `WASD` | left stick |
+| arrows | right stick |
+| `J` `K` `H` `U` | A B X Y |
+| `E` `Q` | LB RB |
+| `I` `O` | LT RT |
+| `Enter` or `Esc` | START |
+| `Backspace` | BACK |
+
+Every bind is editable in `F4` under Input / Keybinds, with **Rebind**, **Reset**
+and **Clear** on each line. Keyboard and pad are live at the same time. Mouse
+look exists but is off by default: turn on `mnk_mouse`.
+
 ## Languages
 
 The game ships its official translations, and the recomp picks one the way the
@@ -149,10 +171,10 @@ user_country  = 71   # ... as spoken in Mexico
 > Russian is not one of the official languages. It exists as a community
 > translation made by [maickdelaia](https://boosty.to/lego_dimensions_ru), shipped as a **mod** that replaces the English column.
 
-## This is a demo build. Expect bugs.
+## This is a beta build. Expect bugs.
 > [!CAUTION]
-> It is an early public build, not a finished port. Crashes, freezes, broken
-graphics and lost audio are all expected, and finding them is why it is public.
+> It is playable, but it is not a finished port. Crashes, freezes, broken
+graphics and lost audio still happen, and finding them is why it is public.
 How well it runs varies by machine, because the graphics path still has to
 translate what the Xbox 360 GPU was asked to do.
 
@@ -178,9 +200,9 @@ Roughly in the order I want to get to it. No dates.
 - **UI fixes, and layouts for other gamepads.** Right now the button prompts
   assume an Xbox pad. PlayStation, Switch and generic controllers should show
   their own.
-- **Keyboard and mouse working out of the box.** It is already in there and
-  fully rebindable, but it has to be switched on first, which almost nobody
-  finds.
+- **Mouse look.** The keyboard now plays out of the box and every bind is
+  editable in `F4`, but the mouse still has to be switched on by hand
+  (`mnk_mouse`) and deserves proper tuning.
 - **Updating the Discord Rich Presence** so it shows more than a static line.
 - **Recompiling the GPU side too, in some form.** *Research, not a promise.*
   Graphics is the one part still done the emulator way: the game's draw calls

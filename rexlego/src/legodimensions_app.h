@@ -9,6 +9,7 @@
 
 #include "discord_presence.h"
 #include "mod_menu.h"
+#include "toypad_app.h"
 #include "ui_theme.h"
 #include "updates.h"
 
@@ -31,10 +32,22 @@ class LegodimensionsApp : public rex::ReXApp {
   void OnPostSetup() override {
     legodimensions::discord::Start();
     legodimensions::updates::CheckAtStartup();
+    legodimensions::toypad_app::StartIfEnabled();
+  }
+
+  // The window closing is where the app must be let go: ReXApp::OnClosing then
+  // hard-exits with std::_Exit, so OnShutdown never runs. This asks nicely; the
+  // job object is the backstop if the game dies without getting here.
+  bool OnWindowCloseRequested() override {
+    legodimensions::toypad_app::StopIfStarted();
+    return true;
   }
 
   // Dropping the pipe is what clears the presence; Discord does the rest.
-  void OnShutdown() override { legodimensions::discord::Stop(); }
+  void OnShutdown() override {
+    legodimensions::discord::Stop();
+    legodimensions::toypad_app::StopIfStarted();
+  }
 
   // The SDK inherits xenia's green ImGui theme; both hooks exist so a game can
   // restyle the overlays without forking the shared UI code.

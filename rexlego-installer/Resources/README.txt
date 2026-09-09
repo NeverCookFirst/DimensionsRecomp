@@ -1,10 +1,10 @@
 ==============================================================================
-  DIMENSIONS RECOMPILED  -  TESTER BUILD  -  READ THIS FIRST
+  DIMENSIONS RECOMPILED  -  BETA BUILD  -  READ THIS FIRST
 ==============================================================================
 
 Installed to: {INSTALL_DIR}
 
-!! THIS IS AN EARLY TEST BUILD. IT IS NOT STABLE. EXPECT BUGS. !!
+!! THIS IS A BETA BUILD. IT IS PLAYABLE, BUT NOT FINISHED. EXPECT BUGS. !!
 
    - The game can crash, freeze, show broken graphics or wrong colours,
      lose audio, or refuse to load a save. All of that is expected at this
@@ -26,6 +26,13 @@ Installed to: {INSTALL_DIR}
 {TOYPAD_LINE}
      The app and the game find each other automatically over localhost
      (port 9191). Start order does not matter.
+
+     The game can start it for you: press F4, open Toypad, and tick
+     toypad_app_autostart. From then on the app comes up with the game and
+     closes with it. Toypad app path picks a different exe if yours lives
+     somewhere else, and the launch button starts it right away without
+     waiting for a restart.
+
   3. In the Toypad app, press BACK / SELECT on your controller to open the
      figure picker (the shortcut can be changed in the app's Settings).
 
@@ -59,10 +66,17 @@ Installed to: {INSTALL_DIR}
   Windows does not see the pad at all.
 
   Controller: any XInput pad (Xbox, or anything Steam / DS4Windows presents
-  as XInput). Keyboard also works - defaults: WASD = left stick, arrows =
-  right stick, Shift+arrows = D-pad, Space/; = A, Backspace/' = B, L = X,
-  P = Y, Q/I = LT, E/O = RT, 1 = LB, 3 = RB. All of it is rebindable in the
-  F4 menu under Input / Keybinds.
+  as XInput). Keyboard works too, and is on by default:
+
+     WASD          move            J = A        K = B
+     arrows        camera          H = X        U = Y
+     Enter or Esc  START           E = LB       Q = RB
+     Backspace     BACK            I = LT       O = RT
+
+  The D-pad is left unbound, because WASD already covers those directions.
+  Everything is rebindable in F4 under Input / Keybinds: each line has
+  Rebind, Reset and Clear (Clear empties a bind so the action never fires).
+  Keyboard and pad work at the same time - unplugging one changes nothing.
 
 
 ------------------------------------------------------------------------------
