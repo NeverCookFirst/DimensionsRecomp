@@ -244,6 +244,12 @@ The runtime providing all of that is the
 port, the graphics side still stands on emulator research. Saying that plainly is
 more useful than overselling it.
 
+The SDK needed changes to run this game, and they are not in this repository.
+They are in a fork — [NeverCookFirst/rexglue-sdk](https://github.com/NeverCookFirst/rexglue-sdk),
+branch `toypad-ui` — along with the Toy Pad work, the input handling and several
+crash fixes. Every release is built from that branch, so that is the SDK to use
+if you want to reproduce one.
+
 Because there is no interpreter tax, it can run at 60 FPS and use modern
 upscaling (FSR 1 and CAS) and higher internal resolutions.
 
@@ -311,6 +317,7 @@ The template asks for the few things that actually help: `game.log`, your
 
 | Repository | What it is |
 |---|---|
+| [rexglue-sdk](https://github.com/NeverCookFirst/rexglue-sdk) (branch `toypad-ui`) | The runtime fork the releases are built from |
 | [DimensionsModLoader](https://github.com/NeverCookFirst/DimensionsModLoader) | Mod manager that injects files into the game's DAT archives |
 | [DimensionsSaveConverter](https://github.com/NeverCookFirst/DimensionsSaveConverter) | Converts saves between console versions |
 | [Xenia-Seamless-Toypad-Build](https://github.com/NeverCookFirst/Xenia-Seamless-Toypad-Build) | xenia fork with a built in emulated Toy Pad |

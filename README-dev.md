@@ -68,11 +68,16 @@ projects listed at the bottom of the main [README](README.md).
 
 ## Step 1: get the SDK
 
-Clone it next to this repository, or anywhere else you like:
+Clone the fork, not upstream, and stay on `toypad-ui`:
 
 ```bash
-git clone --recursive https://github.com/rexglue/rexglue-sdk.git
+git clone --recursive -b toypad-ui https://github.com/NeverCookFirst/rexglue-sdk.git
 ```
+
+That branch is what the releases are built from: the Toy Pad work, the codegen
+fix behind the crash on ropes, discrete GPU selection, keyboard input, the crash
+logging. Upstream builds fine and then behaves differently from every release,
+which is a miserable thing to debug.
 
 It has git submodules and needs `--recursive`. If you forgot,
 `git submodule update --init --recursive` fixes it.
@@ -174,6 +179,34 @@ appends the payload, and writes the update pack and the release manifest.
 
 The script takes the game binaries from `rexlego\out\build\win-amd64-release` by
 default. Override with `-GameBuild`.
+
+## Step 6: build the mod CLI
+
+`modcli` is the tool the in game mod menu shells out to. Its project compiles
+three files out of the mod manager, which is a different repository:
+
+```
+<Compile Include="..\DimensionsModManager\ModEngine.cs" />
+```
+
+So clone [DimensionsModLoader](https://github.com/NeverCookFirst/DimensionsModLoader)
+next to this repository, into a folder named `DimensionsModManager`, then:
+
+```bash
+cd DimensionsModManager-CLI
+dotnet build ModCli.csproj -c Release
+```
+
+Skip it if you are not touching mods — the game runs without `modcli` and only
+complains when you press Apply in the mod menu.
+
+## Nobody has done a clean run of this
+
+These steps are written from a machine where everything was already in place.
+The full path — empty folder, clone, generate, build, install — has never been
+walked end to end by anyone, so treat a snag as a gap in this document rather
+than something you did wrong, and open an issue. Same goes for Linux and macOS:
+the SDK targets them, this game has only ever been built on Windows.
 
 ## Things that have cost real time
 
