@@ -28,8 +28,8 @@ talks to a Toy Pad, as a normal Windows program.
 
 This is not a claim to be the one correct way to play on PC. Emulation works, and
 the emulator projects did the groundwork that made this possible. If
-[xenia](https://github.com/xenia-canary/xenia-canary) or
-[RPCS3](https://github.com/RPCS3/rpcs3) serves you better, use them. I respect
+[xenia](https://github.com/xenia-canary/xenia-canary),
+[RPCS3](https://github.com/RPCS3/rpcs3), [Cemu](https://github.com/cemu-project/cemu) or [shadPS4](https://github.com/shadps4-emu/shadps4) serves you better, use them. I respect
 every project around this game and none of them are competitors.
 
 ## How Claude was used
