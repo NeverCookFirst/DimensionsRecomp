@@ -1,4 +1,5 @@
-﻿# Manual codegen overrides for LEGO Dimensions (Default.xex, v0.0.0.3, no TU).
+﻿# Manual codegen overrides for LEGO Dimensions (Default.xex + sibling Default.xexp,
+# i.e. the TU23-patched image, v0.0.23.3 - the loader applies the patch itself).
 # Included from legodimensions_manifest.toml -> [entrypoint].includes
 #
 # Analysis pass 1 (2026-08-31) ended with:
