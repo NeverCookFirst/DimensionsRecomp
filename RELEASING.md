@@ -91,17 +91,15 @@ Rules the updater depends on:
 
 ## 4. The repository must be readable
 
-The updater talks to the public GitHub API. **While
-NeverCookFirst/DimensionsRecomp is private, nobody's updater can see or
-download a release.** Either
+The updater talks to the public GitHub API, so the repository has to be
+readable without a token. **NeverCookFirst/DimensionsRecomp is public**, and
+that is what makes releases visible to everyone's updater.
 
-- make the repository public before the release, or
-- keep it private and drop a personal access token in
-  `tools\rexupdate\token.txt` on each tester's machine (also honoured:
-  `--token`, `GITHUB_TOKEN`).
-
-Without one of those the updater fails with a clean "not found" and the game
-carries on as normal - nothing breaks, updates simply never appear.
+If it is ever made private again, nobody's updater can see or download a
+release until a personal access token is dropped in
+`toolsexupdate	oken.txt` on each machine (also honoured: `--token`,
+`GITHUB_TOKEN`). Without one the updater fails with a clean "not found" and the
+game carries on as normal - nothing breaks, updates simply never appear.
 
 ## 5. If a release turns out bad
 
