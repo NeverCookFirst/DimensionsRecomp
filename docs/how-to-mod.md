@@ -61,6 +61,12 @@ the interesting things live: text, GUI scripts, character stats, abilities.
 DLC archives work too: `datfiles/DLC16/...` finds `DLC16.DAT2` inside its package
 folder under `content`, which is where DLC characters keep their abilities.
 
+The disc archives are reachable as well: `datfiles/GAME/...` finds `GAME.DAT` in
+the `game` folder, and so do `GAME0`..`GAME4` and `INSTALL0_*`. Reach for them
+only for something the update does not carry — the button prompts in
+`GUI/FONT/BUTTONS_360_NXG.FT2`, for one. If a file exists in both, the update's
+copy wins, so modding the disc copy would change nothing.
+
 ### The one rule that matters
 
 **Your replacement file must not be longer than the original.** Shorter is fine,

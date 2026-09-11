@@ -269,7 +269,14 @@ public sealed class UpdateJob
         Run(modcli, $"restore \"{target}\"");
         if (enabled.Length == 0) return "restored (no mods enabled)";
 
+        // The same extra archive locations the F8 menu passes: a mod may name a
+        // DLC archive (one package folder each, under the content root) or a
+        // disc archive (GAME.DAT and friends). Without these modcli cannot find
+        // them and fails the whole re-apply.
+        string dlcDir = Path.Combine(install.Paths.ContentRoot,
+                                     "0000000000000000", "5752084B", "00000002");
         string args = $"apply \"{target}\" \"{install.Paths.ModsRoot}\" x360 "
+                    + $"--search \"{dlcDir}\" --search \"{install.Paths.GameDataRoot}\" "
                     + string.Join(' ', enabled.Select(m => "\"" + m + "\""));
         int rc = Run(modcli, args);
         return rc == 0 ? "re-applied: " + string.Join(", ", enabled)

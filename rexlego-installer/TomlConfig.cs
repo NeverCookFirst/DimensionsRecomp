@@ -70,6 +70,9 @@ public static class TomlConfig
             // archive (Super Sonic Infinite lives in DLC16).
             Add(modsSection, "mods_content_root",
                 Literal(Path.Combine(p.ContentRoot, "0000000000000000", "5752084B", "00000002")));
+            // And where the disc archives are, for mods that patch GAME.DAT and
+            // friends (the button prompts live in GAME.DAT under GUI/FONT).
+            Add(modsSection, "mods_game_root", Literal(p.GameDataRoot));
         }
 
         const string updatesSection = "Updates. Turn updates_check off (F4 -> Updates) to never look online.";

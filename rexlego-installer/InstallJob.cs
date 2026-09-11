@@ -403,6 +403,14 @@ public sealed class InstallJob
         psi.ArgumentList.Add(ModdedUpdateDir);
         psi.ArgumentList.Add(ModsDir);
         psi.ArgumentList.Add("x360");
+        // The same extra archive locations the F8 menu passes: a mod may name a
+        // DLC archive (one package folder each, under the content root) or a
+        // disc archive (GAME.DAT and friends). Without these modcli cannot find
+        // them and fails the whole apply.
+        psi.ArgumentList.Add("--search");
+        psi.ArgumentList.Add(DlcDir);
+        psi.ArgumentList.Add("--search");
+        psi.ArgumentList.Add(GameDir);
         foreach (string folder in folders) psi.ArgumentList.Add(folder);
         using var proc = Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start modcli.exe.");

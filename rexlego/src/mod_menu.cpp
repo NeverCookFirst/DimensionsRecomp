@@ -44,6 +44,14 @@ REXCVAR_DEFINE_STRING(modcli_path, "tools/modcli/modcli.exe", "Mods",
 // the modded update folder and puts them back on restore.
 REXCVAR_DEFINE_STRING(mods_content_root, "content/0000000000000000/5752084B/00000002", "Mods",
                       "Folder holding the DLC package folders, searched for archives a mod names");
+// The disc archives (GAME.DAT, GAME0..4, INSTALL0_*) are not in the update
+// folder either. A mod that names one of them - the button prompts live in
+// GAME.DAT under GUI/FONT - could not find it, and modcli failed the whole
+// apply, so the game folder is searched too. Anything the update archive also
+// carries should still be modded through PATCH: the update's copy of a file
+// wins over the disc's.
+REXCVAR_DEFINE_STRING(mods_game_root, "game", "Mods",
+                      "Folder holding the disc archives, searched for archives a mod names");
 // The mods folder is shared with the RPCS3 build, so it also holds mods that
 // target PS3 data this build does not have. Only mods declaring this platform,
 // or "any", are listed and applied.
@@ -339,19 +347,23 @@ class ModMenuDialog final : public rex::ui::ImGuiDialog {
     }
 
     if (!selection.empty()) {
+      // A relative root is relative to the install, not to whatever directory
+      // the game was started from: an install updated from an older release
+      // has no absolute path written for these keys and falls back to the
+      // built-in defaults, which describe the layout the installer lays down.
       std::string search;
-      const std::string content_cvar = REXCVAR_GET(mods_content_root);
-      if (!content_cvar.empty()) {
-        // A relative content root is relative to the install, not to whatever
-        // directory the game was started from: an install updated from an
-        // older release has no absolute path written for this key and falls
-        // back to the built-in default.
-        std::filesystem::path content = content_cvar;
-        if (content.is_relative()) {
-          content = rex::filesystem::GetExecutableFolder() / content;
+      auto add_search = [&search](const std::string& value) {
+        if (value.empty()) {
+          return;
         }
-        search = " --search " + Quote(content.string());
-      }
+        std::filesystem::path dir = value;
+        if (dir.is_relative()) {
+          dir = rex::filesystem::GetExecutableFolder() / dir;
+        }
+        search += " --search " + Quote(dir.string());
+      };
+      add_search(REXCVAR_GET(mods_content_root));
+      add_search(REXCVAR_GET(mods_game_root));
       int rc = RunQuoted(Quote(cli) + " apply " + Quote(target) + " " + Quote(root) + " " +
                          REXCVAR_GET(mods_platform) + search + args);
       if (rc != 0) {
