@@ -245,6 +245,89 @@ compiles as Debug and dies at link on an `_ITERATOR_DEBUG_LEVEL` mismatch agains
 the Release SDK. If that happens, re run the configure command from step 4
 explicitly rather than letting the implicit one run.
 
+**The game rewrites `legodimensions.toml` when it exits**, from the cvar values
+it holds, and drops keys whose value is empty. Edit the file with the game
+closed, and check your edit survived the next exit before concluding it did
+nothing.
+
+## Digging into the title itself
+
+Three things make the guest answer questions it used to swallow.
+
+**`MISSING-FUNCTION` names the caller.** The target address is almost always a
+vtable dispatch thunk, so on its own it only says "some slot". The `lr` in the
+message is the game function that made the call. Set
+`invalid_function_log_every` when you need repeats: by default each address is
+reported once per process, which hides the skip you are hunting if that address
+came up earlier in the session.
+
+Most of these come from one table of 16-byte thunks shaped
+
+```
+lwz   r12, 0(r3)        ; the vtable
+lwz   r11, <slot>(r12)  ; the method
+mtctr r11
+bctr
+```
+
+A full-image scan for that shape finds 324 of them; they are declared in
+`legodimensions_config.toml` under `[functions]`. If a new one ever turns up,
+add it, delete `rexlego/generated/default/codegen.stamp`, and rebuild.
+
+**`threads` and `hangwatch` in the console** say which guest threads are
+running. A statically recompiled build has no program counter to sample, but
+`lr`, `last_indirect_target`, `r1` and `ctr` together do the job: a tuple that
+is bit-for-bit identical for tens of seconds is not executing guest code. When
+a thread is stopped, its `lr` points at the *return*, so the call is at `lr-4`;
+addresses around `0x8411xxxx` are the import table, and
+`generated/default/legodimensions_register.cpp` maps them to kernel names.
+
+**`STUCK-LOCK`** appears when `RtlEnterCriticalSection` has waited longer than
+`critical_section_stuck_seconds`, naming the section, the owner and the counts.
+An owner of 0, or one naming a thread that has exited, means the lock leaked.
+
+**`trace_file_opens`** logs successful opens too, not just failures - the way to
+tell "asked for the level and was refused" from "never asked".
+
+## Fixing bugs that live in the data
+
+Not every title bug is in code. Some are a script line the developers commented
+out. Editing the player's own archives to correct that is intrusive and fights
+with the installer's content verification, so the runtime rewrites the bytes as
+they are read instead: see `rex/system/file_fixups.h` in the SDK, and the
+built-in fix registered in `rexlego/src/mod_menu.cpp`.
+
+A fixup must check what it is about to overwrite and do nothing when the bytes
+are not what it expects. That is what makes it a no-op on a different update or
+on data somebody has already patched, instead of damage. Built-in fixes appear
+in the mod menu greyed out and locked, and are turned off in the config rather
+than by a checkbox, because without them the stock game is broken.
+
+## Shipping a large mod: use a free archive slot
+
+The game already mounts extra archives - no code needed. At every start it
+probes twenty slots on the disc:
+
+```
+OPENED  d:\INSTALL0_.HDR   /  .DAT
+OPENED  d:\INSTALL0_0.HDR  /  .DAT
+OPENED  d:\INSTALL0_1.HDR  /  .DAT
+FAILED  d:\INSTALL0_2.HDR            <- first free slot
+FAILED  d:\INSTALL0_3..18.DAT
+```
+
+Headers are read in order until one is missing. A vanilla install uses three,
+leaving **seventeen free**: drop a `DAT`/`HDR` pair in as `INSTALL0_2.*` and the
+game reads it. The update device has room too - `update:\PATCH3.*` mounts, and
+the update device outranks the disc, which is where to put a file that has to
+override a base one.
+
+Verified with a 149 MB third-party archive: both devices mounted it, the probe
+carried on to the next slot, and the session logged no errors.
+
+This is the route for anything that adds files. The mod CLI patches in place at
+the same length and cannot add entries at all.
+
 ## Sibling repositories
 
 These live in the same working folder during development and are separate

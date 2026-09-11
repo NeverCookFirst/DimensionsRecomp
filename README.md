@@ -197,10 +197,30 @@ Known issues:
 - **60 FPS** is an unlock the original never ran at, and most remaining bugs
   live there. Set `frame_rate` to 30 in `F4` before reporting anything odd.
 - Some scenes render with **wrong colours or missing effects**.
-- The **Vulkan** backend is broken. Direct3D 12 is the working one and the
-  default.
+- The **Vulkan** backend is a work in progress. Direct3D 12 is the working one
+  and stays the default. See below if you want to try Vulkan anyway.
 - Not every code path has been visited, so an unexplored corner can still hit a
   hard stop rather than a graphical glitch.
+
+## Vulkan, if you want to try it
+
+> [!WARNING]
+> Vulkan is **not** ready, and this release does not make it ready. What
+> changed is that it draws the world instead of a white screen. Everything
+> else that was unstable about it still is: expect crashes, missing effects,
+> and performance that has had no attention at all. Direct3D 12 remains the
+> default and the one to report bugs against.
+
+Set `gpu_backend` to `vulkan` in `legodimensions.toml` next to the game.
+
+What was wrong: a texture-fetch path multiplied 16-bit samples by 65535 and
+blew entire worlds out to flat white with the HUD still drawn on top. That
+branch is now switched off, so colours come out correct - but **darker than
+intended**, because the scaling it was meant to do is simply not happening
+yet. Making it correct rather than absent is the actual fix, and it is not in
+this release.
+
+Put plainly: Vulkan went from unusable to *look at it and see*. That is all.
 
 ## What is planned
 

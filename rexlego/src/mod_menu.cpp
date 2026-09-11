@@ -19,6 +19,7 @@
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/rex_app.h>
+#include <rex/system/file_fixups.h>
 #include <rex/ui/imgui_dialog.h>
 
 // Comma-separated mod folder names. This is the persisted selection, and it is
@@ -48,6 +49,21 @@ REXCVAR_DEFINE_STRING(mods_content_root, "content/0000000000000000/5752084B/0000
 // or "any", are listed and applied.
 REXCVAR_DEFINE_STRING(mods_platform, "x360", "Mods", "Platform tag mods must match");
 
+// ---------------------------------------------------------------------------
+// Built-in fixes.
+//
+// Some of what this project ships is not a mod at all: without it the stock
+// game is broken. Those are applied by the runtime and listed in the menu as
+// locked entries, so a player can see what is on without being able to switch
+// off something the game needs.
+REXCVAR_DEFINE_BOOL(fix_portal_trailer, true, "Fixes",
+                    "Make the Mystery Dimension portal in Vorton work. Its state machine will not "
+                    "advance while the PortalTrailer level add-on is missing, so walking in strands "
+                    "the character inside forever and kills every other portal until a restart. "
+                    "Vorton's own loading script creates it, on a line the developers left "
+                    "commented out; this uncomments that line as the script is read. Nothing on "
+                    "disk is modified.");
+
 namespace legodimensions::mods {
 namespace {
 
@@ -55,7 +71,43 @@ struct ModEntry {
   std::string folder;
   std::string name;
   bool enabled = false;
+  bool built_in = false;  // shipped fix: shown, locked, never handed to modcli
 };
+
+// The offset of the "//" in front of
+//     //CreateLevelAddon(SetType = #PortalTrailer, SetName = #PortalTrailer);
+// in levels/hub/vorton/ai/loading.sf, inside the TU23 PATCH.DAT. Every mod this
+// project ships edits in place at the same length, so the layout does not move.
+// The bytes are checked before anything is written, which is what makes a wrong
+// update, a different region or already-patched data a no-op rather than damage.
+constexpr uint64_t kPortalTrailerCommentOffset = 0x7010E70ull;
+
+struct BuiltInFixes {
+  BuiltInFixes() {
+    rex::system::RegisterFileReadFixup(
+        [](const std::string& name, uint64_t offset, uint8_t* data, size_t length) {
+          if (!REXCVAR_GET(fix_portal_trailer) || name != "PATCH.DAT") {
+            return;
+          }
+          if (offset > kPortalTrailerCommentOffset ||
+              kPortalTrailerCommentOffset + 2 > offset + length) {
+            return;
+          }
+          uint8_t* at = data + (kPortalTrailerCommentOffset - offset);
+          if (at[0] != '/' || at[1] != '/') {
+            return;  // already uncommented, or not the data this fix knows
+          }
+          at[0] = ' ';
+          at[1] = ' ';
+          static bool announced = false;
+          if (!announced) {
+            announced = true;
+            REXLOG_INFO("Fix: PortalTrailer enabled in Vorton's loading script (read-time only)");
+          }
+        });
+  }
+};
+const BuiltInFixes g_built_in_fixes;
 
 std::vector<std::string> SplitList(const std::string& csv) {
   std::vector<std::string> out;
@@ -134,6 +186,14 @@ std::vector<ModEntry> Discover() {
   }
 
   const std::vector<std::string> enabled = SplitList(REXCVAR_GET(mods));
+
+  ModEntry portal_fix;
+  portal_fix.folder = "built-in";
+  portal_fix.name = "Mystery Dimension portal fix";
+  portal_fix.enabled = REXCVAR_GET(fix_portal_trailer);
+  portal_fix.built_in = true;
+  discovered.push_back(std::move(portal_fix));
+
   for (const auto& dir : it) {
     if (!dir.is_directory()) {
       continue;
@@ -166,8 +226,13 @@ std::vector<ModEntry> Discover() {
     discovered.push_back(std::move(entry));
   }
 
-  std::sort(discovered.begin(), discovered.end(),
-            [](const ModEntry& a, const ModEntry& b) { return a.name < b.name; });
+  // Built-in fixes first, then the player's mods by name.
+  std::sort(discovered.begin(), discovered.end(), [](const ModEntry& a, const ModEntry& b) {
+    if (a.built_in != b.built_in) {
+      return a.built_in;
+    }
+    return a.name < b.name;
+  });
   // An empty list is the one thing a player cannot diagnose from the menu, so
   // say what was in the folder and why it was passed over.
   REXLOG_INFO("Mods: {} listed of {} folder(s) in {} ({} without a usable mod.json, {} for another platform)",
@@ -211,9 +276,21 @@ class ModMenuDialog final : public rex::ui::ImGuiDialog {
     ImGui::BeginChild("##modlist", ImVec2(0.0f, -64.0f), false);
     for (ModEntry& mod : mods_) {
       ImGui::PushID(mod.folder.c_str());
-      ImGui::Checkbox(mod.name.c_str(), &mod.enabled);
-      ImGui::SameLine();
-      ImGui::TextDisabled("(%s)", mod.folder.c_str());
+      if (mod.built_in) {
+        // Greyed and unclickable: this one is a fix the game needs, not a
+        // choice. It can still be turned off in legodimensions.toml for anyone
+        // who wants the stock behaviour back.
+        ImGui::BeginDisabled();
+        bool on = mod.enabled;
+        ImGui::Checkbox(mod.name.c_str(), &on);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::TextDisabled("(built in - fix_portal_trailer in the config)");
+      } else {
+        ImGui::Checkbox(mod.name.c_str(), &mod.enabled);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%s)", mod.folder.c_str());
+      }
       ImGui::PopID();
     }
     ImGui::EndChild();
@@ -251,8 +328,8 @@ class ModMenuDialog final : public rex::ui::ImGuiDialog {
     std::string selection;
     std::string args;
     for (const ModEntry& mod : mods_) {
-      if (!mod.enabled) {
-        continue;
+      if (!mod.enabled || mod.built_in) {
+        continue;  // built-in fixes are the runtime's job, not modcli's
       }
       if (!selection.empty()) {
         selection += ",";
