@@ -158,6 +158,12 @@ public sealed class UpdaterForm : Form
             $"{result.Replaced.Count} file(s) replaced. The previous ones are in backup\\{result.From}.",
         };
         if (result.ModsReapplied is not null) lines.Add("Mods: " + result.ModsReapplied);
+        if (result.KeptFiles.Count > 0)
+        {
+            lines.Add("Left as you changed them: " + string.Join(", ", result.KeptFiles.Take(3))
+                      + (result.KeptFiles.Count > 3 ? $" and {result.KeptFiles.Count - 3} more" : "")
+                      + ".");
+        }
         if (result.KeptSettings.Count > 0)
             lines.Add("Left as you set them: " + string.Join(", ", result.KeptSettings));
         if (result.SelfUpdate is not null)

@@ -12,11 +12,18 @@ public sealed class UpdatePlan
     public List<ReleaseFile> Changed { get; } = new();
     /// <summary>Changed files the pack does not carry - it cannot finish the job.</summary>
     public List<string> Missing { get; } = new();
+    /// <summary>
+    /// Files the release did not touch but the user did - a hand-edited bundled
+    /// mod, or one they deleted. A delta pack does not carry them and does not
+    /// need to: they are left exactly as the user has them.
+    /// </summary>
+    public List<string> UserModified { get; } = new();
     /// <summary>Payload paths this release retires.</summary>
     public List<string> Remove { get; } = new();
     public long Bytes => Changed.Sum(f => f.Len);
     public bool AnyMods => Changed.Any(f => f.P.StartsWith("mods/", StringComparison.OrdinalIgnoreCase));
-    public bool Usable => Missing.Count == 0 && (Changed.Count > 0 || Remove.Count > 0);
+    public bool Usable => Missing.Count == 0
+                       && (Changed.Count > 0 || Remove.Count > 0 || UserModified.Count > 0);
 }
 
 /// <summary>
@@ -68,8 +75,21 @@ public sealed class UpdateJob
             string dest = Destination(file.P);
             if (File.Exists(dest) && InstallManifest.Sha256(dest) == file.Sha) continue;
 
+            // The pack is a delta: it carries only what this release changed. A
+            // file that differs from the release, but which the release left
+            // exactly as we installed it, differs because the user changed it -
+            // a hand-edited bundled mod, say. That is not a broken pack and must
+            // not stop the update; the user's copy is kept as it is.
+            if (pack is not null && pack.Find(file.P) is null)
+            {
+                if (install.Find(file.P)?.Sha == file.Sha)
+                {
+                    plan.UserModified.Add(file.P);
+                    continue;
+                }
+                plan.Missing.Add(file.P);
+            }
             plan.Changed.Add(file);
-            if (pack is not null && pack.Find(file.P) is null) plan.Missing.Add(file.P);
         }
         foreach (string gone in release.Removed)
         {
@@ -125,6 +145,7 @@ public sealed class UpdateJob
         }
 
         var result = new UpdateResult { From = install.Version, To = plan.Release.Version };
+        result.KeptFiles.AddRange(plan.UserModified);
         string backupDir = Path.Combine(installDir, "backup", install.Version);
         long total = Math.Max(1, plan.Bytes);
         long done = 0;
@@ -332,6 +353,8 @@ public sealed class UpdateResult
     public List<string> Replaced { get; } = new();
     public List<string> Removed { get; } = new();
     public List<string> KeptSettings { get; set; } = new();
+    /// <summary>Files left alone because the user had changed them.</summary>
+    public List<string> KeptFiles { get; set; } = new();
     public int BackedUp { get; set; }
     public string? ModsReapplied { get; set; }
     /// <summary>Set when the updater updated itself; the swap happens after it exits.</summary>

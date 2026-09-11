@@ -1,8 +1,8 @@
 ﻿{
     "product":  "DimensionsRecompiled",
     "version":  "0.1.12",
-    "releasedUtc":  "2026-09-11T12:41:41.4082759Z",
-    "notes":  "Mods that patch a disc archive (GAME.DAT and friends) now apply instead of failing. The installer and the updater also pass the DLC and disc folders to modcli, so DLC mods survive an update.",
+    "releasedUtc":  "2026-09-11T15:53:10.2389262Z",
+    "notes":  "",
     "minVersion":  "",
     "full":  true,
     "files":  [
@@ -38,7 +38,7 @@
                   },
                   {
                       "p":  "modcli/modcli.exe",
-                      "sha":  "2476231b77986f0200e2529ad6d658a60a945a73f1593628fb40b0f7d51b059c",
+                      "sha":  "bd6d359c766bec7899e452223dad4688a61d180908b7329fcf2a5553ab5f9d1c",
                       "len":  67527838
                   },
                   {
@@ -623,13 +623,13 @@
                   },
                   {
                       "p":  "toypad/LegoToypad.exe",
-                      "sha":  "ca83ffcb3aa9231698e6dda01e79732e91075abdded1d2a542acd8e9d7e721a8",
-                      "len":  78769664
+                      "sha":  "f68373bfe3c084ed48f1b9e29c33feea3e8d2eb36a2e43f7e755c675f0f45ce0",
+                      "len":  78771200
                   },
                   {
                       "p":  "updater/rexupdate.exe",
-                      "sha":  "cd2aad01e836425ab4b2c1c4de4dd369d425fdf595f05fe327ba6b6c1c01bde5",
-                      "len":  66632534
+                      "sha":  "256058b2adc01459e135e9514260f4ea53c8063d5172a6aedc869e894fa37245",
+                      "len":  66633046
                   }
               ],
     "removed":  [
