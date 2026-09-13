@@ -26,6 +26,13 @@ public sealed class UpdaterForm : Form
 
     bool working;
 
+    // Set after a successful update: the window closes itself, because nobody
+    // wants to dismiss a dialog that has nothing left to say. The countdown is
+    // visible on the button and any click in the window cancels it, so a summary
+    // worth reading is never snatched away mid-sentence.
+    readonly System.Windows.Forms.Timer closeTimer = new() { Interval = 1000 };
+    int closeIn;
+
     public UpdaterForm(InstallManifest install, ReleaseInfo release, string? token)
     {
         this.install = install;
@@ -185,6 +192,39 @@ public sealed class UpdaterForm : Form
             string game = Path.Combine(install.Paths.InstallDir, "legodimensions.exe");
             if (File.Exists(game)) Open(game);
         }
+
+        StartAutoClose();
+    }
+
+    /// <summary>
+    /// Counts down on the Close button and then closes. Cancelled by any click
+    /// in the window, including one on the summary the player may be reading.
+    /// </summary>
+    void StartAutoClose()
+    {
+        closeIn = 5;
+        later.Text = $"Close ({closeIn})";
+        closeTimer.Tick += (_, _) =>
+        {
+            if (--closeIn <= 0)
+            {
+                closeTimer.Stop();
+                Close();
+                return;
+            }
+            later.Text = $"Close ({closeIn})";
+        };
+        void Cancel(object? _, EventArgs __)
+        {
+            if (!closeTimer.Enabled) return;
+            closeTimer.Stop();
+            later.Text = "Close";
+        }
+        MouseDown += Cancel;
+        notes.Click += Cancel;
+        notes.MouseDown += Cancel;
+        launch.Click += Cancel;
+        closeTimer.Start();
     }
 
     void Set(double fraction, string text)

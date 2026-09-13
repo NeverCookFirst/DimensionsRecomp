@@ -22,9 +22,22 @@ set(LEGODIMENSIONS_SOURCES
     src/discord_presence.cpp
     src/ui_theme.cpp
     src/mod_menu.cpp
+    src/cheat_engine.cpp
+    src/cheat_menu.cpp
     src/toypad_app.cpp
     src/updates.cpp
 )
+
+# Research probes: a guard-page watchpoint on the area flags and the failed
+# attempt at forcing the 3D portrait. They are off in a release because one of
+# them single-steps every read of a watched page, which is slow enough to look
+# like a hang, and neither is any use to a player. Turn them back on with
+# -DLEGODIMENSIONS_DEV_PROBES=ON while working on the portrait.
+option(LEGODIMENSIONS_DEV_PROBES "Build the area-flag watchpoint and portrait experiments" OFF)
+if(LEGODIMENSIONS_DEV_PROBES)
+    list(APPEND LEGODIMENSIONS_SOURCES src/icon_probe.cpp src/hub_portrait.cpp)
+    add_compile_definitions(LEGODIMENSIONS_DEV_PROBES)
+endif()
 
 if(WIN32)
     add_executable(legodimensions WIN32 ${LEGODIMENSIONS_SOURCES}

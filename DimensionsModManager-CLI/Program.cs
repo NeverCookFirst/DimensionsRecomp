@@ -107,6 +107,51 @@ try
             return 0;
         }
 
+        // grep <dat> <needle> [nameFilter]  - entries whose raw bytes contain
+        // |needle|. Only useful for entries stored uncompressed (the .txt and
+        // .csv config files are), which is exactly what config spelunking needs.
+        case "grep":
+        {
+            var archive = new DatArchive(args[1]);
+            byte[] needle = System.Text.Encoding.ASCII.GetBytes(args[2]);
+            string nameFilter = args.Length > 3 ? args[3] : "";
+            int hits = 0;
+            foreach (var (name, _) in archive.EnumerateNames())
+            {
+                if (nameFilter.Length > 0 &&
+                    !name.Contains(nameFilter, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                int index = archive.FindEntry(name);
+                if (index < 0)
+                {
+                    continue;
+                }
+                var (_, zsize, size) = archive.GetEntry(index);
+                if (zsize != size || zsize == 0 || zsize > 8 * 1024 * 1024)
+                {
+                    continue; // compressed or implausible - a raw search would lie
+                }
+                byte[] data;
+                try
+                {
+                    data = archive.ReadEntryData(index);
+                }
+                catch (IOException)
+                {
+                    continue;
+                }
+                if (IndexOfBytes(data, needle) >= 0)
+                {
+                    Console.WriteLine($"{index,7}  {name}");
+                    hits++;
+                }
+            }
+            Console.Error.WriteLine($"{hits} hit(s)");
+            return hits > 0 ? 0 : 1;
+        }
+
         // extract <dat> <internalPath> <outFile>
         case "extract":
         {
@@ -118,7 +163,9 @@ try
                 return 1;
             }
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[3]))!);
-            File.WriteAllBytes(args[3], archive.ReadEntryData(index));
+            // Entries are usually DFLT-compressed; hand back what the game
+            // would actually see, not the packed bytes.
+            File.WriteAllBytes(args[3], archive.ReadEntryDataDecompressed(index));
             var (off, z, s) = archive.GetEntry(index);
             Console.WriteLine($"entry {index} @0x{off:X} z={z} s={s} -> {args[3]}");
             return 0;
@@ -133,4 +180,23 @@ catch (Exception ex)
 {
     Console.Error.WriteLine($"ERROR: {ex.Message}");
     return 1;
+}
+
+// Plain byte-substring search; the payloads here are small config files, so a
+// naive scan is fast enough and avoids pulling in a text encoding guess.
+static int IndexOfBytes(byte[] haystack, byte[] needle)
+{
+    for (int i = 0; i + needle.Length <= haystack.Length; i++)
+    {
+        int j = 0;
+        while (j < needle.Length && haystack[i + j] == needle[j])
+        {
+            j++;
+        }
+        if (j == needle.Length)
+        {
+            return i;
+        }
+    }
+    return -1;
 }

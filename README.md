@@ -129,11 +129,37 @@ Any XInput pad works, and so does the keyboard, with no setting to find first:
 | `E` `Q` | LB RB |
 | `I` `O` | LT RT |
 | `Enter` or `Esc` | START |
-| `Backspace` | BACK |
+| `=` | BACK |
+
+BACK sat on `Backspace` until 0.1.13 and kept firing by accident; it moved to
+`=`, and anyone who had rebound it keeps their own binding.
 
 Every bind is editable in `F4` under Input / Keybinds, with **Rebind**, **Reset**
 and **Clear** on each line. Keyboard and pad are live at the same time. Mouse
 look exists but is off by default: turn on `mnk_mouse`.
+
+## The cheat menu
+
+`Del` opens a memory scanner built into the game - the same idea as Cheat
+Engine, without needing Cheat Engine.
+
+Pick a value type, type the number you can see on screen, **First scan**, then
+change it in game and **Next scan =** until a few addresses are left. Click one
+and **Write once** or **Freeze** it. If the number is not shown anywhere, start
+from **Unknown value** and narrow down with Increased / Decreased / Changed /
+Unchanged. Scans run on their own thread, so the game keeps moving while they
+work, and candidates are held as a bitmap rather than a capped list, so an
+unknown-value hunt actually converges.
+
+**Save as cheat** stores an address under a name in `cheats_5752084B.txt` beside
+the game and re-applies it on every launch, only while its tick box is on.
+
+Cheat Engine itself still works, and [docs/cheat-engine.md](docs/cheat-engine.md)
+explains the two things that otherwise make it look broken: guest memory is a
+file mapping, so `MEM_MAPPED` scanning has to be switched on, and every value is
+big-endian. Ready-made big-endian types for it are in
+[tools/cheatengine](tools/cheatengine). The console command `membase` prints
+where guest memory landed for the current run and converts addresses either way.
 
 ## Languages
 
@@ -342,6 +368,12 @@ The template asks for the few things that actually help: `game.log`, your
   protocol work everything portal related here builds on.
 - **[xenia](https://github.com/xenia-canary/xenia-canary)**, whose research into
   the Xbox 360 GPU makes the graphics side possible at all.
+- **[connorh315](https://github.com/connorh315)**, for
+  [BrickVault](https://github.com/connorh315/BrickVault) and for answering a
+  pile of format questions in detail. The DFLT decompressor that lets our tools
+  read the game's compressed archives is his work, used with his permission,
+  and his notes on the PS4 build settled in one afternoon a question we had
+  been circling for weeks.
 - Everyone who tested a broken build or said it was a good idea before it
   obviously was one.
 

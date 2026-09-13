@@ -4,10 +4,20 @@
 
 #pragma once
 
+#include <chrono>
+#include <cstdlib>
+#include <mutex>
+#include <thread>
+
+#include <rex/logging.h>
 #include <rex/rex_app.h>
 #include <rex/ui/keybinds.h>
 
+#include "cheat_menu.h"
 #include "discord_presence.h"
+#ifdef LEGODIMENSIONS_DEV_PROBES
+#include "hub_portrait.h"
+#endif
 #include "mod_menu.h"
 #include "toypad_app.h"
 #include "ui_theme.h"
@@ -30,6 +40,10 @@ class LegodimensionsApp : public rex::ReXApp {
   // slow network cannot be mistaken for a slow launch. It costs nothing when
   // updates_check is off, which is the point of the setting.
   void OnPostSetup() override {
+#ifdef LEGODIMENSIONS_DEV_PROBES
+    // Guest functions are registered by now, which is what the patch needs.
+    legodimensions::hub_portrait::Install();
+#endif
     legodimensions::discord::Start();
     legodimensions::updates::CheckAtStartup();
     legodimensions::toypad_app::StartIfEnabled();
@@ -38,8 +52,14 @@ class LegodimensionsApp : public rex::ReXApp {
   // The window closing is where the app must be let go: ReXApp::OnClosing then
   // hard-exits with std::_Exit, so OnShutdown never runs. This asks nicely; the
   // job object is the backstop if the game dies without getting here.
+  // The watchdog covers the gap before ReXApp::OnClosing's hard-exit. That
+  // hard-exit exists precisely because subsystem teardown can deadlock, but the
+  // window layer between "close requested" and OnClosing can wedge too, and
+  // then the process never dies and the player is left killing it by hand.
+  // Give it three seconds and take the same way out.
   bool OnWindowCloseRequested() override {
     legodimensions::toypad_app::StopIfStarted();
+    StartShutdownWatchdog();
     return true;
   }
 
@@ -47,6 +67,8 @@ class LegodimensionsApp : public rex::ReXApp {
   void OnShutdown() override {
     legodimensions::discord::Stop();
     legodimensions::toypad_app::StopIfStarted();
+    // Drops the freeze thread before the guest memory it writes into goes away.
+    legodimensions::cheats::Shutdown();
   }
 
   // The SDK inherits xenia's green ImGui theme; both hooks exist so a game can
@@ -75,10 +97,34 @@ class LegodimensionsApp : public rex::ReXApp {
         mod_menu_ = legodimensions::mods::CreateMenu(drawer);
       }
     });
+    // DEL opens the cheat menu. Only the dialog is thrown away on close - the
+    // scanner and any frozen values live on in the engine behind it.
+    rex::ui::RegisterBind("bind_cheats", "Delete", "Toggle cheat menu", [this, drawer] {
+      if (cheat_menu_) {
+        cheat_menu_.reset();
+      } else {
+        cheat_menu_ = legodimensions::cheats::CreateMenu(drawer);
+      }
+    });
   }
 
  private:
+  // Last-resort exit if the close path wedges. Detached on purpose: if the
+  // process gets where it is going first, _Exit takes this thread with it.
+  static void StartShutdownWatchdog() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+      std::thread([] {
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        REXLOG_WARN("Shutdown wedged past the close request; hard-exiting.");
+        rex::FlushLogging();
+        std::_Exit(0);
+      }).detach();
+    });
+  }
+
   std::unique_ptr<rex::ui::ImGuiDialog> mod_menu_;
+  std::unique_ptr<rex::ui::ImGuiDialog> cheat_menu_;
 
  public:
   // Override virtual hooks for customization:

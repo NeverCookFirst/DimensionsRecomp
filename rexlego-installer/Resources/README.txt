@@ -71,9 +71,11 @@ Installed to: {INSTALL_DIR}
      WASD          move            J = A        K = B
      arrows        camera          H = X        U = Y
      Enter or Esc  START           E = LB       Q = RB
-     Backspace     BACK            I = LT       O = RT
+     =             BACK            I = LT       O = RT
 
   The D-pad is left unbound, because WASD already covers those directions.
+  BACK used to sit on Backspace and kept firing by accident, so it moved to the
+  = key. If you had rebound it yourself, your binding is kept.
   Everything is rebindable in F4 under Input / Keybinds: each line has
   Rebind, Reset and Clear (Clear empties a bind so the action never fires).
   Keyboard and pad work at the same time - unplugging one changes nothing.
@@ -85,6 +87,7 @@ Installed to: {INSTALL_DIR}
 
   F4          Settings menu (graphics, frame rate, input, everything below)
   F8          Mods menu
+  Del         Cheat menu (memory scanner, value freezer, saved cheats)
   F7          Achievements list
   F3          Debug overlay (FPS, timings). Handy when reporting a bug.
   `  (tilde)  Console / log view
@@ -184,7 +187,41 @@ Installed to: {INSTALL_DIR}
 
 
 ------------------------------------------------------------------------------
-  7. UPDATES
+  7. THE CHEAT MENU
+------------------------------------------------------------------------------
+
+  Press  Del  in game.
+
+  It is a memory scanner, the same idea as Cheat Engine but built in, so you
+  do not need an external tool and do not have to fight the byte order this
+  game stores its numbers in.
+
+  To find something - studs, hearts, a timer:
+
+    1. Pick the value type (32-bit for counters, float for health and timers).
+    2. Type the number you can see on screen and press  First scan.
+    3. Change it in game - spend studs, take a hit - then type the new number
+       and press  Next scan =.  Repeat until only a few addresses are left.
+    4. Click one, type a new value, then  Write once  or  Freeze.
+
+  If you cannot see the number anywhere, use  Unknown value  instead, then
+  narrow it down with  Increased / Decreased / Changed / Unchanged  after
+  making it move. Scanning runs on its own thread, so the game does not
+  freeze while it works.
+
+  Save as cheat  keeps an address under a name in  cheats_5752084B.txt  next
+  to the game, and the list is re-applied every launch. Nothing is on unless
+  you tick it.
+
+  Cheat Engine itself still works if you prefer it, but it needs two settings:
+  turn on MEM_MAPPED scanning, and scan as big-endian. The console command
+  membase  prints where guest memory sits for that run. The full explanation
+  and ready-made big-endian types are in  docs/cheat-engine.md  in the project
+  repository.
+
+
+------------------------------------------------------------------------------
+  8. UPDATES
 ------------------------------------------------------------------------------
 
   New releases do not need a reinstall. When the game starts it quietly asks
@@ -211,7 +248,7 @@ Installed to: {INSTALL_DIR}
 
 
 ------------------------------------------------------------------------------
-  8. REPORTING A BUG
+  9. REPORTING A BUG
 ------------------------------------------------------------------------------
 
   Please include:
@@ -228,7 +265,7 @@ Installed to: {INSTALL_DIR}
 
 
 ------------------------------------------------------------------------------
-  9. WHAT IS THIS, TECHNICALLY
+  10. WHAT IS THIS, TECHNICALLY
 ------------------------------------------------------------------------------
 
   This is a static recompilation of the Xbox 360 executable: the original
