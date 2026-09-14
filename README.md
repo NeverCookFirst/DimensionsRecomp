@@ -318,8 +318,9 @@ Everything was developed and tested on one machine: Ryzen 7 5700X3D, RTX 4060,
 
 **That is the only machine this has been properly tested on, so I cannot promise
 stable performance on any device, including that one.** This is a public beta.
-Steam Deck and handhelds have not been tested at all, and neither has anything
-running it through Proton or Wine.
+
+
+As for now, game is playable on Steam Deck through Proton, native port is not coming soon.
 
 > [!TIP]
 > Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
