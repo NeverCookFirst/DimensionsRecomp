@@ -102,14 +102,25 @@ Out of the box the installer sets up the
 [LEGO Toypad app](https://github.com/harrysof/LegoToypad), which stands in for
 the portal and lets you pick figures with a controller.
 
-**Your real Toy Pad works too.** Windows hands it to its own driver, so swap that
-once with [Zadig](https://zadig.akeo.ie): tick Options, List All Devices, pick
-`LEGO READER V2.10` (check the ID reads `0E6F 0241`), choose `libusb0`, press
-Replace Driver. Then in game press `F4`, open Input, untick `toypad_emulation`
-and restart. The pad lights up and real figures work.
+**Your real Toy Pad works too** - the Wii U, PlayStation 3, PlayStation 4 and
+Xbox 360 pads are all supported. Windows will not let the game reach the pad on
+its own, so swap the driver once with [Zadig](https://zadig.akeo.ie): tick
+Options, List All Devices, pick your pad and check its USB ID before you change
+anything:
+
+| In the list | USB ID | Pad |
+|---|---|---|
+| `LEGO READER V2.10` | `0E6F 0241` | Wii U / PS3 / PS4 |
+| `LEGO(R) DIMENSIONS(TM)` | `24C6 FA01` | Xbox 360 |
+
+Choose `libusb-win32` and press **Install Driver** (on a pad Windows already has
+a driver for the button reads Replace Driver - same step). Then in game press
+`F4`, open Input, untick `toypad_emulation` and restart. The pad lights up and
+real figures work.
 
 > [!NOTE]
-> For now, only the Wii U, PlayStation 3 and PlayStation 4 toypads are compatible.
+> The Xbox 360 pad shows up in Device Manager as "Driver is unavailable" until
+> you do this. That is expected - Windows ships no driver for it at all.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 

@@ -39,17 +39,23 @@ Installed to: {INSTALL_DIR}
   USING YOUR REAL TOY PAD INSTEAD
 
   If you own the actual LEGO Dimensions Toy Pad you can plug it in and use
-  real figures, with no companion app at all. The Wii U, PlayStation 3 and
-  PlayStation 4 pads are supported. The Xbox 360 one is not, for now.
+  real figures, with no companion app at all. The Wii U, PlayStation 3,
+  PlayStation 4 and Xbox 360 pads are all supported.
 
-  Windows gives the pad to its own driver, which will not let the game
-  talk to it, so it has to be swapped once:
+  Windows will not let the game talk to the pad on its own, so the driver
+  has to be swapped once:
 
     1. Download Zadig from  https://zadig.akeo.ie
     2. Plug the Toy Pad in. In Zadig, tick  Options -> List All Devices.
-    3. Pick  LEGO READER V2.10  in the list. Check that the USB ID reads
-       0E6F 0241, so you do not reassign the wrong device.
-    4. Choose  libusb0  as the driver and press Replace Driver.
+    3. Pick your pad in the list and check the USB ID before replacing
+       anything, so you do not reassign the wrong device:
+         LEGO READER V2.10       0E6F 0241   Wii U / PS3 / PS4 pad
+         LEGO(R) DIMENSIONS(TM)  24C6 FA01   Xbox 360 pad
+       The Xbox 360 pad shows up in Device Manager as "Driver is
+       unavailable" until this is done. That is expected.
+    4. Choose  libusb-win32  as the driver and press Install Driver.
+       (On a pad Windows already has a driver for, the button reads
+       Replace Driver instead - that is the same step.)
     5. In the game press F4, open Input, untick  toypad_emulation,
        then restart the game.
 
