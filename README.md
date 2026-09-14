@@ -337,6 +337,30 @@ As for now, game is playable on Steam Deck through Proton, native port is not co
 > Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
 GPU at feature level 11_0.
 
+<details>
+<summary><b>Why AVX2, and what it takes to build without it</b></summary>
+
+The requirement is deliberate, not an accident of the toolchain. `legodimensions`
+and `legodimensions_recomp` are compiled with `-march=x86-64-v3`, which means
+AVX2, BMI2 and FMA. The recompiled translation units are where essentially all
+guest CPU time goes, so building them for a modern baseline (plus `-O3`) is a
+measurable speed win rather than a free-floating restriction. The runtime
+libraries, `rexruntime.dll` and `rexgpu-xenos.dll`, are built at `x86-64-v2` and
+need no AVX2 - the floor comes from the game executable alone.
+
+Building without it is one small change, not a fork: the block near the end of
+[`rexlego/CMakeLists.txt`](rexlego/CMakeLists.txt) that applies
+`-march=x86-64-v3` can be dropped to `-march=x86-64-v2` or removed. `x86-64-v2`
+still requires SSE4.2 and POPCNT, so anything older than Nehalem is out either
+way.
+
+Expect it to run slower - that block exists precisely because it is not free -
+and be aware that **no non-AVX2 configuration has ever been built or tested**.
+Nothing in the code is knowingly AVX2-specific beyond that flag, but it is
+untravelled ground. If you try it, please report back.
+
+</details>
+
 > [!TIP]
 > **Laptops with an Nvidia GPU**: if the frame rate is far worse than your
   hardware should manage, the game is probably running on your integrated
