@@ -272,13 +272,10 @@ Roughly in the order I want to get to it. No dates.
 
 - **Fixing the crashes that keep coming back.** A handful of them are
   reproducible and hit a lot of people, so they matter more than anything new.
-- **Xbox 360 and Xbox One ToyPads support**, so everyone can play the game how they want.
+- **Xbox One ToyPad support**, so everyone can play the game how they want.
 - **UI fixes, and layouts for other gamepads.** Right now the button prompts
   assume an Xbox pad. PlayStation, Switch and generic controllers should show
   their own.
-- **Mouse look.** The keyboard now plays out of the box and every bind is
-  editable in `F4`, but the mouse still has to be switched on by hand
-  (`mnk_mouse`) and deserves proper tuning.
 - **Updating the Discord Rich Presence** so it shows more than a static line.
 - **Recompiling the GPU side too, in some form.** *Research, not a promise.*
   Graphics is the one part still done the emulator way: the game's draw calls
