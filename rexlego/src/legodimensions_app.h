@@ -16,6 +16,9 @@
 #include "cheat_menu.h"
 #include "discord_presence.h"
 #ifdef LEGODIMENSIONS_DEV_PROBES
+#include "area_watch.h"
+#endif
+#ifdef LEGODIMENSIONS_DEV_PROBES
 #include "hub_portrait.h"
 #endif
 #include "mod_menu.h"
@@ -43,6 +46,9 @@ class LegodimensionsApp : public rex::ReXApp {
 #ifdef LEGODIMENSIONS_DEV_PROBES
     // Guest functions are registered by now, which is what the patch needs.
     legodimensions::hub_portrait::Install();
+    // Must come before the presence starts: the presence asks it where the
+    // player is, and it can only answer once the accessor is wrapped.
+    legodimensions::area_watch::Install();
 #endif
     legodimensions::discord::Start();
     legodimensions::updates::CheckAtStartup();

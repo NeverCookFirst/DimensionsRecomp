@@ -26,6 +26,7 @@ public sealed class WizardForm : Form
 
     // page widgets that need reading later
     CheckBox? welcomeAck;
+    RadioButton? modeFull, modeDlcOnly;
     TextBox? gameBox, updateBox, dlcBox, installBox;
     Label? gameStatus, updateStatus, dlcStatus, installStatus;
     ListBox? dlcList;
@@ -98,9 +99,24 @@ public sealed class WizardForm : Form
             }
             if (page == Page.Done) { Finish(); return; }
         }
-        var target = (Page)((int)page + dir);
+        var target = Step(page, dir);
         Show(target);
         if (target == Page.Installing) _ = RunInstallAsync();
+    }
+
+    /// <summary>
+    /// The next page in the chosen direction. A DLC-only run needs neither the
+    /// disc nor the Title Update nor the component list - it goes
+    /// Welcome -> DLC -> Location - so those pages are stepped over rather
+    /// than shown empty.
+    /// </summary>
+    Page Step(Page from, int dir)
+    {
+        var target = (Page)((int)from + dir);
+        if (!opts.DlcOnly) return target;
+        while (target is Page.Game or Page.Update or Page.Components)
+            target = (Page)((int)target + dir);
+        return target;
     }
 
     void Show(Page p)
@@ -126,7 +142,7 @@ public sealed class WizardForm : Form
 
     string? ValidateCurrent() => page switch
     {
-        Page.Welcome => welcomeAck!.Checked ? null : "Please confirm that you understand this is an unstable test build.",
+        Page.Welcome => ReadWelcome(),
         Page.Game => ValidateGame(),
         Page.Update => ValidateUpdate(),
         Page.Dlc => ValidateDlc(),
@@ -134,6 +150,12 @@ public sealed class WizardForm : Form
         Page.Location => ValidateLocation(),
         _ => null,
     };
+
+    string? ReadWelcome()
+    {
+        opts.DlcOnly = modeDlcOnly!.Checked;
+        return welcomeAck!.Checked ? null : "Please confirm that you understand this is an unstable test build.";
+    }
 
     void OnCancel()
     {
@@ -205,16 +227,31 @@ public sealed class WizardForm : Form
             "   -  optionally, your DLC packages\n\n" +
             "This installer contains no game data. It copies your files into a folder you choose and adds the " +
             "recompiled executable, its settings, and optional tools. About 10 GB of free space is needed, " +
-            "more with DLC.", 20, 190));
+            "more with DLC.", 20, 170));
 
         var warn = Text_(
             "THIS IS AN EARLY TEST BUILD. It is not stable: expect crashes, graphical glitches and bugs. " +
-            "Nothing here is affiliated with LEGO, TT Games or Warner Bros.", 215, 60);
+            "Nothing here is affiliated with LEGO, TT Games or Warner Bros.", 195, 50);
         warn.ForeColor = Color.Firebrick;
         content.Controls.Add(warn);
 
-        welcomeAck = new CheckBox { Text = "I understand this is an unstable test build and I expect bugs.", Bounds = new Rectangle(20, 285, 600, 26) };
+        welcomeAck = new CheckBox { Text = "I understand this is an unstable test build and I expect bugs.", Bounds = new Rectangle(20, 336, 600, 24) };
         content.Controls.Add(welcomeAck);
+
+        // The second mode exists because buying a DLC pack later used to mean
+        // running the whole installer again over a folder that already had the
+        // game, the saves and the settings in it.
+        var modeBox = new GroupBox { Text = "What would you like to do?", Bounds = new Rectangle(20, 250, 600, 82) };
+        modeFull = new RadioButton
+        {
+            Text = "Install the game", Bounds = new Rectangle(12, 20, 570, 24), Checked = !opts.DlcOnly,
+        };
+        modeDlcOnly = new RadioButton
+        {
+            Text = "Add DLC to an install I already have", Bounds = new Rectangle(12, 48, 570, 24), Checked = opts.DlcOnly,
+        };
+        modeBox.Controls.AddRange(new Control[] { modeFull, modeDlcOnly });
+        content.Controls.Add(modeBox);
     }
 
     void BuildGame()
@@ -266,12 +303,14 @@ public sealed class WizardForm : Form
 
     void BuildDlc()
     {
-        title.Text = "Step 3 of 5 - DLC (optional)";
+        title.Text = opts.DlcOnly ? "Step 1 of 2 - DLC to add" : "Step 3 of 5 - DLC (optional)";
         content.Controls.Add(Text_(
             "If you have DLC, select the folder that holds the packages. Both forms are accepted and can be mixed: " +
             "extracted folders (each with spa.bin and DLCnn.DAT2) and original package files. " +
             "Anything that is not LEGO Dimensions DLC is ignored.\n\n" +
-            "Leave this empty if you have none - the game runs without DLC.", 20, 90));
+            (opts.DlcOnly
+                ? "Packages you already have will be replaced by the ones selected here; nothing else in the install is touched."
+                : "Leave this empty if you have none - the game runs without DLC."), 20, 90));
         (dlcBox, dlcStatus) = PathRow(120, "Browse...", b => { PickFolder(b, "Select the folder containing your DLC packages"); ValidateDlc(); });
         dlcStatus.Bounds = new Rectangle(20, 154, 600, 24);
         dlcBox.Text = opts.DlcPath ?? "";
@@ -292,8 +331,12 @@ public sealed class WizardForm : Form
         }
 
         var found = Validation.ScanDlc(opts.DlcPath);
-        // The Complete Pack disc dump ships one DLC inside the game folder itself.
-        var bundled = Validation.ScanDlc(Path.Combine(opts.GameDir, "5752084B", "00000002"));
+        // The Complete Pack disc dump ships one DLC inside the game folder
+        // itself. A DLC-only run has no game folder, and combining an empty
+        // path would produce a relative one pointing at the current directory.
+        var bundled = opts.DlcOnly || opts.GameDir == ""
+            ? new List<DlcSource>()
+            : Validation.ScanDlc(Path.Combine(opts.GameDir, "5752084B", "00000002"));
         foreach (var b in bundled)
             if (!found.Any(f => f.Name.Equals(b.Name, StringComparison.OrdinalIgnoreCase))) found.Add(b);
         dlc = found.OrderBy(d => d.DisplayName).ToList();
@@ -304,6 +347,10 @@ public sealed class WizardForm : Form
         dlcStatus.Text = dlc.Count == 0
             ? "No DLC selected."
             : $"{dlc.Count} DLC package(s) found, {Gb(dlc.Sum(d => d.Bytes))} total" + (bundled.Count > 0 ? $" ({bundled.Count} of them inside the game folder)." : ".");
+        // Finding nothing is a fine outcome for a full install; for a DLC-only
+        // run it is the whole point, so say so instead of installing nothing.
+        if (opts.DlcOnly && dlc.Count == 0)
+            return "No DLC found in that folder. Select the folder that holds your packages.";
         return null;
     }
 
@@ -354,15 +401,22 @@ public sealed class WizardForm : Form
 
     void BuildLocation()
     {
-        title.Text = "Step 5 of 5 - Install location";
-        content.Controls.Add(Text_(
-            "Choose where to install. Everything - game data, update, DLC, saves and settings - goes into this one folder, " +
-            "so it can be moved or deleted as a unit. Avoid Program Files: the game writes its settings and saves next to itself.", 20, 70));
-        if (opts.InstallDir == "")
+        title.Text = opts.DlcOnly ? "Step 2 of 2 - Your install" : "Step 5 of 5 - Install location";
+        content.Controls.Add(Text_(opts.DlcOnly
+            ? "Select the folder Dimensions Recompiled is installed in - the one with legodimensions.exe. "
+              + "Only the DLC is written; the game, your saves, settings and mods are left exactly as they are."
+            : "Choose where to install. Everything - game data, update, DLC, saves and settings - goes into this one folder, "
+              + "so it can be moved or deleted as a unit. Avoid Program Files: the game writes its settings and saves next to itself.", 20, 70));
+        if (opts.InstallDir == "" && !opts.DlcOnly)
             opts.InstallDir = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\", "Games", AppName);
         (installBox, installStatus) = PathRow(100, "Browse...", b =>
         {
-            using var d = new FolderBrowserDialog { Description = "Select the install folder", UseDescriptionForTitle = true, ShowNewFolderButton = true };
+            using var d = new FolderBrowserDialog
+            {
+                Description = opts.DlcOnly ? "Select your Dimensions Recompiled folder" : "Select the install folder",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = !opts.DlcOnly,
+            };
             if (d.ShowDialog() == DialogResult.OK) b.Text = d.SelectedPath;
             UpdateSpace();
         });
@@ -371,6 +425,15 @@ public sealed class WizardForm : Form
         installStatus.Bounds = new Rectangle(20, 134, 600, 50);
 
         var summary = new Label { Bounds = new Rectangle(20, 195, 600, 140), ForeColor = Color.DimGray };
+        if (opts.DlcOnly)
+        {
+            summary.Text =
+                $"DLC to add:      {dlc.Count} package(s), {Gb(dlc.Sum(d => d.Bytes))}\n\n"
+                + "Nothing else is written. Click Install to begin.";
+            content.Controls.Add(summary);
+            UpdateSpace();
+            return;
+        }
         summary.Text =
             $"Game:            {opts.GameDir}\n" +
             $"Title Update:    {opts.UpdatePath}\n" +
@@ -407,9 +470,19 @@ public sealed class WizardForm : Form
     string? ValidateLocation()
     {
         opts.InstallDir = installBox!.Text.Trim().Trim('"');
-        if (opts.InstallDir == "") return "Choose an install folder.";
+        if (opts.InstallDir == "") return opts.DlcOnly ? "Choose your install folder." : "Choose an install folder.";
         try { opts.InstallDir = Path.GetFullPath(opts.InstallDir).TrimEnd('\\'); }
         catch { return "That is not a valid folder path."; }
+        if (opts.DlcOnly)
+        {
+            // None of the checks below apply here: the folder is meant to be
+            // non-empty, there is no game folder to overlap with, and if the
+            // user once installed into Program Files that is already done and
+            // not something to re-litigate while they add a character pack.
+            string? installErr = Validation.CheckExistingInstall(opts.InstallDir, out _);
+            if (installErr is not null) return installErr;
+            return SpaceError();
+        }
         string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         string pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         if (opts.InstallDir.StartsWith(pf, StringComparison.OrdinalIgnoreCase) || opts.InstallDir.StartsWith(pf86, StringComparison.OrdinalIgnoreCase))
@@ -422,6 +495,12 @@ public sealed class WizardForm : Form
             && MessageBox.Show(this, "The folder is not empty. Files with the same names will be overwritten. Continue?",
                 "Folder not empty", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return "Choose an empty folder.";
+        return SpaceError();
+    }
+
+    /// <summary>Free-space check, shared by both install modes.</summary>
+    string? SpaceError()
+    {
         try
         {
             long free = new DriveInfo(Path.GetPathRoot(opts.InstallDir)!).AvailableFreeSpace;
@@ -471,6 +550,17 @@ public sealed class WizardForm : Form
     void BuildDone()
     {
         title.Text = "Finished";
+        if (opts.DlcOnly)
+        {
+            content.Controls.Add(Text_(
+                $"{dlc.Count} DLC package(s) added to:\n\n" +
+                $"   {opts.InstallDir}\n\n" +
+                "Start the game as usual - the new characters and worlds are picked up on the next launch. "
+                + "Nothing else in the folder was changed.\n\n" +
+                "If the game still says content is not installed, check that you picked the folder holding the "
+                + "packages themselves and not a folder above it.", 20, 220));
+            return;
+        }
         content.Controls.Add(Text_(
             $"{AppName} is installed.\n\n" +
             $"Folder:   {opts.InstallDir}\n\n" +
@@ -481,6 +571,8 @@ public sealed class WizardForm : Form
 
     void Finish()
     {
+        // A DLC-only run leaves the README from the original install in place,
+        // so opening it is still the right thing to do.
         if (readmePath is not null && File.Exists(readmePath))
         {
             try { Process.Start(new ProcessStartInfo(readmePath) { UseShellExecute = true }); }

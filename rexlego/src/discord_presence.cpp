@@ -12,6 +12,10 @@
 
 #include "discord_presence.h"
 
+#ifdef LEGODIMENSIONS_DEV_PROBES
+#include "area_watch.h"
+#endif
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -41,8 +45,9 @@ REXCVAR_DEFINE_STRING(discord_app_id, "1442727526052007966", "Discord",
                       "Discord application id used for Rich Presence");
 REXCVAR_DEFINE_BOOL(discord_rpc, true, "Discord",
                     "Publish Rich Presence to a running Discord client");
-REXCVAR_DEFINE_STRING(discord_details, "Xbox 360 recompilation", "Discord",
-                      "First presence line (activity details)");
+REXCVAR_DEFINE_STRING(discord_details, "Xbox 360 Recompilation", "Discord",
+                      "First presence line (activity details). Replaced by where the player "
+                      "is once the game says; this is what shows until then.");
 REXCVAR_DEFINE_STRING(discord_state, "In-game", "Discord",
                       "Second presence line (activity state)");
 // Normally this would name an art asset uploaded in the developer portal, but
@@ -67,6 +72,10 @@ REXCVAR_DEFINE_STRING(discord_button_url,
                       "URL the presence button opens");
 
 namespace legodimensions::discord {
+
+// Discord throttles SET_ACTIVITY; staying well inside its window costs nothing
+// because an area change is a rare event.
+constexpr int kMinUpdateIntervalSeconds = 15;
 namespace {
 
 enum Opcode : uint32_t {
@@ -110,10 +119,26 @@ std::string JsonEscape(std::string_view in) {
   return out;
 }
 
+// Where the player is, or the configured line when the game has not said yet
+// (the menus, the first seconds of a launch) or the area has no display name.
+// An internal area name is never shown.
+std::string CurrentDetails() {
+#ifdef LEGODIMENSIONS_DEV_PROBES
+  std::string area = area_watch::CurrentAreaDisplayName();
+  if (!area.empty()) {
+    return area;
+  }
+#endif
+  return REXCVAR_GET(discord_details);
+}
+
 std::string BuildActivityPayload(int64_t start_timestamp, uint32_t pid) {
+  // start_timestamp is deliberately a parameter and never recomputed: Discord
+  // derives the "elapsed" counter from it, so sending a fresh one on an update
+  // would reset everyone's play time every time they changed area.
   std::string activity =
       fmt::format(R"("type":0,"details":"{}","state":"{}","timestamps":{{"start":{}}})",
-                  JsonEscape(REXCVAR_GET(discord_details)),
+                  JsonEscape(CurrentDetails()),
                   JsonEscape(REXCVAR_GET(discord_state)), start_timestamp);
 
   const std::string large_image = REXCVAR_GET(discord_large_image);
@@ -305,25 +330,62 @@ bool Announce(IpcConnection& connection, int64_t start_timestamp, uint32_t pid,
   return true;
 }
 
+// Re-sends the activity on an already-open connection. Same payload builder as
+// the first announcement, so the start timestamp carries through untouched.
+bool SendActivityUpdate(IpcConnection& connection, int64_t start_timestamp, uint32_t pid) {
+  if (!connection.WriteFrame(kFrame, BuildActivityPayload(start_timestamp, pid))) {
+    return false;
+  }
+  uint32_t opcode = 0;
+  std::string payload;
+  if (connection.ReadFrame(opcode, payload, 5000) &&
+      payload.find(R"("evt":"ERROR")") != std::string::npos) {
+    REXLOG_WARN("Discord rejected the updated presence: {}", payload);
+    return false;
+  }
+  return true;
+}
+
 void ThreadMain() {
   const int64_t start_timestamp = static_cast<int64_t>(std::time(nullptr));
   const uint32_t pid = static_cast<uint32_t>(GetCurrentProcessId());
 
   IpcConnection connection;
   bool announced = false;
+  std::string sent_details;
+  auto last_update = std::chrono::steady_clock::now();
 
   while (g_running.load(std::memory_order_relaxed)) {
     if (!connection.connected()) {
       if (connection.Connect() && Announce(connection, start_timestamp, pid, announced)) {
         announced = true;
+        sent_details = CurrentDetails();
+        last_update = std::chrono::steady_clock::now();
       }
     } else {
       connection.Pump();
+
+      // Only when the player has actually moved somewhere else, and no more
+      // often than the rate limit allows. Discord throttles presence updates
+      // hard, and a rejected update is worse than a late one: the text would
+      // sit on the previous area until the next change.
+      const std::string details = CurrentDetails();
+      const auto now = std::chrono::steady_clock::now();
+      const bool cooled_down =
+          now - last_update >= std::chrono::seconds(kMinUpdateIntervalSeconds);
+      if (details != sent_details && cooled_down) {
+        if (SendActivityUpdate(connection, start_timestamp, pid)) {
+          REXLOG_INFO("Discord Rich Presence now reads \"{}\".", details);
+          sent_details = details;
+        } else {
+          connection.Disconnect();
+        }
+        last_update = now;
+      }
     }
 
     // Reconnect attempts and keepalive pumping both sit at 2 s, sliced so
-    // Stop() does not wait out a long sleep. Discord rate limits presence
-    // updates to one per 15 s, but we only ever send one, on connect.
+    // Stop() does not wait out a long sleep.
     for (int i = 0; i < 20 && g_running.load(std::memory_order_relaxed); ++i) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }

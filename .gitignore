@@ -15,13 +15,16 @@
 !/rexlego/
 !/rexlego-installer/
 !/DimensionsModManager-CLI/
+
+# Submodules. Only the gitlink and .gitmodules are tracked, never their
+# contents - but the catch-all above would hide even the gitlink.
+!/rexglue-sdk
+!/DimensionsModManager
+!/DimensionsSaveConverter
 !/xexdump/
 !/tools/
 
 # Deliberately still out, even though they are ours or ours-adjacent:
-#   DimensionsModManager/    -> NeverCookFirst/DimensionsModLoader
-#   DimensionsSaveConverter/ -> NeverCookFirst/DimensionsSaveConverter
-#   rexglue-sdk/             -> our private mirror of the ReXGlue SDK
 #   xenia-canary/            -> NeverCookFirst/Xenia-Seamless-Toypad-Build
 #   LegoToypad/              -> harrysof's project, we only ship his release
 #   research/, rpcs3-ref/    -> clones of other people's code

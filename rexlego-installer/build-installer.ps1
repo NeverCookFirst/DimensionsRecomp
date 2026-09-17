@@ -17,6 +17,10 @@
 
 param(
     [string]$GameBuild = "$PSScriptRoot\..\rexlego\out\build\win-amd64-release",
+    # Where to look for files the game build does not place next to the exe
+    # itself: rexgpu-xenos.dll is built into the SDK's own output tree, and
+    # the UI font lives in rexlego\res.
+    [string]$SdkDir = "$PSScriptRoot\..\rexglue-sdk",
     [string]$Version = "",
     [string]$Previous = "",
     [string]$Notes = "",
@@ -88,9 +92,54 @@ Copy-Item $exe $updaterHost -Force
 # 2. The game. Verify each file exists rather than copying whatever is there.
 Write-Host "== Game binaries from $GameBuild"
 $gameFiles = "legodimensions.exe", "rexruntime.dll", "rexgpu-xenos.dll", "FiraSans-Regular.ttf", "achievement_unlocked.wav"
+# Two of those are not produced by the game build at all: rexgpu-xenos.dll is
+# the SDK's GPU plugin and stays in the SDK output tree, and the UI font is a
+# source file in rexlego\res. Both used to have to be copied by hand, which
+# is the kind of step nobody can guess from an error that only says
+# "missing game file". Look for them where they actually are instead.
+$gameFileFallbacks = @{
+    "rexgpu-xenos.dll"     = @(
+        "$SdkDir\out\win-amd64\Release\rexgpu-xenos.dll",
+        "$SdkDir\out\install\win-amd64\bin\rexgpu-xenos.dll")
+    "FiraSans-Regular.ttf" = @("$root\rexlego\res\FiraSans-Regular.ttf")
+}
 foreach ($f in $gameFiles) {
     $src = Join-Path $GameBuild $f
-    if (-not (Test-Path $src)) { throw "missing game file: $src" }
+    if ($gameFileFallbacks.ContainsKey($f)) {
+        # rexgpu-xenos.dll is the one file where the copy sitting in the game
+        # build directory can be silently out of date: CMake is supposed to
+        # refresh it from the SDK, but when the checkout path contains a space
+        # ninja loses that dependency edge and leaves last week's plugin behind
+        # (see README-dev, "a space in the path"). So for that one, take the
+        # NEWER of the two and say so. Shipping a stale GPU plugin is the kind
+        # of bug nobody thinks to look for.
+        #
+        # Everything else just needs a copy from somewhere - the font, for
+        # instance, is the same committed file in both places.
+        $preferNewest = ($f -eq "rexgpu-xenos.dll")
+        foreach ($candidate in $gameFileFallbacks[$f]) {
+            if (-not (Test-Path $candidate)) { continue }
+            if (-not (Test-Path $src)) {
+                Write-Host "   (taking $f from $candidate)"
+                $src = $candidate
+                break
+            }
+            if ($preferNewest -and (Get-Item $candidate).LastWriteTime -gt (Get-Item $src).LastWriteTime) {
+                Write-Warning ("{0} in the build dir is older than the SDK's ({1:yyyy-MM-dd HH:mm} vs {2:yyyy-MM-dd HH:mm}) - taking the SDK copy" -f `
+                    $f, (Get-Item $src).LastWriteTime, (Get-Item $candidate).LastWriteTime)
+                $src = $candidate
+                break
+            }
+        }
+    }
+    if (-not (Test-Path $src)) {
+        $hint = switch ($f) {
+            "rexgpu-xenos.dll"     { "  Build it:  cmake --build <sdk build dir> --config Release --target rexgpu-xenos" }
+            "FiraSans-Regular.ttf" { "  It ships in rexlego\res - pass -GameBuild/-SdkDir that match your tree." }
+            default                { "  Build the game first (see README-dev.md step 4)." }
+        }
+        throw "missing game file: $f`n  looked in: $GameBuild`n$hint"
+    }
     Copy-Item $src "$payload\game\$f"
     Write-Host ("   {0,-28} {1,12:N0} bytes  {2}" -f $f, (Get-Item $src).Length, (Get-Item $src).LastWriteTime)
 }
@@ -100,6 +149,27 @@ if (Test-Path "$root\rexlego\res\gamecontrollerdb.txt") {
 } else {
     Write-Warning "rexlego\res\gamecontrollerdb.txt not found - shipping without gamepad mappings"
 }
+
+# The sibling repos. The mod manager's GitHub name is DimensionsModLoader while
+# everything here calls it DimensionsModManager, so both spellings are accepted
+# rather than making people rename a fresh clone. Submodules put them in the
+# first spelling; a manual clone usually lands in the second.
+function Resolve-Repo([string[]]$names, [string]$what, [string]$clone) {
+    foreach ($n in $names) {
+        $candidate = Join-Path $root $n
+        if (Test-Path $candidate) { return $candidate }
+    }
+    throw "$what not found next to the repo (looked for: $($names -join ', ') )`n  Get it with:  git clone $clone"
+}
+$modManagerDir = Resolve-Repo @('DimensionsModManager', 'DimensionsModLoader') `
+    "the mod manager (its mods folder)" "https://github.com/NeverCookFirst/DimensionsModLoader.git"
+$modCliProj = @('DimensionsModManager-CLI', 'DimensionsModLoader-CLI') |
+    ForEach-Object { Join-Path $root "$_\ModCli.csproj" } |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $modCliProj) {
+    $modCliProj = Join-Path $modManagerDir "ModCli.csproj"
+}
+if (-not (Test-Path $modCliProj)) { throw "ModCli.csproj not found - looked in <repo>\DimensionsModManager-CLI and $modManagerDir" }
 
 # 3. Mods + modcli (self-contained so the F8 menu works without a .NET runtime).
 Write-Host "== Mods"
@@ -111,9 +181,9 @@ Write-Host "== Mods"
 $BundledMods = @("QuickStartup", "Recomp_TextTest", "SuperSonicInfinite", "AllWorlds")
 $RussianMods = @("Lang_Russian_1", "Lang_Russian_2")
 foreach ($entry in ($BundledMods + $RussianMods)) {
-    $mod = Join-Path "$root\DimensionsModManager\mods" $entry
+    $mod = Join-Path "$modManagerDir\mods" $entry
     $json = Join-Path $mod "mod.json"
-    if (-not (Test-Path $json)) { throw "mod '$entry' is missing from DimensionsModManager\mods" }
+    if (-not (Test-Path $json)) { throw "mod '$entry' is missing from $modManagerDir\mods" }
     $platform = (Get-Content $json -Raw | ConvertFrom-Json).platform
     if ($platform -ne "any" -and $platform -ne "x360") {
         throw "mod '$entry' is for '$platform', not this build"
@@ -122,7 +192,7 @@ foreach ($entry in ($BundledMods + $RussianMods)) {
     Copy-Item -Recurse $mod $dest
     Write-Host "   $entry  [$platform]"
 }
-dotnet publish "$root\DimensionsModManager-CLI\ModCli.csproj" -c Release -r win-x64 --self-contained `
+dotnet publish $modCliProj -c Release -r win-x64 --self-contained `
     -p:PublishSingleFile=true -p:DebugType=none -o "$payload\modcli" -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "modcli publish failed" }
 if (-not (Test-Path "$payload\modcli\modcli.exe")) { throw "modcli.exe missing from payload" }
@@ -149,8 +219,14 @@ try {
 } finally {
     Remove-Item $toypad_temp -Recurse -Force -ErrorAction SilentlyContinue
 }
-Copy-Item "$root\DimensionsSaveConverter\DimensionsSaveConverter.exe" "$payload\saveconverter\"
-Copy-Item "$root\DimensionsSaveConverter\READ ME FIRST.txt" "$payload\saveconverter\"
+# The save converter ships as a prebuilt exe in its own repo - there is no
+# project to build here, so a missing file means the repo was never cloned.
+$saveConvDir = Resolve-Repo @('DimensionsSaveConverter') "the save converter" "https://github.com/NeverCookFirst/DimensionsSaveConverter.git"
+foreach ($f in @('DimensionsSaveConverter.exe', 'READ ME FIRST.txt')) {
+    $src = Join-Path $saveConvDir $f
+    if (-not (Test-Path $src)) { throw "the save converter repo has no '$f' - download it from its Releases page" }
+    Copy-Item $src "$payload\saveconverter\"
+}
 
 # 5. The manifest. Every file in the release with its SHA-256, which is what the
 #    updater compares against the user's disk to decide what to replace.

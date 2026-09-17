@@ -47,6 +47,7 @@ static class Program
     /// rather script it:
     ///   Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR]
     ///             [--no-toypad] [--no-mods] [--russian] [--save-converter] [--no-updater] [--no-shortcut]
+    ///   Setup.exe --dlc-only --install DIR --dlc DIR
     /// Runs the exact same InstallJob as the wizard, prints progress to the
     /// console it was started from.
     /// </summary>
@@ -69,11 +70,17 @@ static class Program
                 case "--save-converter": o.IncludeSaveConverter = true; break;
                 case "--no-updater": o.IncludeUpdater = false; break;
                 case "--no-shortcut": o.DesktopShortcut = false; break;
+                case "--dlc-only": o.DlcOnly = true; break;
                 default:
                     Console.Error.WriteLine("usage: Setup.exe --game DIR --update DIR|FILE --install DIR [--dlc DIR] [--no-toypad] [--no-mods] [--russian] [--save-converter] [--no-updater] [--no-shortcut]");
+                    Console.Error.WriteLine("       Setup.exe --dlc-only --install DIR --dlc DIR");
                     return 2;
             }
         }
+
+        // A DLC-only run needs neither a disc nor a Title Update, only an
+        // install that is already there.
+        if (o.DlcOnly) return UnattendedDlcOnly(o, payload);
 
         string? err = Validation.CheckGameDir(o.GameDir, out var info)
                       ?? Validation.CheckUpdate(o.UpdatePath, out _)
@@ -106,6 +113,47 @@ static class Program
         {
             job.RunAsync(dlc).GetAwaiter().GetResult();
             Console.WriteLine("done: " + job.ReadmePath);
+            return 0;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine("error: " + e.Message);
+            return 1;
+        }
+    }
+
+    /// <summary>
+    ///   Setup.exe --dlc-only --install DIR --dlc DIR
+    /// Adds DLC to an install that already exists and touches nothing else.
+    /// </summary>
+    static int UnattendedDlcOnly(InstallOptions o, PayloadSource payload)
+    {
+        string? err = (o.InstallDir == "" ? "--install is required" : null)
+                      ?? (string.IsNullOrWhiteSpace(o.DlcPath) ? "--dlc is required with --dlc-only" : null);
+        if (err is null)
+        {
+            o.InstallDir = Path.GetFullPath(o.InstallDir);
+            err = Validation.CheckExistingInstall(o.InstallDir, out var found);
+            if (err is null) Console.WriteLine("install: " + found);
+        }
+        if (err is not null) { Console.Error.WriteLine("error: " + err); return 1; }
+
+        var dlc = Validation.ScanDlc(o.DlcPath);
+        if (dlc.Count == 0) { Console.Error.WriteLine("error: no DLC packages found in " + o.DlcPath); return 1; }
+        Console.WriteLine($"dlc: {dlc.Count} package(s)");
+        foreach (var d in dlc) Console.WriteLine($"   {d.DisplayName}  [{(d.IsPackageFile ? "package" : "folder")}]");
+
+        string last = "";
+        var job = new InstallJob(o, payload, new InlineProgress<InstallProgress>(p =>
+        {
+            if (p.Status == last) return;
+            last = p.Status;
+            Console.WriteLine($"[{p.Fraction * 100,5:0.0}%] {p.Status}");
+        }), CancellationToken.None);
+        try
+        {
+            job.RunAsync(dlc).GetAwaiter().GetResult();
+            Console.WriteLine("done");
             return 0;
         }
         catch (Exception e)

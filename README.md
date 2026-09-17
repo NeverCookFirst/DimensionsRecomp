@@ -85,8 +85,10 @@ Have ready:
   `Default.xexp`, `PATCH.DAT` and `PATCH.HDR`.
 
 - **DLC, optional.** Point the installer at a folder holding your DLC packages
-  and it takes all of them at once. You can also skip this and re-run the
-  installer later to add them.
+  and it takes all of them at once. Bought a pack later? Run the installer
+  again and pick **"Add DLC to an install I already have"** on the first
+  screen - it asks only for the packages and the folder you installed into,
+  writes nothing else, and leaves your saves, settings and mods alone.
 
 Then just run
 [`DimensionsRecompiled-Setup.exe`](https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest)
@@ -234,6 +236,11 @@ Known issues:
 - **60 FPS** is an unlock the original never ran at, and most remaining bugs
   live there. Set `frame_rate` to 30 in `F4` before reporting anything odd.
 - Some scenes render with **wrong colours or missing effects**.
+- **Screen tearing.** The `vsync` setting never controlled it - despite the
+  name, it only paces the emulated console - so it is now locked off and greyed
+  out in `F4` rather than left there to be tried. Stopping the tearing properly
+  needs deeper changes to how finished frames reach the screen; until then, your
+  driver's own vertical sync or a frame limiter is the workaround.
 - The **Vulkan** backend is a work in progress. Direct3D 12 is the working one
   and stays the default. See below if you want to try Vulkan anyway.
 - Not every code path has been visited, so an unexplored corner can still hit a

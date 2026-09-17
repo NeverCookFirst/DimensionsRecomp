@@ -91,7 +91,10 @@ public static class TomlConfig
         Add(toypad, "toypad_emulation", "true");
 
         Add("Display", "fullscreen", "true");
-        Add("Display", "vsync", "false");
+        // Forced: the setting cannot fix tearing, turning it on is untested, and
+        // people did turn it on trying to fix tearing. The runtime locks it too,
+        // but only a rewrite repairs an install that already has it on.
+        Add("Display", "vsync", "false", forced: true);
         Add("Display", "framerate_limit", "60");
         Add("Display", "frame_rate", "'60'");
         Add("Display", "present_effect", "'fsr'");

@@ -7,7 +7,18 @@ updater see the new version.
 ## 0. Before anything
 
 1. Build the game and **verify the artifact** - ninja can report success
-   without relinking because of the space in the path:
+   without relinking because of the space in the path. The same breakage leaves
+   a stale `rexgpu-xenos.dll` behind: it is copied in from the SDK by a rule
+   ninja stops tracking. After touching SDK graphics code, copy it across by
+   hand, or the game you are about to test still runs last week's plugin:
+
+   ```powershell
+   Copy-Item rexglue-sdk\out\win-amd64\Release\rexgpu-xenos.dll `
+             rexlego\out\build\win-amd64-release\ -Force
+   ```
+
+   `build-installer.ps1` warns when the build directory's copy is older than the
+   SDK's and ships the newer one, but that is a last line of defence, not a fix.
 
    ```powershell
    # from the repository root
@@ -36,6 +47,11 @@ cd rexlego-installer
 .\build-installer.ps1 -TomlDefaults @{ toypad_emulation = "true" }
 .\build-installer.ps1 -TomlForced   @{ some_compat_switch = "false" }
 ```
+
+Run those **in the current session**, calling the script with `&` if you need
+to. Going through `powershell -File .\build-installer.ps1 -TomlForced @{ ... }`
+stringifies the hashtable on the way in, and the script dies with "Cannot
+convert the System.Collections.Hashtable value of type System.String".
 
 A fresh install gets the new key from the plan compiled into `Setup.exe`, but
 an *update* is applied by the **previous** release's `rexupdate.exe`, which has
@@ -97,7 +113,7 @@ that is what makes releases visible to everyone's updater.
 
 If it is ever made private again, nobody's updater can see or download a
 release until a personal access token is dropped in
-`toolsexupdate	oken.txt` on each machine (also honoured: `--token`,
+`tools\rexupdate\token.txt` on each machine (also honoured: `--token`,
 `GITHUB_TOKEN`). Without one the updater fails with a clean "not found" and the
 game carries on as normal - nothing breaks, updates simply never appear.
 

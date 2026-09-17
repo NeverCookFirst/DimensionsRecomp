@@ -66,44 +66,83 @@ generated from it, stays out.**
 Deliberately not here: game data, dumps, the SDK checkout, and the sibling
 projects listed at the bottom of the main [README](README.md).
 
-## Step 1: get the SDK
+## Step 1: get the SDK and the sibling repos
 
-Clone the fork, not upstream, and stay on `toypad-ui`:
+The SDK and three smaller repositories are git submodules, so one clone brings
+everything:
 
 ```bash
-git clone --recursive -b toypad-ui https://github.com/NeverCookFirst/rexglue-sdk.git
+git clone --recursive https://github.com/NeverCookFirst/DimensionsRecomp.git
 ```
 
-That branch is what the releases are built from: the Toy Pad work, the codegen
-fix behind the crash on ropes, discrete GPU selection, keyboard input, the crash
-logging. Upstream builds fine and then behaves differently from every release,
-which is a miserable thing to debug.
+Already cloned without `--recursive`? `git submodule update --init --recursive`
+fixes it.
 
-It has git submodules and needs `--recursive`. If you forgot,
-`git submodule update --init --recursive` fixes it.
+The SDK submodule tracks **our fork, on the `toypad-ui` branch** - not upstream.
+That branch carries the Toy Pad work, the codegen fix behind the crash on ropes,
+discrete GPU selection, keyboard input and the crash logging. Upstream builds
+fine and then behaves differently from every release, which is a miserable thing
+to debug.
 
-Build and install it:
+Build and install it. **Use the presets:**
 
 ```bash
-cmake -S rexglue-sdk -B rexglue-sdk/out/build/win-amd64 -G "Ninja Multi-Config" \
-      -DCMAKE_INSTALL_PREFIX=rexglue-sdk/out/install/win-amd64
+cmake --preset win-amd64 -S rexglue-sdk
 cmake --build rexglue-sdk/out/build/win-amd64 --config Release --target install
 ```
 
-**`--config Release` is not optional.** The SDK builds with Ninja Multi-Config,
-and a plain `cmake --build` defaults to RelWithDebInfo, which produces
-`rexruntimerd.lib`. The game links `rexruntime.lib`, the Release one. Getting this
-wrong gives you a link error that does not explain itself.
+Two things that are not optional:
+
+- **`--config Release`.** The SDK builds with Ninja Multi-Config, and a plain
+  `cmake --build` defaults to RelWithDebInfo, which produces `rexruntimerd.lib`.
+  The game links `rexruntime.lib`, the Release one. Getting this wrong gives a
+  link error that does not explain itself.
+- **The x86 baseline.** The SDK byte-swap helpers use SSSE3 intrinsics, and
+  clang's bare `x86-64` default is SSE2 only. A configure that sets no `-march`
+  at all used to fail with `always_inline function '_mm_shuffle_epi8' requires
+  target feature 'ssse3'`. The baseline now lives in the SDK's `CMakeLists.txt`
+  (`REXGLUE_X86_BASELINE`, default `x86-64-v2`) rather than only in the presets,
+  so a preset-less configure works too - but the presets are still the tested
+  path.
+
+### Building for a CPU without AVX2
+
+The shipped builds target `x86-64-v3` (Haswell / Zen 1 or newer) because the
+recompiled code is where nearly all the time goes. On an older CPU - Ivy Bridge,
+Sandy Bridge, Bulldozer - lower the baseline in **both** halves, or the two
+disagree about AVX2 and the game dies on an illegal instruction:
+
+```bash
+cmake --preset win-amd64 -S rexglue-sdk -DREXGLUE_X86_BASELINE=x86-64-v2
+# ... and in step 4:
+cmake -S rexlego -B rexlego/out/build/win-amd64-release \
+      -DLEGODIMENSIONS_X86_BASELINE=x86-64-v2 ...
+```
+
+`x86-64-v2` (Nehalem / Bulldozer, SSE4.2) is the floor that still builds; plain
+`x86-64` does not, because of the SSSE3 helpers above. Passing
+`-DCMAKE_CXX_FLAGS=-march=...` instead does **not** work for the game target:
+`target_compile_options` land after `CMAKE_CXX_FLAGS` on the command line, so the
+project's own value would win. That is what the cache variables are for.
 
 ## Step 2: point the game at the SDK
 
-`rexlego` finds the SDK one of two ways, and it will refuse to configure if
-neither works:
+With the submodule in place the default works as-is:
 
-- `-DREXSDK_DIR=<path to the rexglue-sdk source tree>` builds the SDK as a
-  subproject of the game. Simplest, and what you want while changing SDK code.
-- Otherwise it falls back to `find_package(rexglue CONFIG)`, which needs the SDK
-  already installed and on `CMAKE_PREFIX_PATH`.
+```
+-DREXSDK_DIR=../rexglue-sdk
+```
+
+That builds the SDK as a subproject of the game, which is what you want while
+changing SDK code. The alternative is `find_package(rexglue CONFIG)`, which needs
+the SDK already installed and on `CMAKE_PREFIX_PATH`; the game refuses to
+configure if neither works.
+
+Use the SDK from this checkout, not a `rexglue` that happens to be on `PATH`: a
+different SDK build produces a runtime that does not match the generated sources.
+
+On Windows, paths copied out of Explorer come with `\` separators. CMake wants
+`/` (or doubled backslashes) - a single `\` silently eats the next character.
 
 ## Step 3: generate the recompiled sources
 
@@ -117,6 +156,20 @@ Edit `game_root` and `entrypoint.file_path` so they point at your extracted disc
 Paths are relative to the manifest file. The real `legodimensions_manifest.toml`
 is gitignored precisely because it holds paths specific to your machine.
 
+**Put Title Update 23's `Default.xexp` next to `Default.xex` in your dump first.**
+The recomp is generated from the *patched* executable. The loader looks for a
+sibling file whose name is the XEX's name plus `p` (`user_module.cpp`: it resolves
+`path + "p"`), so `default.xex` needs `default.xexp` beside it, matching case, and
+applies the patch itself. You do **not** need xextool. You will see it work:
+
+```
+XEX patch applied successfully: base version: 0.0.0.3, new version: 0.0.23.3
+  Version:  0.0.23.3
+```
+
+If that line says `0.0.0.3`, the patch was not found and every address the
+analyser reports will be for the wrong image.
+
 Then run the codegen tool from the SDK build:
 
 ```bash
@@ -125,7 +178,8 @@ cd rexlego
 ```
 
 This is the long step. It analyses the XEX, finds functions, and writes
-`rexlego/generated/`. Expect a few minutes and about 470 MB.
+`rexlego/generated/`. Expect a few minutes and about 470 MB. Add `--ignore-stamp`
+to force a regeneration when it decides everything is already up to date.
 
 `legodimensions_config.toml` sits next to the manifest and is included by it. It
 carries the hand written hints the analyser needs: function boundaries it could
@@ -146,10 +200,16 @@ Or use the presets in `CMakePresets.json` (`win-amd64-release` and friends) if y
 have the tools on PATH.
 
 The first build compiles those ~720 generated translation units and takes a while.
-Incremental builds after that are quick.
+Incremental builds after that are quick. The configure prints the baseline it
+chose, which is worth a glance:
+
+```
+-- legodimensions x86 baseline: -march=x86-64-v3
+```
 
 Output lands in the build directory: `legodimensions.exe`, plus `rexruntime.dll`
 and `rexgpu-xenos.dll` copied from the SDK.
+
 
 ### Running it from a build tree
 
@@ -177,6 +237,35 @@ debugging the wizard. To produce a real release, see [RELEASING.md](RELEASING.md
 `build-installer.ps1` publishes the single file host, stages the game binaries,
 appends the payload, and writes the update pack and the release manifest.
 
+```powershell
+cd rexlego-installer
+powershell -ExecutionPolicy Bypass -File .\build-installer.ps1
+```
+
+### What the release build needs on disk
+
+The script does not build anything but the C# projects, so have all of this
+ready first. It names whatever is missing and how to get it, rather than failing
+on a bare "missing file":
+
+| What | Where it must be | If it is not there |
+|---|---|---|
+| `legodimensions.exe`, `rexruntime.dll`, `achievement_unlocked.wav` | the game build dir (`-GameBuild`, default `rexlego\out\build\win-amd64-release`) | do step 4 |
+| `rexgpu-xenos.dll` | the SDK output tree (`-SdkDir`, default `..\rexglue-sdk`) | `cmake --build rexglue-sdk/out/build/win-amd64 --config Release --target rexgpu-xenos` |
+| `FiraSans-Regular.ttf` | `rexlego\res` | it is committed; check your `-GameBuild` / `-SdkDir` |
+| the mod manager's `mods` folder | `DimensionsModManager\` or `DimensionsModLoader\` next to this repo | submodule, or clone it (see step 6) |
+| `ModCli.csproj` | `DimensionsModManager-CLI\` | it is in this repository. **Required**, not optional: the script publishes it every run |
+| `DimensionsSaveConverter.exe` and `READ ME FIRST.txt` | `DimensionsSaveConverter\` | submodule. The exe is prebuilt in that repo - there is no project to build |
+| the Toy Pad app | downloaded from its own latest GitHub release, every run | needs network |
+
+The `rexgpu-xenos.dll` and font rows used to mean copying files into the build
+directory by hand, with nothing saying so. The script now looks where those files
+actually live.
+
+The Russian translation is two ordinary mods from the mod manager repo. If your
+checkout does not have them, drop them from `$RussianMods` in the script and the
+wizard simply stops offering that component.
+
 The script takes the game binaries from `rexlego\out\build\win-amd64-release` by
 default. Override with `-GameBuild`.
 
@@ -189,8 +278,17 @@ three files out of the mod manager, which is a different repository:
 <Compile Include="..\DimensionsModManager\ModEngine.cs" />
 ```
 
-So clone [DimensionsModLoader](https://github.com/NeverCookFirst/DimensionsModLoader)
-next to this repository, into a folder named `DimensionsModManager`, then:
+The submodule already puts it there. Cloning by hand instead? The repository's
+GitHub name is `DimensionsModLoader` while everything here calls it
+`DimensionsModManager`. `build-installer.ps1` accepts either folder name, but
+`ModCli.csproj` reaches for `..\DimensionsModManager\ModEngine.cs` by relative
+path, so clone it under that name:
+
+```bash
+git clone https://github.com/NeverCookFirst/DimensionsModLoader.git DimensionsModManager
+```
+
+Then:
 
 ```bash
 cd DimensionsModManager-CLI
@@ -200,13 +298,18 @@ dotnet build ModCli.csproj -c Release
 Skip it if you are not touching mods — the game runs without `modcli` and only
 complains when you press Apply in the mod menu.
 
-## Nobody has done a clean run of this
+## How much of this has actually been walked
 
-These steps are written from a machine where everything was already in place.
-The full path — empty folder, clone, generate, build, install — has never been
-walked end to end by anyone, so treat a snag as a gap in this document rather
-than something you did wrong, and open an issue. Same goes for Linux and macOS:
-the SDK targets them, this game has only ever been built on Windows.
+These steps were originally written from a machine where everything was already
+in place. In September 2026 someone built the whole thing from a clone on an Ivy
+Bridge CPU with no AVX2 and wrote up every place the guide was wrong; that report
+is what the steps above now say. Fixed since: the missing `--preset` and with it
+the SSSE3 compile failure, the hard-coded `-march`, the unexplained `.xexp` step,
+and the undocumented prerequisites of the release build.
+
+Still unwalked: Linux and macOS. The SDK targets them, this game has only ever
+been built on Windows. Treat a snag there as a gap in this document rather than
+something you did wrong, and open an issue.
 
 ## Things that have cost real time
 
@@ -232,6 +335,21 @@ $b.Contains("your new cvar")
 `rexgpu-xenos.dll`, most other SDK code into `rexruntime.dll`, and `rex_app.cpp`
 is compiled into `legodimensions.exe` itself. Changing an SDK file and only
 copying the exe means you are still running the old code.
+
+**`rexgpu-xenos.dll` does not get refreshed in the build directory.** It is
+copied in from the SDK by a CMake rule, and that is exactly the kind of edge the
+space in the path breaks: the SDK rebuilds the plugin, the game build reports
+success, and the copy next to `legodimensions.exe` stays whatever it was. This
+cost a whole debugging round on 2026-09-17 - a cvar change that was provably in
+the SDK's DLL and provably not in the game's. After touching SDK graphics code:
+
+```powershell
+Copy-Item rexglue-sdk\out\win-amd64\Release\rexgpu-xenos.dll `
+          rexlego\out\build\win-amd64-release\ -Force
+```
+
+Then check the string is really there, the same way as above. `build-installer.ps1`
+warns if it is asked to ship a build-directory copy older than the SDK's.
 
 **A cvar must be defined in the same library that reads it.** `REXCVAR_DEFINE` in
 one target and `REXCVAR_GET` in another fails to link with

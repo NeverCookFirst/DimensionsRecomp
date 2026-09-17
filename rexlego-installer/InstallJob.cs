@@ -38,6 +38,14 @@ public sealed class InstallOptions
     public bool IncludeSaveConverter;
     public bool IncludeUpdater = true;
     public bool DesktopShortcut = true;
+    /// <summary>
+    /// Add DLC to an install that already exists instead of installing
+    /// everything. <see cref="InstallDir"/> is then an existing install and
+    /// every other field above is ignored - nothing else is touched, so a
+    /// player who buys a pack later does not have to re-run the whole install
+    /// over their saves and settings.
+    /// </summary>
+    public bool DlcOnly;
 }
 
 /// <summary>Facts about the release itself, as opposed to the game it needs.</summary>
@@ -106,6 +114,29 @@ public static class Validation
             catch (Exception e) { return "Could not read the package: " + e.Message; }
         }
         return "Path does not exist.";
+    }
+
+    /// <summary>
+    /// Checks that a folder holds an install of ours that DLC can be added to.
+    /// Returns an error string, or null plus a description of what was found.
+    /// </summary>
+    public static string? CheckExistingInstall(string dir, out string description)
+    {
+        description = "";
+        if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+            return "Select the folder you installed Dimensions Recompiled into.";
+        if (!File.Exists(Path.Combine(dir, "legodimensions.exe")))
+            return "legodimensions.exe is not in this folder - this is not a Dimensions Recompiled install.";
+        if (!Directory.Exists(Path.Combine(dir, "content")))
+            return "This install has no content folder, so it is not complete. Run a full install instead.";
+        // install.json is optional on purpose: an install made by an older
+        // build has none, and refusing those would turn away exactly the
+        // people who most want to add DLC without reinstalling.
+        var manifest = InstallManifest.Load(dir);
+        description = manifest is null
+            ? "OK - an install from an older build (no install.json). DLC will still be added."
+            : $"OK - version {manifest.Version}, {manifest.Dlc.Count} DLC package(s) already there.";
+        return null;
     }
 
     /// <summary>
@@ -231,6 +262,8 @@ public sealed class InstallJob
     public static long EstimateBytes(InstallOptions o, PayloadSource payload, IReadOnlyList<DlcSource> dlc)
     {
         long n = 0;
+        // A DLC-only run writes the packages and nothing else.
+        if (o.DlcOnly) return Math.Max(1, dlc.Sum(d => d.Bytes));
         if (Directory.Exists(o.GameDir)) n += Validation.DirSize(o.GameDir);
         if (Directory.Exists(o.UpdatePath)) n += Validation.DirSize(o.UpdatePath);
         else if (File.Exists(o.UpdatePath)) n += new FileInfo(o.UpdatePath).Length;
@@ -254,6 +287,7 @@ public sealed class InstallJob
     {
         Report("Preparing...");
         totalBytes = Math.Max(1, EstimateBytes(o, payload, dlc));
+        if (o.DlcOnly) { RunDlcOnly(dlc); return; }
         Directory.CreateDirectory(o.InstallDir);
 
         // 1. Game data. The Complete Pack dump carries a DLC inside
@@ -284,27 +318,8 @@ public sealed class InstallJob
         if (Validation.Sha256File(Path.Combine(GameDir, "Default.xexp")) != KnownGame.UpdateXexpSha256)
             throw new InvalidOperationException("Default.xexp did not copy into the game folder correctly.");
 
-        // 3. DLC. Each package also needs its .header file: without one the game
-        //    lists the DLC but refuses to mount any of it ("content not
-        //    installed", characters unavailable). Verified both ways on a real
-        //    install - 31 package mounts with the headers, zero without.
-        Directory.CreateDirectory(DlcDir);
-        foreach (var d in dlc)
-        {
-            ct.ThrowIfCancellationRequested();
-            string dest = Path.Combine(DlcDir, d.Name);
-            uint license = 1;
-            if (d.IsPackageFile)
-            {
-                ExtractPackage(d.Path, dest, $"Extracting DLC: {d.DisplayName}");
-                license = ReadPackageLicense(d.Path);
-            }
-            else
-            {
-                CopyTree(d.Path, dest, $"Copying DLC: {d.DisplayName}");
-            }
-            WriteContentHeader(d.Name, StfsPackage.ContentTypeMarketplace, license);
-        }
+        // 3. DLC.
+        InstallDlc(dlc);
         Directory.CreateDirectory(Path.Combine(ContentDir, "achievements"));
 
         // 4. The recomp itself. Everything under game/ lands next to the exe -
@@ -350,6 +365,63 @@ public sealed class InstallJob
 
         doneBytes = totalBytes;
         Report("Done");
+    }
+
+    /// <summary>
+    /// Lays the packages down under the content root. Each one also needs its
+    /// .header file: without one the game lists the DLC but refuses to mount
+    /// any of it ("content not installed", characters unavailable). Verified
+    /// both ways on a real install - 31 packages mount with the headers, zero
+    /// without.
+    /// </summary>
+    void InstallDlc(IReadOnlyList<DlcSource> dlc)
+    {
+        Directory.CreateDirectory(DlcDir);
+        foreach (var d in dlc)
+        {
+            ct.ThrowIfCancellationRequested();
+            string dest = Path.Combine(DlcDir, d.Name);
+            uint license = 1;
+            if (d.IsPackageFile)
+            {
+                ExtractPackage(d.Path, dest, $"Extracting DLC: {d.DisplayName}");
+                license = ReadPackageLicense(d.Path);
+            }
+            else
+            {
+                CopyTree(d.Path, dest, $"Copying DLC: {d.DisplayName}");
+            }
+            WriteContentHeader(d.Name, StfsPackage.ContentTypeMarketplace, license);
+        }
+    }
+
+    /// <summary>
+    /// Adds DLC to an install that is already there and touches nothing else:
+    /// no game data, no components, no config, no shortcut. The record of what
+    /// is installed is updated in place so the updater and a later run both
+    /// still see a coherent install.json.
+    /// </summary>
+    void RunDlcOnly(IReadOnlyList<DlcSource> dlc)
+    {
+        InstallDlc(dlc);
+
+        // Merge into the existing record rather than writing a fresh one: the
+        // file also carries the component list, the file hashes the updater
+        // needs, and what we last wrote into the toml. An install from an
+        // older build has no install.json at all, which is not an error - the
+        // DLC is on disk either way, and the game finds it by scanning.
+        var manifest = InstallManifest.Load(o.InstallDir);
+        if (manifest is not null)
+        {
+            foreach (var name in dlc.Select(d => d.Name))
+                if (!manifest.Dlc.Any(existing => existing.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    manifest.Dlc.Add(name);
+            manifest.UpdatedUtc = DateTime.UtcNow.ToString("o");
+            manifest.Save(o.InstallDir);
+        }
+
+        doneBytes = totalBytes;
+        Report(dlc.Count == 0 ? "Nothing to add" : $"Done - {dlc.Count} DLC package(s) installed");
     }
 
     /// <summary>

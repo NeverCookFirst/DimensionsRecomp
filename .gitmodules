@@ -1,0 +1,10 @@
+[submodule "rexglue-sdk"]
+	path = rexglue-sdk
+	url = https://github.com/NeverCookFirst/rexglue-sdk.git
+	branch = toypad-ui
+[submodule "DimensionsModManager"]
+	path = DimensionsModManager
+	url = https://github.com/NeverCookFirst/DimensionsModLoader.git
+[submodule "DimensionsSaveConverter"]
+	path = DimensionsSaveConverter
+	url = https://github.com/NeverCookFirst/DimensionsSaveConverter.git

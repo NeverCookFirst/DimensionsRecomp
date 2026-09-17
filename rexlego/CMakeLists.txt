@@ -35,7 +35,8 @@ set(LEGODIMENSIONS_SOURCES
 # -DLEGODIMENSIONS_DEV_PROBES=ON while working on the portrait.
 option(LEGODIMENSIONS_DEV_PROBES "Build the area-flag watchpoint and portrait experiments" OFF)
 if(LEGODIMENSIONS_DEV_PROBES)
-    list(APPEND LEGODIMENSIONS_SOURCES src/icon_probe.cpp src/hub_portrait.cpp)
+    list(APPEND LEGODIMENSIONS_SOURCES src/icon_probe.cpp src/hub_portrait.cpp
+        src/area_watch.cpp)
     add_compile_definitions(LEGODIMENSIONS_DEV_PROBES)
 endif()
 
@@ -60,17 +61,37 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/res/achievement_unlocked.wav")
 endif()
 
 # The generated translation units (legodimensions_recomp) are where nearly all
-# guest CPU time goes. The SDK presets only set -march for ARM; on x86 the
-# recompiled code was built for a baseline x86-64 without AVX2/BMI2/FMA.
-# TheSimpsonsGameRecomp measured this + -O3 as a real win. x86-64-v3 needs
-# Haswell / Zen 1 or newer, which is the same floor the runtime already has.
-# Applied to both targets so the app's own code and the recomp library agree.
+# guest CPU time goes, and they were being built for a bare x86-64 without
+# AVX2/BMI2/FMA. TheSimpsonsGameRecomp measured this + -O3 as a real win, so
+# the shipped builds use x86-64-v3 (Haswell / Zen 1 or newer).
+#
+# It is a cache variable rather than a hard-coded flag because people do build
+# this for older CPUs. Passing -DCMAKE_CXX_FLAGS=-march=... does NOT work for
+# that: target_compile_options land after CMAKE_CXX_FLAGS on the command line,
+# so the value here would win. Lower the floor with:
+#
+#   cmake -S rexlego -B ... -DLEGODIMENSIONS_X86_BASELINE=x86-64-v2
+#
+# x86-64-v2 (Nehalem/Bulldozer) is the lowest that builds - the SDK's byte-swap
+# helpers need SSSE3. Set it to "none" to supply your own -march in
+# CMAKE_CXX_FLAGS. Whatever is chosen here must also be passed to the SDK
+# (-DREXGLUE_X86_BASELINE=...), or the two halves disagree about AVX2 and the
+# game crashes with an illegal instruction on the CPU that cannot run it.
+set(LEGODIMENSIONS_X86_BASELINE "x86-64-v3" CACHE STRING
+    "x86 -march baseline for the game and the recompiled code (or \"none\")")
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"
-   AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-    target_compile_options(legodimensions PRIVATE -march=x86-64-v3)
+   AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+    if(LEGODIMENSIONS_X86_BASELINE AND NOT LEGODIMENSIONS_X86_BASELINE STREQUAL "none")
+        message(STATUS "legodimensions x86 baseline: -march=${LEGODIMENSIONS_X86_BASELINE}")
+        target_compile_options(legodimensions PRIVATE -march=${LEGODIMENSIONS_X86_BASELINE})
+    endif()
     if(TARGET legodimensions_recomp)
         target_compile_options(legodimensions_recomp PRIVATE
-            $<$<CONFIG:RelWithDebInfo,Release>:-O3>
-            -march=x86-64-v3)
+            $<$<CONFIG:RelWithDebInfo,Release>:-O3>)
+        if(LEGODIMENSIONS_X86_BASELINE AND NOT LEGODIMENSIONS_X86_BASELINE STREQUAL "none")
+            target_compile_options(legodimensions_recomp PRIVATE
+                -march=${LEGODIMENSIONS_X86_BASELINE})
+        endif()
     endif()
 endif()
