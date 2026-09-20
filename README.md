@@ -104,8 +104,8 @@ Out of the box the installer sets up the
 [LEGO Toypad app](https://github.com/harrysof/LegoToypad), which stands in for
 the portal and lets you pick figures with a controller.
 
-**Your real Toy Pad works too** - the Wii U, PlayStation 3, PlayStation 4 and
-Xbox 360 pads are all supported. Windows will not let the game reach the pad on
+**Your real Toy Pad works too** - the Wii U, PlayStation 3, PlayStation 4,
+Xbox 360 and Xbox One pads are all supported. Windows will not let the game reach the pad on
 its own, so swap the driver once with [Zadig](https://zadig.akeo.ie): tick
 Options, List All Devices, pick your pad and check its USB ID before you change
 anything:
@@ -114,6 +114,7 @@ anything:
 |---|---|---|
 | `LEGO READER V2.10` | `0E6F 0241` | Wii U / PS3 / PS4 |
 | `LEGO(R) DIMENSIONS(TM)` | `24C6 FA01` | Xbox 360 |
+| `LEGO(R) DIMENSIONS(TM)` | `0E6F 0141` | Xbox One |
 
 Choose `libusb-win32` and press **Install Driver** (on a pad Windows already has
 a driver for the button reads Replace Driver - same step). Then in game press
@@ -122,7 +123,14 @@ real figures work.
 
 > [!NOTE]
 > The Xbox 360 pad shows up in Device Manager as "Driver is unavailable" until
-> you do this. That is expected - Windows ships no driver for it at all.
+> you do this. That is expected - Windows ships no driver for it at all. The
+> Xbox One pad is the opposite: Windows grabs it as an Xbox controller, so the
+> two share a name in Zadig - tell them apart by the USB ID.
+>
+> The Xbox One pad speaks a different protocol (GIP) and goes quiet if it is
+> poked the wrong way. If the game reports no portal after a driver swap or a
+> previous session, unplug the pad and plug it back in. Support for it was
+> worked out and tested on real hardware by Amirust.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
@@ -272,7 +280,6 @@ Roughly in the order I want to get to it. No dates.
 
 - **Fixing the crashes that keep coming back.** A handful of them are
   reproducible and hit a lot of people, so they matter more than anything new.
-- **Xbox One ToyPad support**, so everyone can play the game how they want.
 - **UI fixes, and layouts for other gamepads.** Right now the button prompts
   assume an Xbox pad. PlayStation, Switch and generic controllers should show
   their own.
