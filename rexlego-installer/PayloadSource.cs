@@ -126,7 +126,7 @@ public abstract class PayloadSource : IDisposable
     public bool HasRussian => Under("rus").Any();
 
     /// <summary>Mod folders the Russian component is made of, in load order.</summary>
-    public static readonly string[] RussianMods = { "Lang_Russian_1", "Lang_Russian_2" };
+    public static readonly string[] RussianMods = { "Lang_Russian_By_koctr113" };
     public bool HasUpdater => Find("updater/rexupdate.exe") is not null;
     public bool HasToypad => Under("toypad").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
     public bool HasSaveConverter => Under("saveconverter").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));

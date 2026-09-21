@@ -24,4 +24,8 @@ std::unique_ptr<rex::ui::ImGuiDialog> CreateMenu(rex::ui::ImGuiDrawer* drawer);
 // thread is not still writing into guest memory as it is torn down.
 void Shutdown();
 
+// Registers the depth_of_field setting's effect and applies the saved value.
+// Call once the GPU cvars exist, i.e. after setup.
+void InstallGraphicsToggles();
+
 }  // namespace legodimensions::cheats

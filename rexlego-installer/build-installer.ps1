@@ -179,7 +179,7 @@ Write-Host "== Mods"
 # installer for no reason. $RussianMods go to their own payload folder so the
 # wizard can offer them as a component of their own.
 $BundledMods = @("QuickStartup", "Recomp_TextTest", "SuperSonicInfinite", "AllWorlds")
-$RussianMods = @("Lang_Russian_1", "Lang_Russian_2")
+$RussianMods = @("Lang_Russian_By_koctr113")
 foreach ($entry in ($BundledMods + $RussianMods)) {
     $mod = Join-Path "$modManagerDir\mods" $entry
     $json = Join-Path $mod "mod.json"

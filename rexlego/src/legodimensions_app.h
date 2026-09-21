@@ -50,6 +50,7 @@ class LegodimensionsApp : public rex::ReXApp {
     // player is, and it can only answer once the accessor is wrapped.
     legodimensions::area_watch::Install();
 #endif
+    legodimensions::cheats::InstallGraphicsToggles();
     legodimensions::discord::Start();
     legodimensions::updates::CheckAtStartup();
     legodimensions::toypad_app::StartIfEnabled();
@@ -81,6 +82,7 @@ class LegodimensionsApp : public rex::ReXApp {
   // restyle the overlays without forking the shared UI code.
   void OnConfigureStyle(ImGuiStyle& imgui_style, rex::ui::Style& ui_style) override {
     legodimensions::ui::ConfigureStyle(imgui_style, ui_style);
+    legodimensions::ui::ConfigureSettings();
   }
 
   void OnConfigureFonts(ImFontAtlas* atlas) override {

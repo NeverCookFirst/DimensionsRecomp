@@ -95,8 +95,8 @@ Then just run
 and follow the wizard. It writes a `README.txt` next to the game with the
 hotkeys, settings and save locations.
 
-Updates are handled in game. Turn them off with `F4` &rarr; Updates &rarr;
-`updates_check`.
+Updates are handled in game. Turn them off with `F4` &rarr; Online &rarr;
+**Check for updates at start**.
 
 ## The Toy Pad
 
@@ -118,7 +118,7 @@ anything:
 
 Choose `libusb-win32` and press **Install Driver** (on a pad Windows already has
 a driver for the button reads Replace Driver - same step). Then in game press
-`F4`, open Input, untick `toypad_emulation` and restart. The pad lights up and
+`F4`, open Toy Pad, untick **Emulated Toy Pad** and restart. The pad lights up and
 real figures work.
 
 > [!NOTE]
@@ -134,8 +134,8 @@ real figures work.
 
 To hand the pad back to Windows later, uninstall that driver in Device Manager.
 
-The game can also start and stop the companion app for you: `F4` &rarr; Toypad
-&rarr; `toypad_app_autostart`. It launches with the game and closes with it, and
+The game can also start and stop the companion app for you: `F4` &rarr; Toy Pad
+&rarr; **Open the Toy Pad app with the game**. It launches with the game and closes with it, and
 an app you started yourself is left alone.
 
 ## Controls
@@ -155,9 +155,24 @@ Any XInput pad works, and so does the keyboard, with no setting to find first:
 BACK sat on `Backspace` until 0.1.13 and kept firing by accident; it moved to
 `=`, and anyone who had rebound it keeps their own binding.
 
-Every bind is editable in `F4` under Input / Keybinds, with **Rebind**, **Reset**
+Every bind is editable in `F4` under Keyboard bindings, with **Rebind**, **Reset**
 and **Clear** on each line. Keyboard and pad are live at the same time. Mouse
-look exists but is off by default: turn on `mnk_mouse`.
+look exists but is off by default: Controls &rarr; **Mouse moves the camera**.
+
+## Settings
+
+`F4` opens the settings. Since 0.1.17 they are arranged for people rather than
+for the code: **Display**, **Performance**, **Graphics**, **Audio**, **Controls**,
+**Keyboard bindings**, **Shortcuts**, **Toy Pad**, **Mods and fixes**, **Online**.
+Hover a line for what it does; an orange label means it takes effect after a
+restart. Everything technical is still there under **Advanced**, by its raw
+name - that is what a bug report may ask you to change.
+
+Performance holds what actually costs frame rate: **Resolution scale**, the
+**Output resolution cap**, **Anisotropic filtering** and **Depth of field
+blur**. The last one is new: the game has no switch of its own, so the recomp
+drops that render pass entirely when it is off - a sharper picture and a little
+less GPU work.
 
 ## The cheat menu
 
@@ -186,7 +201,7 @@ where guest memory landed for the current run and converts addresses either way.
 
 The game ships its official translations, and the recomp picks one the way the
 console did, with a language ID. Set `user_language` in `legodimensions.toml`
-while the game is closed, or find it in `F4` under Kernel:
+while the game is closed, or find it in `F4` under Advanced / Kernel:
 
 ```toml
 user_language = 4   # French
@@ -228,7 +243,10 @@ user_country  = 71   # ... as spoken in Mexico
 
 > [!NOTE]
 > Russian is not one of the official languages. It exists as a community
-> translation made by [maickdelaia](https://boosty.to/lego_dimensions_ru), shipped as a **mod** that replaces the English column.
+> translation, shipped as a **mod** that replaces the English column. The one
+> the installer offers since 0.1.17 is by **koctr113**; the first translation,
+> which earlier releases shipped, was made by
+> [maickdelaia](https://boosty.to/lego_dimensions_ru).
 
 ## This is a beta build. Expect bugs.
 > [!CAUTION]
@@ -242,11 +260,12 @@ Known issues:
 - Starting a **new save** and quitting before the opening cutscenes finish can
   leave a save that will not load. Play until you are walking around first.
 - **60 FPS** is an unlock the original never ran at, and most remaining bugs
-  live there. Set `frame_rate` to 30 in `F4` before reporting anything odd.
+  live there. Set Performance &rarr; **Frame rate target** to 30 in `F4` before
+  reporting anything odd.
 - Some scenes render with **wrong colours or missing effects**.
 - **Screen tearing.** The `vsync` setting never controlled it - despite the
   name, it only paces the emulated console - so it is now locked off and greyed
-  out in `F4` rather than left there to be tried. Stopping the tearing properly
+  out of `F4` rather than left there to be tried. Stopping the tearing properly
   needs deeper changes to how finished frames reach the screen; until then, your
   driver's own vertical sync or a frame limiter is the workaround.
 - The **Vulkan** backend is a work in progress. Direct3D 12 is the working one
@@ -393,7 +412,8 @@ untravelled ground. If you try it, please report back.
 
 Open an [issue](https://github.com/NeverCookFirst/DimensionsRecomp/issues/new/choose).
 The template asks for the few things that actually help: `game.log`, your
-`frame_rate`, and your GPU.
+frame rate target, and your GPU. Since 0.1.17 a crash writes which function it
+died in and who called it into the log, so the log alone is usually enough.
 
 ---
 

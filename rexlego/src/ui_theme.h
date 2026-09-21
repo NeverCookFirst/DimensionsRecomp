@@ -29,4 +29,9 @@ void ConfigureStyle(ImGuiStyle& imgui_style, rex::ui::Style& ui_style);
 // font is kept and a line is logged.
 void ConfigureFonts(ImFontAtlas* atlas);
 
+// Arranges the F4 settings window into player-facing pages, with everything
+// else under Advanced. Called once, from OnConfigureStyle, before any dialog
+// can be opened.
+void ConfigureSettings();
+
 }  // namespace legodimensions::ui

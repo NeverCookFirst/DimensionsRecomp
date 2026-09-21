@@ -171,6 +171,57 @@ try
             return 0;
         }
 
+        // clone-tree <dat> <srcPrefix> <dstPrefix> <outDir> [old=new ...]
+        // Extracts every entry under |srcPrefix| into <outDir>/<dstPrefix>/<rel>,
+        // decompressed, laid out as a mod's datfiles tree. Each old=new pair
+        // adds a second copy of any file whose relative path contains |old|,
+        // with |old| replaced - that is how a character's cache gets cloned for
+        // a character that shipped without one: the engine looks up
+        // charcache\<char>\chars\minifig\<char>\<char>.cd.res by name.
+        case "clone-tree":
+        {
+            var archive = new DatArchive(args[1]);
+            string srcPrefix = args[2].TrimEnd('\\') + "\\";
+            string dstPrefix = args[3].TrimEnd('\\') + "\\";
+            string outDir = args[4];
+            var renames = args.Skip(5)
+                .Select(a => a.Split('=', 2))
+                .Where(p => p.Length == 2)
+                .ToList();
+            int written = 0;
+            foreach (var (name, _) in archive.EnumerateNames())
+            {
+                if (!name.StartsWith(srcPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                int index = archive.FindEntry(name);
+                if (index < 0)
+                {
+                    continue;
+                }
+                byte[] data = archive.ReadEntryDataDecompressed(index);
+                string rel = name.Substring(srcPrefix.Length);
+                var targets = new List<string> { rel };
+                foreach (string[] r in renames)
+                {
+                    if (rel.Contains(r[0], StringComparison.OrdinalIgnoreCase))
+                    {
+                        targets.Add(rel.Replace(r[0], r[1], StringComparison.OrdinalIgnoreCase));
+                    }
+                }
+                foreach (string t in targets)
+                {
+                    string dest = Path.Combine(outDir, (dstPrefix + t).Replace('\\', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                    File.WriteAllBytes(dest, data);
+                    written++;
+                }
+            }
+            Console.WriteLine($"{written} file(s) written under {outDir}");
+            return 0;
+        }
+
         default:
             Console.Error.WriteLine($"unknown command: {args[0]}");
             return 2;

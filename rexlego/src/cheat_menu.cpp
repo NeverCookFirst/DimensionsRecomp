@@ -5,14 +5,18 @@
 #include "cheat_menu.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include <imgui.h>
 
+#include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 #include <rex/system/xmemory.h>
@@ -256,6 +260,69 @@ std::unique_ptr<rex::ui::ImGuiDialog> CreateMenu(rex::ui::ImGuiDrawer* drawer) {
 
 void Shutdown() {
   g_engine.reset();
+}
+
+
+// ---------------------------------------------------------------------------
+// Depth of field. The 360 build has no working switch for it: game.txt's
+// `dof_disable` and the DoFEnabled settings bit are PC leftovers nobody reads.
+// What does work is dropping the pass itself - it is one full-screen draw with
+// its own pixel shader, found by bisecting a frame with ps_frame/ps_skip on
+// 2026-09-21, and the ucode hash is the same on every machine. This setting
+// keeps that hash in or out of the GPU's skip_pixel_shaders list so the F4
+// menu gets a plain on/off instead of a hex string.
+namespace {
+
+constexpr std::string_view kDofPixelShaderHash = "CFEAC7ADB912F8A9";
+
+void ApplyDepthOfField(bool enabled) {
+  const std::string current = rex::cvar::GetFlagByName("skip_pixel_shaders");
+  std::string next;
+  size_t at = 0;
+  while (at <= current.size()) {
+    size_t comma = current.find(',', at);
+    if (comma == std::string::npos) {
+      comma = current.size();
+    }
+    std::string token = current.substr(at, comma - at);
+    token.erase(std::remove_if(token.begin(), token.end(),
+                               [](unsigned char c) { return std::isspace(c) != 0; }),
+                token.end());
+    bool is_dof = token.size() == kDofPixelShaderHash.size();
+    for (size_t i = 0; is_dof && i < token.size(); ++i) {
+      is_dof = std::toupper(static_cast<unsigned char>(token[i])) == kDofPixelShaderHash[i];
+    }
+    if (!token.empty() && !is_dof) {
+      if (!next.empty()) {
+        next += ',';
+      }
+      next += token;
+    }
+    at = comma + 1;
+  }
+  if (!enabled) {
+    if (!next.empty()) {
+      next += ',';
+    }
+    next += kDofPixelShaderHash;
+  }
+  if (next != current) {
+    rex::cvar::SetFlagByName("skip_pixel_shaders", next);
+  }
+  REXLOG_INFO("Depth of field {}", enabled ? "on" : "off (DoF pass skipped)");
+}
+
+}  // namespace
+
+REXCVAR_DEFINE_BOOL(depth_of_field, true, "Graphics",
+                    "Depth of field blur. Off drops the game's DoF pass entirely; the "
+                    "picture stays sharp at every distance");
+
+void InstallGraphicsToggles() {
+  rex::cvar::RegisterChangeCallback("depth_of_field", [](std::string_view, std::string_view) {
+    ApplyDepthOfField(REXCVAR_GET(depth_of_field));
+  });
+  ApplyDepthOfField(REXCVAR_GET(depth_of_field));
 }
 
 }  // namespace legodimensions::cheats
