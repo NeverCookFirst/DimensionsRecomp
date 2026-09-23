@@ -218,6 +218,35 @@ try
             return 0;
         }
 
+        case "bvextract":
+        {
+            // bvextract <dat> <list> <outDir>: each list line is "name|dest", extracted
+            // through BrickVault, which decompresses the disc (v7) archives that
+            // our own reader hands back still packed.
+            var dat = BrickVault.Types.DATFile.Open(args[1]);
+            var byName = new Dictionary<string, BrickVault.ArchiveFile>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in dat.Files)
+            {
+                string key = f.Path.Replace('/', '\\').TrimStart('\\');
+                byName.TryAdd(key, f);
+            }
+            int ok = 0, miss = 0;
+            foreach (string line in File.ReadAllLines(args[2]))
+            {
+                string[] p = line.Split('|');
+                if (p.Length < 2) continue;
+                if (!byName.TryGetValue(p[0].Trim(), out var entry)) { Console.Error.WriteLine($"not found: {p[0]}"); miss++; continue; }
+                string dest = Path.Combine(args[3], p[1].Trim().Replace('\\', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                using var s = dat.Extract(entry);
+                using var o = File.Create(dest);
+                s.Position = 0;
+                s.CopyTo(o);
+                ok++;
+            }
+            Console.WriteLine($"{ok} extracted, {miss} not found");
+            return miss == 0 ? 0 : 1;
+        }
         case "extract":
         {
             var archive = new DatArchive(args[1]);
