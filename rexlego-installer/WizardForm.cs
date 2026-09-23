@@ -30,7 +30,7 @@ public sealed class WizardForm : Form
     TextBox? gameBox, updateBox, dlcBox, installBox;
     Label? gameStatus, updateStatus, dlcStatus, installStatus;
     ListBox? dlcList;
-    CheckBox? cbToypad, cbMods, cbRussian, cbSaveConv, cbUpdater, cbShortcut;
+    CheckBox? cbToypad, cbMods, cbRussian, cbSaveConv, cbModTools, cbUpdater, cbShortcut;
     ProgressBar? progress;
     Label? progressLabel;
     CancellationTokenSource? installCts;
@@ -380,6 +380,10 @@ public sealed class WizardForm : Form
         cbSaveConv = Row("Save converter",
             "Converts saves from xenia or a real console for use here. Only for people who already have a save to bring over.",
             opts.IncludeSaveConverter, payload.HasSaveConverter);
+        cbModTools = Row("Modding tools  (for mod makers)",
+            "connorh315's editors for the game's files (Flux, BrickVault, AbilityDefEditor and more), latest releases, "
+            + "in tools\\ModdingTools. Not needed to play.",
+            opts.IncludeModdingTools, payload.HasModdingTools);
         cbUpdater = Row("Automatic update checks  (recommended)",
             "Looks for a new release when the game starts and offers to install just the files that changed. "
             + "Can be switched off any time in the F4 menu, under Updates.",
@@ -394,6 +398,7 @@ public sealed class WizardForm : Form
         opts.IncludeMods = cbMods!.Checked;
         opts.IncludeRussian = cbRussian!.Checked && opts.IncludeMods;
         opts.IncludeSaveConverter = cbSaveConv!.Checked;
+        opts.IncludeModdingTools = cbModTools!.Checked;
         opts.IncludeUpdater = cbUpdater!.Checked;
         opts.DesktopShortcut = cbShortcut!.Checked;
         return null;
@@ -441,7 +446,7 @@ public sealed class WizardForm : Form
             $"Components:      {string.Join(", ", new[] {
                 opts.IncludeToypad ? "Toypad app" : null, opts.IncludeMods ? "mods" : null,
                 opts.IncludeRussian ? "Russian translation" : null,
-                opts.IncludeSaveConverter ? "save converter" : null, opts.DesktopShortcut ? "shortcut" : null }.Where(s => s is not null))}\n\n" +
+                opts.IncludeSaveConverter ? "save converter" : null, opts.IncludeModdingTools ? "modding tools" : null, opts.DesktopShortcut ? "shortcut" : null }.Where(s => s is not null))}\n\n" +
             "Click Install to begin. Copying takes a few minutes.";
         content.Controls.Add(summary);
         UpdateSpace();

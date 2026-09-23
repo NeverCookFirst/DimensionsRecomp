@@ -81,6 +81,10 @@ public sealed class InstallManifest
             "rus" => Components.Russian,
             "toypad" => Components.Toypad,
             "saveconverter" => Components.SaveConverter,
+            "moddingtools" => Components.ModdingTools,
+            // Only there for older updaters, which drop it in blindly; an
+            // install without mods has no update-mods to keep in step.
+            "update-mods" => Components.Mods,
             _ => true,               // game/, updater/ and the manifest always apply
         };
     }
@@ -99,6 +103,7 @@ public sealed class InstalledComponents
     public bool Russian { get; set; }
     public bool Toypad { get; set; }
     public bool SaveConverter { get; set; }
+    public bool ModdingTools { get; set; }
     public bool Updater { get; set; }
 }
 

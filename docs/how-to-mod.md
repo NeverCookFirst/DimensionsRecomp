@@ -5,7 +5,9 @@
 Press **F8** in game, tick the mods you want, click **Apply**, then restart the
 game. That is it.
 
-All mods start off. Four come with the install:
+Two built-in entries are always on and greyed out: the **Mystery Dimension
+portal fix** and **Fern** (Finn can swap into Fern; see the worked example
+below). All other mods start off. Four come with the install:
 
 - **QuickStartup** skips the intro splash screens.
 - **Recomp_TextTest** changes one line of text, so you can tell at a glance
@@ -79,10 +81,103 @@ only fits where the original was if you pad or trim it to match.
 
 ### Getting the original file out
 
-Editing means starting from the real file. Use
-[DimensionsModLoader](https://github.com/NeverCookFirst/DimensionsModLoader),
-which can browse the archives and pull files out, or QuickBMS with the
-`ttgames.bms` script.
+Editing means starting from the real file. `tools\modcli\modcli.exe` in your
+install reads every archive the game has:
+
+```
+modcli names <archive>                       list what is inside (index, offset, size, name)
+modcli grep <archive> <text>                 find files by name
+modcli extract <archive> <name> <out file>   pull one file out, decompressed
+```
+
+[DimensionsModLoader](https://github.com/NeverCookFirst/DimensionsModLoader)
+and connorh315's BrickVault (see *Modding tools* below) do the same with a
+window.
+
+## Bigger mods: your own PATCH archive
+
+The same-length rule above only applies to in-place mods. For anything that
+adds files, or that is larger than the original, build a new archive instead:
+
+```
+modcli build <folder> <update folder>\PATCH4.DAT
+```
+
+`<folder>` holds files at the paths the game uses (for example
+`additionalcontent\opus_tagcharswave1\...`). This writes `PATCH4.DAT` and
+`PATCH4.HDR`, and the game opens them **by itself** - it probes `PATCH`,
+`PATCH0`, `PATCH1`, ... in the update folder at boot. No size limits, no
+restore step: delete the two files and the mod is gone. Put them in both
+`update` and `update-mods` if you use F8 mods.
+
+Things to know:
+
+- **The earlier archive wins.** The game opens `PATCH.DAT` first, then
+  `PATCH0`-`PATCH2` (the title update's), then ours, then the disc
+  (`INSTALL0_*`, `GAME*`), then DLC. So a new archive overrides disc and DLC
+  files, but not a file that also exists in `PATCH.DAT` - change those with an
+  in-place mod.
+- `PATCH3` is taken by Fern (below). Use `PATCH4` and up, without gaps.
+- Build from the plain folder only; do not give the archive a "mod name" in
+  other tools - that mode blanks the lookup hash of `TEXT.CSV` and
+  `COLLECTION.TXT` and the game can no longer find them.
+
+The archive writer is connorh315's BrickVault, bundled in modcli with his
+permission.
+
+### Finding out what the game is looking for
+
+When something does not load - a character stuck in the portal vortex, a
+missing texture - the game asked for a file and did not find it. Add this to
+the top of `legodimensions.toml` (top level, not under a `[section]`):
+
+```toml
+trace_file_names = 'fern'
+```
+
+and `game.log` gets a `[name]` line for every file name the game looks up that
+contains that text, found or not. `trace_file_reads = 'PATCH3,DLC9'` logs the
+actual reads from those archives with their offsets, which tells you which
+archive a file really came from. Both are very chatty - remove them afterwards.
+
+### Worked example: Fern
+
+Finn can turn into Fern, but the Adventure Time DLC shipped without Fern's
+*charcache*, so the swap hung forever. The trace showed that for a character
+the game looks up every asset under a cache prefix:
+
+```
+additionalcontent\opus_tagcharswave1\charcache\fern\<the asset's normal path>
+e.g. ...\charcache\fern\additionalcontent\opus_tagcharswave1\chars\minifig\fern\fern.cd
+```
+
+Fern's model, animations and items all exist in `DLC9.DAT2` at their normal
+paths. Copying each one under the `charcache\fern\` prefix (plus Finn's cached
+abilities, cloned to that prefix) and building that into `PATCH3` made him
+work - 621 files. The same recipe should apply to any character that has its
+files but no charcache. Fern ships with the installer and shows in F8 as a
+built-in entry that cannot be switched off.
+
+## Modding tools
+
+The installer has an optional **Modding tools** component (off by default). It
+puts the latest releases of connorh315's tools in `tools\ModdingTools`:
+
+| Tool | What it is for |
+|---|---|
+| BrickVault | browse, extract and build `.DAT` archives |
+| Flux | `.led`, `.cd`, `.cpd`, `.as` - level and character data |
+| AbilityDefEditor | abilities |
+| SoundEventEditor | `.sound_event` |
+| CBXDecoder | `.cbx` audio to WAV |
+| Hologram | level viewer and exporter |
+| Diorama | geometry viewer |
+| DATPacker, DATManager | older archive packer and extractor |
+
+They are his work, used with his personal permission - credit him if you use
+them. `CREDITS.txt` in that folder lists the versions. Texture replacement is
+not solved yet: the Xbox 360 build's `.tex`/`.nxg_textures` use the 360's tiled
+layout, and the console has 512 MB for everything.
 
 ### Testing
 

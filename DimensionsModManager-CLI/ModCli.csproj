@@ -13,6 +13,7 @@
     <AssemblyName>modcli</AssemblyName>
     <RootNamespace>DimensionsModManager</RootNamespace>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +22,9 @@
     <Compile Include="..\DimensionsModManager\ModInfo.cs" />
     <Compile Include="..\DimensionsModManager\DatArchive.cs" />
     <Compile Include="..\DimensionsModManager\Dflt.cs" />
+    <!-- Connor's BrickVault, vendored: the archive writer behind `modcli build`.
+         See DimensionsModManager\thirdparty\BrickVault\NOTICE.md. -->
+    <Compile Include="..\DimensionsModManager\thirdparty\BrickVault\**\*.cs" />
   </ItemGroup>
 
 </Project>

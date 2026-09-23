@@ -197,6 +197,21 @@ dotnet publish $modCliProj -c Release -r win-x64 --self-contained `
 if ($LASTEXITCODE -ne 0) { throw "modcli publish failed" }
 if (-not (Test-Path "$payload\modcli\modcli.exe")) { throw "modcli.exe missing from payload" }
 
+# 3a. Fern. Not a modcli mod: PATCH3.DAT/HDR carry the charcache the Adventure
+#     Time DLC shipped without, and the game opens numbered PATCH archives on
+#     its own. It goes to BOTH update folders - the pack is applied by the
+#     PREVIOUS release's updater, which only knows to drop an unknown payload
+#     folder at <install>\<folder>, and a modded install reads update-mods.
+#     The source is game data, so it lives in research\ (not in git); see
+#     docs\how-to-mod.md for how it was made.
+Write-Host "== Fern"
+$fernSrc = "$root\research\fern-patch3\src"
+if (-not (Test-Path $fernSrc)) { throw "Fern's PATCH3 source is missing: $fernSrc" }
+New-Item -ItemType Directory -Force "$payload\update", "$payload\update-mods" | Out-Null
+& "$payload\modcli\modcli.exe" build $fernSrc "$payload\update\PATCH3.DAT"
+if ($LASTEXITCODE -ne 0) { throw "modcli build (Fern) failed" }
+Copy-Item "$payload\update\PATCH3.DAT", "$payload\update\PATCH3.HDR" "$payload\update-mods\"
+
 # 4. Toypad app (downloaded from its own latest release) and the save converter.
 Write-Host "== Tools"
 # The Toy Pad app comes straight from its own latest release, every time. It
@@ -228,13 +243,43 @@ foreach ($f in @('DimensionsSaveConverter.exe', 'READ ME FIRST.txt')) {
     Copy-Item $src "$payload\saveconverter\"
 }
 
+# 4a. Modding tools: connorh315's latest releases, unpacked one folder per tool.
+#     He has no licence files; he gave personal permission on 2026-09-13 on
+#     the condition he is credited, hence CREDITS.txt. Installer-only: kept
+#     out of the manifest below, because the previous release's updater would
+#     otherwise install an unknown payload folder for everyone.
+$ModdingTools = @("Flux", "AbilityDefEditor", "SoundEventEditor", "BrickVault", "Hologram",
+                  "Diorama", "CBXDecoder", "DATPacker", "DATManager")
+$toolsTemp = Join-Path ([System.IO.Path]::GetTempPath()) ("rexlego-mtools-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $toolsTemp, "$payload\moddingtools" -Force | Out-Null
+$credits = @("Modding tools by connorh315 (https://github.com/connorh315), bundled with his permission.",
+             "Each folder is the latest release of the repository of the same name.", "")
+try {
+    foreach ($tool in $ModdingTools) {
+        $rel = Invoke-RestMethod "https://api.github.com/repos/connorh315/$tool/releases/latest" `
+            -Headers @{ "User-Agent" = "rexlego-build" }
+        $asset = $rel.assets | Where-Object { $_.name -like "*.zip" -and $_.name -notmatch "mac" } |
+            Sort-Object { if ($_.name -match "win") { 0 } else { 1 } } | Select-Object -First 1
+        if (-not $asset) { throw "the latest $tool release has no Windows zip" }
+        $zip = Join-Path $toolsTemp $asset.name
+        Invoke-WebRequest $asset.browser_download_url -OutFile $zip -UseBasicParsing
+        Expand-Archive $zip "$payload\moddingtools\$tool" -Force
+        Write-Host "   $tool $($rel.tag_name) ($($asset.name))"
+        $credits += "$tool $($rel.tag_name)  https://github.com/connorh315/$tool"
+    }
+} finally {
+    Remove-Item $toolsTemp -Recurse -Force -ErrorAction SilentlyContinue
+}
+$credits | Set-Content "$payload\moddingtools\CREDITS.txt" -Encoding UTF8
+
 # 5. The manifest. Every file in the release with its SHA-256, which is what the
 #    updater compares against the user's disk to decide what to replace.
 Write-Host "== Hashing"
 $files = @()
 foreach ($file in Get-ChildItem $payload -Recurse -File) {
     $relative = $file.FullName.Substring($payload.Length + 1).Replace('\', '/')
-    $files += [ordered]@{
+    if ($relative.StartsWith("moddingtools/")) { continue }   # installer-only, see 4a
+    $files +=[ordered]@{
         p   = $relative
         sha = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
         len = $file.Length

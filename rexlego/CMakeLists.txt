@@ -26,6 +26,7 @@ set(LEGODIMENSIONS_SOURCES
     src/cheat_menu.cpp
     src/toypad_app.cpp
     src/updates.cpp
+    src/name_trace.cpp
 )
 
 # Research probes: a guard-page watchpoint on the area flags and the failed

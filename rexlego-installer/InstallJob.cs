@@ -36,6 +36,7 @@ public sealed class InstallOptions
     public bool IncludeMods = true;
     public bool IncludeRussian;
     public bool IncludeSaveConverter;
+    public bool IncludeModdingTools;
     public bool IncludeUpdater = true;
     public bool DesktopShortcut = true;
     /// <summary>
@@ -254,6 +255,7 @@ public sealed class InstallJob
         "modcli" => Path.Combine(installDir, "tools", "modcli"),
         "toypad" => Path.Combine(installDir, "tools", "LegoToypad"),
         "saveconverter" => Path.Combine(installDir, "tools", "SaveConverter"),
+        "moddingtools" => Path.Combine(installDir, "tools", "ModdingTools"),
         "updater" => Path.Combine(installDir, "tools", "rexupdate"),
         _ => Path.Combine(installDir, payloadPrefix),
     };
@@ -277,6 +279,8 @@ public sealed class InstallJob
         }
         if (o.IncludeToypad) n += payload.SizeUnder("toypad");
         if (o.IncludeSaveConverter) n += payload.SizeUnder("saveconverter");
+        if (o.IncludeModdingTools) n += payload.SizeUnder("moddingtools");
+        n += payload.SizeUnder("update");
         if (o.IncludeUpdater) n += payload.SizeUnder("updater");
         return n;
     }
@@ -315,6 +319,11 @@ public sealed class InstallJob
         if (!File.Exists(xexpSource))
             throw new InvalidOperationException("The Title Update has no Default.xexp - it cannot be applied.");
         CopyFile(xexpSource, Path.Combine(GameDir, "Default.xexp"), "Applying Title Update 23");
+
+        // 2b. Our own archives for the update folder (PATCH3 = Fern). Before
+        //     BuildModdedUpdate, which links everything here into update-mods;
+        //     the payload's update-mods copy exists only for older updaters.
+        CopyPayload("update", UpdateDir, "Installing Fern");
         if (Validation.Sha256File(Path.Combine(GameDir, "Default.xexp")) != KnownGame.UpdateXexpSha256)
             throw new InvalidOperationException("Default.xexp did not copy into the game folder correctly.");
 
@@ -343,6 +352,7 @@ public sealed class InstallJob
         }
         if (o.IncludeToypad) CopyPayload("toypad", ToypadDir, "Installing LEGO Toypad app");
         if (o.IncludeSaveConverter) CopyPayload("saveconverter", Path.Combine(ToolsDir, "SaveConverter"), "Installing save converter");
+        if (o.IncludeModdingTools) CopyPayload("moddingtools", Path.Combine(ToolsDir, "ModdingTools"), "Installing modding tools");
         if (o.IncludeUpdater) InstallUpdater();
 
         // 6. Config + docs. The plan is also recorded in install.json, so a later
@@ -547,6 +557,7 @@ public sealed class InstallJob
         Russian = o.IncludeMods && o.IncludeRussian,
         Toypad = o.IncludeToypad,
         SaveConverter = o.IncludeSaveConverter,
+        ModdingTools = o.IncludeModdingTools,
         // Checked on disk, not asked of the options: stripping the payload off
         // ourselves can fail (a dev run from a payload folder), and the config
         // must not point at an updater that is not there.

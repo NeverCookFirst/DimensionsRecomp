@@ -202,6 +202,23 @@ std::vector<ModEntry> Discover() {
   portal_fix.built_in = true;
   discovered.push_back(std::move(portal_fix));
 
+  // Fern is not a modcli mod: the installer drops PATCH3.DAT/HDR (his
+  // charcache, which the DLC shipped without) into the update folders and the
+  // game opens numbered PATCH archives on its own. Listed so players can see
+  // it is there; ticked when the archive is actually present.
+  ModEntry fern;
+  fern.folder = "built-in-fern";
+  fern.name = "Fern (Adventure Time) - Finn can become Fern";
+  {
+    std::filesystem::path dir = REXCVAR_GET(mods_update_root);
+    if (dir.is_relative()) {
+      dir = rex::filesystem::GetExecutableFolder() / dir;
+    }
+    fern.enabled = std::filesystem::exists(dir / "PATCH3.DAT", ec);
+  }
+  fern.built_in = true;
+  discovered.push_back(std::move(fern));
+
   for (const auto& dir : it) {
     if (!dir.is_directory()) {
       continue;
@@ -293,7 +310,7 @@ class ModMenuDialog final : public rex::ui::ImGuiDialog {
         ImGui::Checkbox(mod.name.c_str(), &on);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::TextDisabled("(built in - fix_portal_trailer in the config)");
+        ImGui::TextDisabled("(built in)");
       } else {
         ImGui::Checkbox(mod.name.c_str(), &mod.enabled);
         ImGui::SameLine();

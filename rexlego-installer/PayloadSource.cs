@@ -129,7 +129,8 @@ public abstract class PayloadSource : IDisposable
     public static readonly string[] RussianMods = { "Lang_Russian_By_koctr113" };
     public bool HasUpdater => Find("updater/rexupdate.exe") is not null;
     public bool HasToypad => Under("toypad").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-    public bool HasSaveConverter => Under("saveconverter").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+    public bool HasModdingTools => Under("moddingtools").Any();
+    public bool HasSaveConverter =>Under("saveconverter").Any(e => e.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
 
     protected static void Pump(Stream input, string destPath, Action<long>? progress)
     {

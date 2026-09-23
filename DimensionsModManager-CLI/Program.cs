@@ -153,6 +153,71 @@ try
         }
 
         // extract <dat> <internalPath> <outFile>
+        // retag <dat> <oldPrefix> <newPrefix> [old=new ...]
+        // Renames entries in place (CRC table only, data untouched). Use on a
+        // COPY of an archive placed in a spare INSTALL0_ slot.
+        case "retag":
+        {
+            var archive = new DatArchive(args[1]);
+            string oldPrefix = args[2], newPrefix = args[3];
+            var exact = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 4; i < args.Length; i++)
+            {
+                int eq = args[i].IndexOf('=');
+                if (eq > 0) exact[args[i][..eq]] = args[i][(eq + 1)..];
+            }
+            int n = archive.RetagEntries(name =>
+            {
+                if (exact.TryGetValue(name, out var to)) return to;
+                if (name.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase))
+                    return newPrefix + name[oldPrefix.Length..];
+                return null;
+            });
+            archive.SaveHdr();
+            Console.WriteLine($"retagged {n} entries in {archive.HdrPath}");
+            return 0;
+        }
+
+        // build <folder> <out.DAT> [name] [author] [version]
+        // Packs a folder into a brand-new archive pair (out.DAT + out.HDR) in
+        // the game's own PATCH/DLC format, using Connor's BrickVault writer.
+        // The game probes numbered PATCH archives itself, so a mod that adds
+        // files - or files bigger than the ones they replace - goes into a
+        // fresh PATCH<n>.DAT next to the update instead of being injected.
+        case "build":
+        {
+            string folder = Path.GetFullPath(args[1]);
+            string outDat = Path.GetFullPath(args[2]);
+            if (!Directory.Exists(folder))
+            {
+                Console.Error.WriteLine($"no such folder: {folder}");
+                return 1;
+            }
+            if (!outDat.EndsWith(".DAT", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Error.WriteLine("the output must end in .DAT (the .HDR is written beside it)");
+                return 1;
+            }
+            var settings = new BrickVault.DATBuildSettings
+            {
+                BuilderID = "modcli",
+                InputFolderLocation = folder.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                OutputFileLocation = outDat,
+                Version = BrickVault.Types.DATFile.DATVersion.V11,
+                ShouldCreateHDR = true,
+            };
+            if (args.Length > 3)
+            {
+                settings.SetupAsMod(args.Length > 4 ? args[4] : "unknown", args[3],
+                                    args.Length > 5 ? args[5] : "1.0");
+            }
+            var progress = new BrickVault.BuildProgress();
+            BrickVault.Types.DATFile.BuildFromFolder(settings, progress);
+            var check = new DatArchive(outDat);
+            Console.WriteLine($"built {outDat}: {check.FileCount} file(s), readable by our own parser");
+            return 0;
+        }
+
         case "extract":
         {
             var archive = new DatArchive(args[1]);
@@ -230,6 +295,7 @@ try
 catch (Exception ex)
 {
     Console.Error.WriteLine($"ERROR: {ex.Message}");
+    if (Environment.GetEnvironmentVariable("MODCLI_DEBUG") == "1") Console.Error.WriteLine(ex.ToString());
     return 1;
 }
 
