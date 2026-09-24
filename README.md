@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest"><b>Download</b></a>
   &nbsp;&middot;&nbsp;
-  <a href="docs/how-to-mod.md">How to make Mods</a>
+  <a href="docs/how-to-mod.md">How to make mods</a>
   &nbsp;&middot;&nbsp;
   <a href="README-dev.md">Build it yourself</a>
   &nbsp;&middot;&nbsp;
