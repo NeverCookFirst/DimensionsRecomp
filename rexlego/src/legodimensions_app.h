@@ -120,22 +120,12 @@ class LegodimensionsApp : public rex::ReXApp {
     // Credits and Quit Game in the main menu. Always up; it draws only when
     // one of the two entries is picked.
     legodimensions::main_menu::Host host;
-    host.set_paused = [this](bool paused) { SetGuestPaused(paused); };
-    host.pad_buttons = [this]() -> uint16_t {
-      auto* input = runtime() ? static_cast<rex::input::InputSystem*>(runtime()->input_system())
-                              : nullptr;
-      if (!input) {
-        return 0;
-      }
-      uint16_t buttons = 0;
-      for (uint32_t user = 0; user < 4; ++user) {
-        rex::input::X_INPUT_STATE state{};
-        if (input->GetState(user, &state) == 0) {
-          buttons |= uint16_t(state.gamepad.buttons);
-        }
-      }
-      return buttons;
-    };
+    // The game keeps running under the prompt; only its input is withheld.
+    // Suspending its threads crashed 0.1.21 for players: a thread frozen
+    // inside the input system's own device refresh, and this overlay polling
+    // the same unlocked state from the UI thread.
+    host.set_paused = [](bool paused) { rex::input::InputSystem::SetGuestInputBlocked(paused); };
+    host.pad_buttons = []() -> uint16_t { return rex::input::InputSystem::HeldButtons(); };
     host.quit = [] {
       legodimensions::toypad_app::StopIfStarted();
       rex::FlushLogging();

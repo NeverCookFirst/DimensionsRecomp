@@ -20,8 +20,8 @@ class ImGuiDrawer;
 namespace legodimensions::main_menu {
 
 struct Host {
-  // Suspends or resumes the game while a prompt is up, so it neither animates
-  // nor reads the pad underneath it.
+  // Withholds the game's input while a prompt is up, so the menu underneath
+  // does not react to the same presses.
   std::function<void(bool paused)> set_paused;
   // Buttons held on any controller (X_INPUT_GAMEPAD_* bits), 0 if none.
   std::function<uint16_t()> pad_buttons;

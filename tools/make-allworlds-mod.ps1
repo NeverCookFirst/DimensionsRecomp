@@ -34,7 +34,11 @@ if (-not $Archives) {
 $done = @(); $skipped = @()
 foreach ($Archive in $Archives) {
 $archiveName = [IO.Path]::GetFileNameWithoutExtension($Archive).ToUpperInvariant()
-$list = & $ModCli names $Archive 'chars\minifig\' | Where-Object { $_ -match '\.txt\s*$' }
+# Every chars\ subfolder, not only minifig: Jake and the Powerpuff Girls live in
+# chars\small, and missing them is how they ended up locked out of the worlds.
+# Only files that already carry a From tag are touched, so items and vehicles
+# under chars\ are left alone.
+$list = & $ModCli names $Archive 'chars\' | Where-Object { $_ -match '\.txt\s*$' }
 foreach ($line in $list) {
     $parts = $line.Trim() -split '\s+', 5
     $path = $parts[-1].Trim()

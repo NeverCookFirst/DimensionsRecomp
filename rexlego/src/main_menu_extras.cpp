@@ -220,9 +220,6 @@ class MenuExtrasDialog final : public rex::ui::ImGuiDialog {
     if (state_ == State::kIdle) {
       const int request = g_request.exchange(kNone);
       if (request == kNone) {
-        // Not a single call into the input system while idle: it is also
-        // enumerating devices on the game's thread, and polling it from here
-        // every frame raced that and crashed at startup.
         return;
       }
       // The A that picked the entry is still held; start from it so it does
@@ -236,7 +233,8 @@ class MenuExtrasDialog final : public rex::ui::ImGuiDialog {
       return;
     }
 
-    // The game is suspended from here on, so the input system is ours.
+    // Buttons as the game's own poll last saw them; the input system is never
+    // called from this thread.
     const uint16_t pad = host_.pad_buttons ? host_.pad_buttons() : 0;
     const uint16_t pressed = pad & ~prev_pad_;
     prev_pad_ = pad;
