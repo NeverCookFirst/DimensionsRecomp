@@ -72,6 +72,14 @@ REXCVAR_DEFINE_BOOL(fix_portal_trailer, true, "Fixes",
                     "commented out; this uncomments that line as the script is read. Nothing on "
                     "disk is modified.");
 
+// Fern ships as PATCH3.DAT/HDR in both update folders, and the game opens
+// numbered PATCH archives on its own, so switching him off means the archive
+// must not be there when the game starts. It is renamed to .off (and back)
+// before the runtime opens anything; while the game runs it is held open.
+REXCVAR_DEFINE_BOOL(fern, true, "Fixes",
+                    "Fern (Adventure Time): Finn can become Fern. Takes effect on the next launch.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 namespace legodimensions::mods {
 namespace {
 
@@ -195,29 +203,8 @@ std::vector<ModEntry> Discover() {
 
   const std::vector<std::string> enabled = SplitList(REXCVAR_GET(mods));
 
-  ModEntry portal_fix;
-  portal_fix.folder = "built-in";
-  portal_fix.name = "Mystery Dimension portal fix";
-  portal_fix.enabled = REXCVAR_GET(fix_portal_trailer);
-  portal_fix.built_in = true;
-  discovered.push_back(std::move(portal_fix));
-
-  // Fern is not a modcli mod: the installer drops PATCH3.DAT/HDR (his
-  // charcache, which the DLC shipped without) into the update folders and the
-  // game opens numbered PATCH archives on its own. Listed so players can see
-  // it is there; ticked when the archive is actually present.
-  ModEntry fern;
-  fern.folder = "built-in-fern";
-  fern.name = "Fern (Adventure Time) - Finn can become Fern";
-  {
-    std::filesystem::path dir = REXCVAR_GET(mods_update_root);
-    if (dir.is_relative()) {
-      dir = rex::filesystem::GetExecutableFolder() / dir;
-    }
-    fern.enabled = std::filesystem::exists(dir / "PATCH3.DAT", ec);
-  }
-  fern.built_in = true;
-  discovered.push_back(std::move(fern));
+  // The built-in fixes (Mystery Dimension portal, Fern) are switched in F4 ->
+  // Mods and fixes, not here: this list is only the player's own mods.
 
   for (const auto& dir : it) {
     if (!dir.is_directory()) {
@@ -408,7 +395,55 @@ std::unique_ptr<rex::ui::ImGuiDialog> CreateMenu(rex::ui::ImGuiDrawer* drawer) {
   return std::make_unique<ModMenuDialog>(drawer);
 }
 
+namespace {
+
+// Puts PATCH3.DAT/HDR in place or moves them aside, per the fern setting.
+void ApplyFernSetting(const std::filesystem::path& dir) {
+  if (dir.empty()) {
+    return;
+  }
+  const bool on = REXCVAR_GET(fern);
+  std::error_code ec;
+  for (const char* name : {"PATCH3.DAT", "PATCH3.HDR"}) {
+    const std::filesystem::path live = dir / name;
+    const std::filesystem::path off = dir / (std::string(name) + ".off");
+    const bool has_live = std::filesystem::exists(live, ec);
+    const bool has_off = std::filesystem::exists(off, ec);
+    if (on) {
+      if (has_live) {
+        // An update may have dropped a fresh copy next to the old .off; the
+        // live one is the newer, so the .off just goes.
+        if (has_off) std::filesystem::remove(off, ec);
+        continue;
+      }
+      if (!has_off) continue;  // not installed at all
+      std::filesystem::rename(off, live, ec);
+    } else {
+      if (!has_live) continue;
+      // Off, and an archive is live (first switch-off, or an update put a new
+      // one back): it replaces whatever .off was there.
+      if (has_off) std::filesystem::remove(off, ec);
+      std::filesystem::rename(live, off, ec);
+    }
+    if (ec) {
+      REXLOG_WARN("Fern: could not switch {} ({})", live.string(), ec.message());
+    } else {
+      REXLOG_INFO("Fern: {} {}", name, on ? "restored" : "moved aside");
+    }
+  }
+}
+
+}  // namespace
+
 void ResolveUpdateRoot(rex::PathConfig& paths) {
+  {
+    std::filesystem::path modded = REXCVAR_GET(mods_update_root);
+    if (!modded.empty() && modded.is_relative()) {
+      modded = rex::filesystem::GetExecutableFolder() / modded;
+    }
+    ApplyFernSetting(paths.update_data_root);
+    ApplyFernSetting(modded);
+  }
   const std::string selection = REXCVAR_GET(mods);
   const std::string modded = REXCVAR_GET(mods_update_root);
   if (selection.empty() || modded.empty()) {

@@ -236,6 +236,11 @@ void ConfigureSettings() {
            "Comma-separated folder names under the mods folder. The mod menu (F8) edits "
            "this for you."},
           {"mods_root", "Mods folder"},
+          {"skip_cutscenes", "Skippable cutscenes",
+           "Cutscenes can be skipped, as if the N0CUT5 code had been typed. Applies "
+           "right away."},
+          {"fern", "Fern (Adventure Time)",
+           "Finn can become Fern. Takes effect on the next launch."},
           {"fix_portal_trailer", "Fix the Mystery Dimension portal",
            "Makes the portal in Vorton work. Without it the character walks in and is "
            "stuck forever."},

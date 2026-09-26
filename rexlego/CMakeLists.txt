@@ -23,6 +23,7 @@ set(LEGODIMENSIONS_SOURCES
     src/ui_theme.cpp
     src/mod_menu.cpp
     src/main_menu_extras.cpp
+    src/skip_cutscenes.cpp
     src/cheat_engine.cpp
     src/cheat_menu.cpp
     src/toypad_app.cpp

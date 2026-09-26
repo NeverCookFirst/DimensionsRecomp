@@ -25,6 +25,7 @@
 #endif
 #include "main_menu_extras.h"
 #include "mod_menu.h"
+#include "skip_cutscenes.h"
 #include "toypad_app.h"
 #include "ui_theme.h"
 #include "updates.h"
@@ -54,6 +55,7 @@ class LegodimensionsApp : public rex::ReXApp {
     legodimensions::area_watch::Install();
 #endif
     legodimensions::cheats::InstallGraphicsToggles();
+    legodimensions::skip_cutscenes::Start();
     legodimensions::discord::Start();
     legodimensions::updates::CheckAtStartup();
     legodimensions::toypad_app::StartIfEnabled();
