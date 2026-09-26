@@ -50,9 +50,19 @@ body:
     attributes:
       label: game.log
       description: |
-        Next to the game. It is overwritten every launch, so grab it right after
-        the problem. Paste it or attach it.
+        Next to the game. It keeps growing across launches, so grab it right
+        after the problem. Paste it or attach it.
       render: text
+
+  - type: textarea
+    id: crashdump
+    attributes:
+      label: Crash dump (optional)
+      description: |
+        If the game crashed, it leaves a `crash-<number>.dmp` next to game.log.
+        The newest one is the crash you just had. GitHub does not accept .dmp
+        files, so put it in a .zip first, then drag the .zip here. It lets us
+        see exactly where the game went down.
 
   - type: textarea
     id: extra
