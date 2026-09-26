@@ -10,7 +10,9 @@
 #include <thread>
 
 #include <rex/logging.h>
+#include <rex/input/input_system.h>
 #include <rex/rex_app.h>
+#include <rex/runtime.h>
 #include <rex/ui/keybinds.h>
 
 #include "cheat_menu.h"
@@ -21,6 +23,7 @@
 #ifdef LEGODIMENSIONS_DEV_PROBES
 #include "hub_portrait.h"
 #endif
+#include "main_menu_extras.h"
 #include "mod_menu.h"
 #include "toypad_app.h"
 #include "ui_theme.h"
@@ -114,6 +117,31 @@ class LegodimensionsApp : public rex::ReXApp {
         cheat_menu_ = legodimensions::cheats::CreateMenu(drawer);
       }
     });
+    // Credits and Quit Game in the main menu. Always up; it draws only when
+    // one of the two entries is picked.
+    legodimensions::main_menu::Host host;
+    host.set_paused = [this](bool paused) { SetGuestPaused(paused); };
+    host.pad_buttons = [this]() -> uint16_t {
+      auto* input = runtime() ? static_cast<rex::input::InputSystem*>(runtime()->input_system())
+                              : nullptr;
+      if (!input) {
+        return 0;
+      }
+      uint16_t buttons = 0;
+      for (uint32_t user = 0; user < 4; ++user) {
+        rex::input::X_INPUT_STATE state{};
+        if (input->GetState(user, &state) == 0) {
+          buttons |= uint16_t(state.gamepad.buttons);
+        }
+      }
+      return buttons;
+    };
+    host.quit = [] {
+      legodimensions::toypad_app::StopIfStarted();
+      rex::FlushLogging();
+      std::_Exit(0);
+    };
+    main_menu_ = legodimensions::main_menu::CreateOverlay(drawer, std::move(host));
   }
 
  private:
@@ -133,6 +161,7 @@ class LegodimensionsApp : public rex::ReXApp {
 
   std::unique_ptr<rex::ui::ImGuiDialog> mod_menu_;
   std::unique_ptr<rex::ui::ImGuiDialog> cheat_menu_;
+  std::unique_ptr<rex::ui::ImGuiDialog> main_menu_;
 
  public:
   // Override virtual hooks for customization:

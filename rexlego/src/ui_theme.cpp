@@ -158,8 +158,8 @@ void ConfigureSettings() {
            "Hides colour banding in gradients such as skies."},
           {"gpu_backend", "Graphics API",
            "Which API the renderer uses. Direct3D 12 is the tested default on Windows; "
-           "Vulkan is the fallback for GPUs that misbehave on it.",
-           Choices{{"any", "Automatic"}, {"d3d12", "Direct3D 12"}, {"vulkan", "Vulkan"}}},
+           "Vulkan is unstable (known colour issues) and only a fallback. Needs a restart.",
+           Choices{{"any", "Automatic"}, {"d3d12", "Direct3D 12"}, {"vulkan", "Vulkan (unstable)"}}},
           {"d3d12_adapter", "Graphics card",
            "Index of the graphics adapter to use. -1 picks the first real GPU; on a laptop "
            "with two, 0 and 1 choose between them."},
@@ -256,6 +256,12 @@ void ConfigureSettings() {
       "Interface",
       {
           {"ui_font_size", "Menu font size"},
+          {"main_menu_extras", "Credits and Quit Game in the main menu",
+           "Adds Credits and Quit Game to the two empty slots on the left of the main "
+           "menu. Takes effect the next time the main menu is shown."},
+          {"show_shader_compile_notice", "Show shader compilation",
+           "Shows \"Compiling shaders, please wait...\" with a count at the bottom of the "
+           "screen while new shaders compile. The game may stutter while it is up."},
       }});
 
   // Locked to off, and its description says it is not what people think it

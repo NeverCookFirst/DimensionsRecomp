@@ -89,8 +89,18 @@ public static class TomlConfig
         const string toypad = "ToyPad. Turn this off to use a real LEGO portal over USB\n"
                             + "# (needs the libusb driver, installed with Zadig).";
         Add(toypad, "toypad_emulation", "true");
+        if (c.Toypad)
+        {
+            // The app the installer just put in tools\LegoToypad, started with
+            // the game. Not forced: turning it off in F4 should stick.
+            Add(toypad, "toypad_app_autostart", "true");
+            Add(toypad, "toypad_app_path",
+                Literal(Path.Combine(p.ToolsRoot, "LegoToypad", "LegoToypad.exe")));
+        }
 
-        Add("Display", "fullscreen", "true");
+        // Windowed (borderless via the window) runs at a higher frame rate than
+        // exclusive fullscreen here.
+        Add("Display", "fullscreen", "false");
         // Forced: the setting cannot fix tearing, turning it on is untested, and
         // people did turn it on trying to fix tearing. The runtime locks it too,
         // but only a rewrite repairs an install that already has it on.
@@ -99,7 +109,19 @@ public static class TomlConfig
         Add("Display", "frame_rate", "'60'");
         Add("Display", "present_effect", "'fsr'");
         Add("Display", "present_fsr_max_upsampling_passes", "1");
+        Add("Display", "present_fsr_quality_mode", "'quality'");
+        Add("Display", "present_fsr_sharpness_reduction", "0.0");
+        Add("Display", "present_dither", "true");
+        Add("Display", "swap_post_effect", "'fxaa_extreme'");
         Add("Display", "anisotropic_override", "5");
+        Add("Display", "depth_of_field", "false");
+
+        // Roomier texture cache than the engine default (24/384/768/30), the
+        // values the build is developed and tested with.
+        Add("Display", "texture_cache_memory_limit_render_to_texture", "40");
+        Add("Display", "texture_cache_memory_limit_soft", "400");
+        Add("Display", "texture_cache_memory_limit_hard", "800");
+        Add("Display", "texture_cache_memory_limit_soft_lifetime", "40");
 
         // Written out explicitly rather than left to the engine's default, so it
         // is visible in the file and in F4. Scaling the draw resolution costs
