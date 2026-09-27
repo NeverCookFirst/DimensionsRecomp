@@ -140,6 +140,9 @@ public static class TomlConfig
         Add(compat, "readback_resolve", "'fast'", forced: true);
         Add(compat, "readback_resolve_half_pixel_offset", "true", forced: true);
         Add(compat, "readback_memexport_fast", "false", forced: true);
+        // Batched readback let late GPU data overwrite what the game wrote since
+        // (exploded geometry on Endless Sea of Possibilities, 0.1.20-0.1.23).
+        Add(compat, "readback_memexport_batched", "false", forced: true);
         Add(compat, "readback_resolve_max_kb", "256", forced: true);
         Add(compat, "d3d12_readback_memexport", "true", forced: true);
         Add(compat, "d3d12_readback_resolve", "true", forced: true);

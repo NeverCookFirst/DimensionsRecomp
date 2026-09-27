@@ -148,9 +148,7 @@ void ConfigureSettings() {
            "How the rendered frame is scaled to the window.",
            Choices{{"bilinear", "Bilinear (fastest)"},
                    {"cas", "AMD CAS (sharpening)"},
-                   {"fsr", "AMD FSR 1"},
-                   {"fsr2", "AMD FSR 2"},
-                   {"fsr3", "AMD FSR 3"}}},
+                   {"fsr", "AMD FSR 1"}}},
           {"swap_post_effect", "Anti-aliasing",
            "Smooths jagged edges on the final frame.",
            Choices{{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA (strong)"}}},
@@ -169,6 +167,28 @@ void ConfigureSettings() {
       "Audio",
       {
           {"audio_mute", "Mute"},
+      }});
+
+  pres.pages.push_back(SettingsPage{
+      "Language",
+      {
+          {"user_language", "Game language",
+           "The console language the game takes its text and voices from. A language the "
+           "game was not shipped with falls back to English. Takes effect on the next "
+           "launch.",
+           Choices{{"1", "English"},
+                   {"3", "German"},
+                   {"4", "French"},
+                   {"5", "Spanish"},
+                   {"6", "Italian"},
+                   {"9", "Portuguese"},
+                   {"11", "Polish"},
+                   {"12", "Russian"},
+                   {"13", "Swedish"},
+                   {"15", "Norwegian"},
+                   {"16", "Dutch"},
+                   {"2", "Japanese"},
+                   {"7", "Korean"}}},
       }});
 
   pres.pages.push_back(SettingsPage{
@@ -271,7 +291,7 @@ void ConfigureSettings() {
 
   // Locked to off, and its description says it is not what people think it
   // is; showing it only invites the question.
-  pres.hidden = {"vsync"};
+  pres.hidden = {"vsync", "readback_memexport_batched"};
 
   rex::ui::SettingsDialog::SetPresentation(std::move(pres));
 }

@@ -27,6 +27,9 @@ struct Host {
   std::function<uint16_t()> pad_buttons;
   // Called on "Yes" to quitting; does not return.
   std::function<void()> quit;
+  // Called every frame on the UI thread with whether a prompt is up, so the
+  // app can decide things like the mouse cursor without a frame hook of its own.
+  std::function<void(bool prompt_open)> on_frame;
 };
 
 // Always alive; draws nothing until the menu asks for Credits or Quit.

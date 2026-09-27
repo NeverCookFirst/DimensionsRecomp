@@ -13,6 +13,8 @@
 #include <rex/input/input_system.h>
 #include <rex/rex_app.h>
 #include <rex/runtime.h>
+#include <rex/cvar.h>
+#include <rex/ui/flags.h>
 #include <rex/ui/keybinds.h>
 
 #include "cheat_menu.h"
@@ -133,6 +135,17 @@ class LegodimensionsApp : public rex::ReXApp {
       rex::FlushLogging();
       std::_Exit(0);
     };
+    // The cursor is only for the overlays: hidden over the game in a window
+    // and in fullscreen alike, shown while any menu is open.
+    host.on_frame = [this](bool prompt_open) {
+      auto* win = window();
+      if (!win) {
+        return;
+      }
+      const bool menu_open = prompt_open || AnyOverlayOpen() || mod_menu_ || cheat_menu_;
+      win->SetCursorVisibility(menu_open ? rex::ui::Window::CursorVisibility::kVisible
+                                         : rex::ui::Window::CursorVisibility::kHidden);
+    };
     main_menu_ = legodimensions::main_menu::CreateOverlay(drawer, std::move(host));
   }
 
@@ -157,7 +170,21 @@ class LegodimensionsApp : public rex::ReXApp {
 
  public:
   // Override virtual hooks for customization:
-  // void OnPostInitLogging() override {}
+  // FSR 2/3 run on synthesized depth and motion and smear busy scenes (the
+  // Endless Sea of Possibilities report); people picked them and filed bugs.
+  // Hidden from F4, and an install that already has one gets FSR 1 instead.
+  // Here because the config is loaded but the presenter is not built yet.
+  void OnPostInitLogging() override {
+    const std::string effect = REXCVAR_GET(present_effect);
+    if (effect == "fsr2" || effect == "fsr3") {
+      rex::cvar::SetFlagByName("present_effect", "fsr");
+      REXLOG_INFO("present_effect={} is no longer offered; using fsr", effect);
+    }
+    // Batched memexport readback put stale GPU data back over what the game
+    // wrote since (exploded geometry on Endless Sea of Possibilities). Locked
+    // off, whatever an older install wrote into the config.
+    rex::cvar::SetFlagByName("readback_memexport_batched", "false");
+  }
   // void OnPreSetup(rex::RuntimeConfig& config) override {}
   // void OnLoadXexImage(std::string& xex_image) override {}
   // void OnPostLoadXexImage() override {}

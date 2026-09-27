@@ -217,6 +217,9 @@ class MenuExtrasDialog final : public rex::ui::ImGuiDialog {
 
  protected:
   void OnDraw(ImGuiIO& io) override {
+    if (host_.on_frame) {
+      host_.on_frame(state_ == State::kQuit || state_ == State::kCredits);
+    }
     if (state_ == State::kIdle) {
       const int request = g_request.exchange(kNone);
       if (request == kNone) {
