@@ -112,7 +112,7 @@ public static class TomlConfig
         Add("Display", "present_fsr_quality_mode", "'quality'");
         Add("Display", "present_fsr_sharpness_reduction", "0.0");
         Add("Display", "present_dither", "true");
-        Add("Display", "swap_post_effect", "'fxaa_extreme'");
+        Add("Display", "swap_post_effect", "'none'");
         Add("Display", "anisotropic_override", "5");
         Add("Display", "depth_of_field", "false");
 

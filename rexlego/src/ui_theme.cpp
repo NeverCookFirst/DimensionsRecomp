@@ -150,7 +150,8 @@ void ConfigureSettings() {
                    {"cas", "AMD CAS (sharpening)"},
                    {"fsr", "AMD FSR 1"}}},
           {"swap_post_effect", "Anti-aliasing",
-           "Smooths jagged edges on the final frame.",
+           "Smooths jagged edges on the final frame. It runs over the menus and captions "
+           "too, so it softens text; Off keeps text sharp.",
            Choices{{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA (strong)"}}},
           {"present_dither", "Dithering",
            "Hides colour banding in gradients such as skies."},
@@ -183,12 +184,20 @@ void ConfigureSettings() {
                    {"6", "Italian"},
                    {"9", "Portuguese"},
                    {"11", "Polish"},
-                   {"12", "Russian"},
                    {"13", "Swedish"},
                    {"15", "Norwegian"},
                    {"16", "Dutch"},
                    {"2", "Japanese"},
                    {"7", "Korean"}}},
+          {"user_country", "Country",
+           "Some translations share a language and are told apart by the country: Spanish "
+           "is Spain or Latin America, French is France or Canada. Takes effect on the next "
+           "launch.",
+           Choices{{"103", "USA"},
+                   {"31", "Spain"},
+                   {"71", "Mexico (Latin American Spanish)"},
+                   {"34", "France"},
+                   {"16", "Canada (Canadian French)"}}},
       }});
 
   pres.pages.push_back(SettingsPage{
