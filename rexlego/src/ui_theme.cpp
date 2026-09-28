@@ -300,7 +300,7 @@ void ConfigureSettings() {
 
   // Locked to off, and its description says it is not what people think it
   // is; showing it only invites the question.
-  pres.hidden = {"vsync", "readback_memexport_batched"};
+  pres.hidden = {"vsync", "readback_memexport_batched", "readback_memexport_on_demand"};
 
   rex::ui::SettingsDialog::SetPresentation(std::move(pres));
 }
