@@ -76,6 +76,7 @@ public static class Updater
         catch (Exception e)
         {
             // Being offline is not worth interrupting anyone over.
+            SetupLog.Error("update check", e);
             if (quiet) return 0;
             return Fail(console, "Could not reach GitHub: " + e.Message);
         }
@@ -154,6 +155,7 @@ public static class Updater
             {
                 if (text == last) return;
                 last = text;
+                SetupLog.Write(text);
                 if (console) Print(text);
             }, CancellationToken.None);
 
@@ -161,18 +163,22 @@ public static class Updater
                 UpdateJob.DeferSelfReplace(result.SelfUpdate.Value.Staging, result.SelfUpdate.Value.Dest);
 
             string summary = $"Updated {result.From} -> {result.To}, {result.Replaced.Count} file(s).";
+            SetupLog.Write(summary);
             if (console) Print(summary);
             else MessageBox.Show(summary, WizardForm.AppName + " - Update", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
         }
         catch (Exception e)
         {
+            SetupLog.Error("update", e);
             return Fail(console, e.Message);
         }
     }
 
     static int Fail(bool console, string message)
     {
+        SetupLog.Write("error: " + message);
+        message += SetupLog.Hint;
         if (console)
         {
             AttachConsole(-1);

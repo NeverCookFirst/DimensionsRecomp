@@ -32,25 +32,71 @@ REXCVAR_DEFINE_STRING(toypad_app_path, "", "Toypad",
 namespace legodimensions::toypad_app {
 namespace {
 
-std::filesystem::path ResolveApp() {
-  const std::string configured = REXCVAR_GET(toypad_app_path);
-  if (!configured.empty()) {
-    return std::filesystem::path(configured);
+// Explorer's "Copy as path" wraps the path in quotes, and people paste it
+// straight into F4 - so surrounding spaces and quotes are not part of it.
+std::string CleanPath(std::string path) {
+  auto trim = [&path] {
+    const size_t first = path.find_first_not_of(" \t\r\n");
+    const size_t last = path.find_last_not_of(" \t\r\n");
+    path = first == std::string::npos ? std::string() : path.substr(first, last - first + 1);
+  };
+  trim();
+  while (!path.empty() && (path.front() == '"' || path.front() == '\'')) {
+    path.erase(0, 1);
+    trim();
   }
-  const std::filesystem::path dir = rex::filesystem::GetExecutableFolder() / "tools" / "LegoToypad";
-  const std::filesystem::path expected = dir / "LegoToypad.exe";
+  while (!path.empty() && (path.back() == '"' || path.back() == '\'')) {
+    path.pop_back();
+    trim();
+  }
+  return path;
+}
+
+// The app in a folder: LegoToypad.exe, or else the one exe there - released
+// builds have carried names like LegoToypad_1.8.exe.
+std::filesystem::path FindAppIn(const std::filesystem::path& dir) {
   std::error_code ec;
-  if (std::filesystem::exists(expected, ec)) {
+  const std::filesystem::path expected = dir / "LegoToypad.exe";
+  if (std::filesystem::is_regular_file(expected, ec)) {
     return expected;
   }
-  // Released builds have carried names like LegoToypad_1.8.exe, so rather than
-  // give up on a folder that plainly holds the app, take the one exe in it.
   for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
     if (entry.is_regular_file(ec) && entry.path().extension() == ".exe") {
       return entry.path();
     }
   }
-  return expected;
+  return {};
+}
+
+std::filesystem::path ResolveApp() {
+  const std::string raw = REXCVAR_GET(toypad_app_path);
+  const std::string configured = CleanPath(raw);
+  std::error_code ec;
+  std::filesystem::path found;
+  if (!configured.empty()) {
+    const std::filesystem::path path = std::filesystem::u8path(configured);
+    if (std::filesystem::is_directory(path, ec)) {
+      found = FindAppIn(path);  // a folder was pasted instead of the exe
+    } else if (std::filesystem::is_regular_file(path, ec)) {
+      found = path;
+    } else {
+      REXLOG_WARN("Toypad app: nothing at toypad_app_path {}, using tools\\LegoToypad", configured);
+    }
+  }
+  if (found.empty()) {
+    found = FindAppIn(rex::filesystem::GetExecutableFolder() / "tools" / "LegoToypad");
+  }
+  if (found.empty()) {
+    return rex::filesystem::GetExecutableFolder() / "tools" / "LegoToypad" / "LegoToypad.exe";
+  }
+  // Write back what was actually found, so F4 shows the exe and the config
+  // keeps a working path instead of the quoted, folder or stale one.
+  const std::u8string resolved_u8 = found.u8string();
+  const std::string resolved(resolved_u8.begin(), resolved_u8.end());
+  if (resolved != raw) {
+    rex::cvar::SetFlagByName("toypad_app_path", resolved);
+  }
+  return found;
 }
 
 #ifdef _WIN32
@@ -177,6 +223,8 @@ void Launch() {
 
 void StartIfEnabled() {
   if (!REXCVAR_GET(toypad_app_autostart)) {
+    // Still fill in the path, so F4 shows where the app is.
+    ResolveApp();
     return;
   }
   Launch();

@@ -24,6 +24,21 @@ public static class KnownGame
     public const long Tu24PackageSize = 2127081472;
     public static readonly string[] UpdateRequiredFiles = { "Default.xexp", "PATCH.DAT", "PATCH.HDR" };
     public static readonly string[] GameRequiredFiles = { "Default.xex", "GAME.DAT", "GAME.HDR" };
+    // Every archive on this disc build, with its exact size. A dump whose copy
+    // stopped part way still has Default.xex and GAME.DAT, starts, and then
+    // renders a black world, because the levels are in the archives that never
+    // arrived. GAME.DAT/HDR are left out: mod tools patch them in place.
+    public static readonly (string Name, long Size)[] DiscArchives =
+    {
+        ("GAME0.DAT", 2138287423), ("GAME0.HDR", 1294147),
+        ("GAME1.DAT", 278177176), ("GAME1.HDR", 1880732),
+        ("GAME2.DAT", 1311977060), ("GAME2.HDR", 1543784),
+        ("GAME3.DAT", 2137634708), ("GAME3.HDR", 707992),
+        ("GAME4.DAT", 1074093029), ("GAME4.HDR", 411881),
+        ("INSTALL0_.DAT", 47503585), ("INSTALL0_.HDR", 1980144),
+        ("INSTALL0_0.DAT", 64558277), ("INSTALL0_0.HDR", 2009913),
+        ("INSTALL0_1.DAT", 46544891), ("INSTALL0_1.HDR", 807873),
+    };
 }
 
 public sealed class InstallOptions
@@ -79,6 +94,21 @@ public static class Validation
         if (info.TitleId != KnownGame.TitleId) return $"Wrong game: title ID {info.TitleId:X8} (expected {KnownGame.TitleId:X8}).";
         if (info.MediaId != KnownGame.MediaId)
             return $"This disc build (media ID {info.MediaId:X8}) is not the one the recomp was made from ({KnownGame.MediaId:X8}). It will not run.";
+        var broken = new List<string>();
+        foreach (var (name, size) in KnownGame.DiscArchives)
+        {
+            var file = new FileInfo(Path.Combine(dir, name));
+            if (!file.Exists) broken.Add($"{name} - missing");
+            else if (file.Length != size) broken.Add($"{name} - {file.Length:N0} bytes, should be {size:N0}");
+        }
+        if (broken.Count > 0)
+        {
+            SetupLog.Write("incomplete dump in " + dir + ": " + string.Join("; ", broken));
+            return "This dump is incomplete - the copy stopped part way or some files were not copied:\n\n  "
+                 + string.Join("\n  ", broken)
+                 + "\n\nThe game would start but show a black world. Dump the disc again and make sure the copy "
+                 + "finishes (the full folder is about 9 GB). If you copy through a USB drive, format it exFAT or NTFS.";
+        }
         return null;
     }
 
@@ -770,6 +800,7 @@ copy, and turning them off restores the vanilla bytes.";
     void Report(string status)
     {
         currentStatus = status;
+        SetupLog.WriteOnce(status);
         progress.Report(new InstallProgress(Math.Min(1.0, (double)doneBytes / totalBytes), status));
     }
 

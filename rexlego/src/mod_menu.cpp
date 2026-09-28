@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -260,6 +261,120 @@ int RunQuoted(const std::string& command) {
   return std::system(("\"" + command + "\"").c_str());
 }
 
+std::string JoinList(const std::vector<std::string>& items) {
+  std::string out;
+  for (const std::string& item : items) {
+    if (!out.empty()) {
+      out += ",";
+    }
+    out += item;
+  }
+  return out;
+}
+
+// Puts the vanilla bytes back into the modded update folder, then injects
+// `folders` into it. The tool patches in place, so this is also how a mod gets
+// switched off.
+bool ApplyWithModcli(const std::vector<std::string>& folders) {
+  const std::string cli = REXCVAR_GET(modcli_path);
+  const std::string target = REXCVAR_GET(mods_update_root);
+  const std::string root = REXCVAR_GET(mods_root);
+
+  if (!std::filesystem::exists(cli)) {
+    REXLOG_ERROR("modcli not found at {}", cli);
+    return false;
+  }
+
+  RunQuoted(Quote(cli) + " restore " + Quote(target));
+  if (folders.empty()) {
+    return true;
+  }
+
+  // A relative root is relative to the install, not to whatever directory
+  // the game was started from: an install updated from an older release
+  // has no absolute path written for these keys and falls back to the
+  // built-in defaults, which describe the layout the installer lays down.
+  std::string search;
+  auto add_search = [&search](const std::string& value) {
+    if (value.empty()) {
+      return;
+    }
+    std::filesystem::path dir = value;
+    if (dir.is_relative()) {
+      dir = rex::filesystem::GetExecutableFolder() / dir;
+    }
+    search += " --search " + Quote(dir.string());
+  };
+  add_search(REXCVAR_GET(mods_content_root));
+  add_search(REXCVAR_GET(mods_game_root));
+  std::string args;
+  for (const std::string& folder : folders) {
+    args += " " + Quote(folder);
+  }
+  int rc = RunQuoted(Quote(cli) + " apply " + Quote(target) + " " + Quote(root) + " " +
+                     REXCVAR_GET(mods_platform) + search + args);
+  if (rc != 0) {
+    REXLOG_ERROR("modcli apply returned {}", rc);
+    return false;
+  }
+  return true;
+}
+
+// The config can name mods that are no longer in the mods folder - deleted by
+// hand, or replaced by a release under another folder name. Their bytes are
+// still patched into the modded archives until something restores them, and a
+// level can then crash on data from a mod the player thinks is gone. So on
+// every launch the list is checked against the folder, and when it names
+// anything missing the archives are rebuilt from what is really there.
+void SyncSelectionWithFolders() {
+  const std::vector<std::string> enabled = SplitList(REXCVAR_GET(mods));
+  if (enabled.empty()) {
+    return;
+  }
+  const std::vector<ModEntry> available = Discover();
+  std::vector<std::string> kept, dropped;
+  for (const std::string& folder : enabled) {
+    const bool present = std::any_of(available.begin(), available.end(),
+                                     [&](const ModEntry& mod) { return mod.folder == folder; });
+    (present ? kept : dropped).push_back(folder);
+  }
+  if (dropped.empty()) {
+    return;
+  }
+  REXLOG_WARN("Mods: [{}] enabled in the config but not installed; re-applying [{}]",
+              JoinList(dropped), JoinList(kept));
+  if (!ApplyWithModcli(kept)) {
+    // The restore ran, so the modded folder is vanilla or half-built: play
+    // the untouched update folder rather than either.
+    REXLOG_ERROR("Mods: could not re-apply, starting without mods");
+    kept.clear();
+  }
+  REXCVAR_SET(mods, JoinList(kept));
+  // Only the one line: this runs before the GPU plugin has registered its
+  // settings, and a full SaveConfig here drops every one of them.
+  const std::filesystem::path toml = rex::filesystem::GetExecutableFolder() / "legodimensions.toml";
+  std::ifstream in(toml, std::ios::binary);
+  if (!in) {
+    return;
+  }
+  std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  in.close();
+  const std::string line = "mods = '" + JoinList(kept) + "'";
+  size_t at = 0;
+  while ((at = text.find("mods", at)) != std::string::npos) {
+    const bool line_start = at == 0 || text[at - 1] == '\n';
+    const size_t after = text.find_first_not_of(" \t", at + 4);
+    if (line_start && after != std::string::npos && text[after] == '=') {
+      const size_t end = text.find_first_of("\r\n", at);
+      text.replace(at, (end == std::string::npos ? text.size() : end) - at, line);
+      std::ofstream out(toml, std::ios::binary | std::ios::trunc);
+      out << text;
+      return;
+    }
+    at += 4;
+  }
+}
+
 class ModMenuDialog final : public rex::ui::ImGuiDialog {
  public:
   explicit ModMenuDialog(rex::ui::ImGuiDrawer* drawer)
@@ -323,60 +438,18 @@ class ModMenuDialog final : public rex::ui::ImGuiDialog {
   void Apply() {
     status_.clear();
 
-    const std::string cli = REXCVAR_GET(modcli_path);
-    const std::string target = REXCVAR_GET(mods_update_root);
-    const std::string root = REXCVAR_GET(mods_root);
-
-    if (!std::filesystem::exists(cli)) {
-      status_ = "modcli not found";
-      REXLOG_ERROR("modcli not found at {}", cli);
+    std::vector<std::string> folders;
+    for (const ModEntry& mod : mods_) {
+      if (mod.enabled && !mod.built_in) {
+        folders.push_back(mod.folder);  // built-in fixes are the runtime's job, not modcli's
+      }
+    }
+    if (!ApplyWithModcli(folders)) {
+      status_ = "modcli failed, see the log";
       return;
     }
 
-    // Always restore first: the tool patches in place, so switching a mod off
-    // means putting the vanilla bytes back before re-applying the rest.
-    RunQuoted(Quote(cli) + " restore " + Quote(target));
-
-    std::string selection;
-    std::string args;
-    for (const ModEntry& mod : mods_) {
-      if (!mod.enabled || mod.built_in) {
-        continue;  // built-in fixes are the runtime's job, not modcli's
-      }
-      if (!selection.empty()) {
-        selection += ",";
-      }
-      selection += mod.folder;
-      args += " " + Quote(mod.folder);
-    }
-
-    if (!selection.empty()) {
-      // A relative root is relative to the install, not to whatever directory
-      // the game was started from: an install updated from an older release
-      // has no absolute path written for these keys and falls back to the
-      // built-in defaults, which describe the layout the installer lays down.
-      std::string search;
-      auto add_search = [&search](const std::string& value) {
-        if (value.empty()) {
-          return;
-        }
-        std::filesystem::path dir = value;
-        if (dir.is_relative()) {
-          dir = rex::filesystem::GetExecutableFolder() / dir;
-        }
-        search += " --search " + Quote(dir.string());
-      };
-      add_search(REXCVAR_GET(mods_content_root));
-      add_search(REXCVAR_GET(mods_game_root));
-      int rc = RunQuoted(Quote(cli) + " apply " + Quote(target) + " " + Quote(root) + " " +
-                         REXCVAR_GET(mods_platform) + search + args);
-      if (rc != 0) {
-        status_ = "modcli failed, see the log";
-        REXLOG_ERROR("modcli apply returned {}", rc);
-        return;
-      }
-    }
-
+    const std::string selection = JoinList(folders);
     REXCVAR_SET(mods, selection);
     rex::cvar::SaveConfig(rex::filesystem::GetExecutableFolder() / "legodimensions.toml");
 
@@ -444,6 +517,7 @@ void ResolveUpdateRoot(rex::PathConfig& paths) {
     ApplyFernSetting(paths.update_data_root);
     ApplyFernSetting(modded);
   }
+  SyncSelectionWithFolders();
   const std::string selection = REXCVAR_GET(mods);
   const std::string modded = REXCVAR_GET(mods_update_root);
   if (selection.empty() || modded.empty()) {

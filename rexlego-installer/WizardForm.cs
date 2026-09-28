@@ -94,6 +94,7 @@ public sealed class WizardForm : Form
             string? err = ValidateCurrent();
             if (err is not null)
             {
+                SetupLog.Write($"cannot continue from {page}: {err}");
                 MessageBox.Show(this, err, "Cannot continue", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -534,19 +535,27 @@ public sealed class WizardForm : Form
             progressLabel!.Text = p.Status;
         });
         var job = new InstallJob(opts, payload, reporter, installCts.Token);
+        SetupLog.Write($"install: game={opts.GameDir} update={opts.UpdatePath} dlc={opts.DlcPath} into={opts.InstallDir} "
+                       + $"dlcOnly={opts.DlcOnly} toypad={opts.IncludeToypad} mods={opts.IncludeMods} russian={opts.IncludeRussian} "
+                       + $"saveConverter={opts.IncludeSaveConverter} tools={opts.IncludeModdingTools} updater={opts.IncludeUpdater}");
+        foreach (var d in dlc) SetupLog.Write($"   dlc: {d.DisplayName} [{(d.IsPackageFile ? "package" : "folder")}] {d.Path}");
         try
         {
             await job.RunAsync(dlc);
             readmePath = job.ReadmePath;
+            SetupLog.Write("install finished");
+            SetupLog.CopyTo(opts.InstallDir);
             Show(Page.Done);
         }
         catch (OperationCanceledException)
         {
+            SetupLog.Write("install cancelled");
             Show(Page.Location);
         }
         catch (Exception e)
         {
-            MessageBox.Show(this, "Installation failed:\n\n" + e.Message + "\n\nNothing has been removed; you can fix the problem and click Install again.",
+            SetupLog.Error("install", e);
+            MessageBox.Show(this, "Installation failed:\n\n" + e.Message + "\n\nNothing has been removed; you can fix the problem and click Install again." + SetupLog.Hint,
                 "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             Show(Page.Location);
         }

@@ -111,19 +111,23 @@ public sealed class UpdaterForm : Form
         try
         {
             Set(0, "Downloading...");
+            SetupLog.Write($"update {install.Version} -> {release.Version}: downloading {release.PackUrl}");
             await UpdateFeed.DownloadAsync(release.PackUrl, pack, token,
                 (done, total) => BeginInvoke(() => Set(total > 0 ? 0.5 * done / total : 0,
                     $"Downloading... {done / 1024.0 / 1024.0:0.#} MB")), cts.Token);
+            SetupLog.Write($"downloaded {new FileInfo(pack).Length:N0} bytes");
 
             var result = await Task.Run(() => ApplyPack(pack), cts.Token);
+            SetupLog.Write($"updated {result.From} -> {result.To}, {result.Replaced.Count} file(s)");
             Finish(result);
         }
         catch (Exception e)
         {
+            SetupLog.Error("update", e);
             working = false;
             update.Enabled = later.Enabled = true;
             status.Text = "Update failed. Nothing was changed.";
-            MessageBox.Show(this, e.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, e.Message + SetupLog.Hint, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -151,7 +155,11 @@ public sealed class UpdaterForm : Form
             throw new InvalidOperationException($"{locked} is in use. Close the game and try again.");
 
         return job.Apply(plan, pack,
-            (fraction, text) => BeginInvoke(() => Set(0.5 + 0.5 * fraction, text)), cts.Token);
+            (fraction, text) =>
+            {
+                SetupLog.WriteOnce(text);
+                BeginInvoke(() => Set(0.5 + 0.5 * fraction, text));
+            }, cts.Token);
     }
 
     void Finish(UpdateResult result)

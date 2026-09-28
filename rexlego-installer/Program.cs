@@ -12,7 +12,9 @@ static class Program
         // The installed updater is this same binary with the payload cut off, so
         // "no payload at all" is what tells the two apart. A payload that is
         // present but incomplete is a damaged download, and still an error.
-        if (payload.Entries.Count == 0 || args.Any(IsUpdaterArg)) return Updater.Run(args);
+        bool updater = payload.Entries.Count == 0 || args.Any(IsUpdaterArg);
+        SetupLog.Start(updater ? "updater" : "setup", args);
+        if (updater) return Updater.Run(args);
 
         var missing = payload.MissingRequired();
         if (missing.Count > 0)
@@ -20,6 +22,7 @@ static class Program
             string msg = "This installer is incomplete - it does not contain:\n\n  "
                 + string.Join("\n  ", missing)
                 + "\n\nDownload the installer again; if it came as a zip, extract it fully first.";
+            SetupLog.Write(msg);
             if (args.Length > 0) { AttachConsole(-1); Console.Error.WriteLine(msg); return 2; }
             ApplicationConfiguration.Initialize();
             MessageBox.Show(msg, WizardForm.AppName + " Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -90,7 +93,7 @@ static class Program
                       ?? (o.IncludeRussian && !payload.HasRussian ? "payload has no Russian translation" : null)
                       ?? (o.IncludeRussian && !o.IncludeMods ? "--russian needs the mods component" : null)
                       ?? (o.IncludeSaveConverter && !payload.HasSaveConverter ? "payload has no save converter" : null);
-        if (err is not null) { Console.Error.WriteLine("error: " + err); return 1; }
+        if (err is not null) { SetupLog.Write("error: " + err); Console.Error.WriteLine("error: " + err); return 1; }
         o.InstallDir = Path.GetFullPath(o.InstallDir);
         Console.WriteLine($"game: {info!.TitleId:X8} media {info.MediaId:X8} v{info.VersionString}");
 
@@ -117,6 +120,7 @@ static class Program
         }
         catch (Exception e)
         {
+            SetupLog.Error("install", e);
             Console.Error.WriteLine("error: " + e.Message);
             return 1;
         }
@@ -136,7 +140,7 @@ static class Program
             err = Validation.CheckExistingInstall(o.InstallDir, out var found);
             if (err is null) Console.WriteLine("install: " + found);
         }
-        if (err is not null) { Console.Error.WriteLine("error: " + err); return 1; }
+        if (err is not null) { SetupLog.Write("error: " + err); Console.Error.WriteLine("error: " + err); return 1; }
 
         var dlc = Validation.ScanDlc(o.DlcPath);
         if (dlc.Count == 0) { Console.Error.WriteLine("error: no DLC packages found in " + o.DlcPath); return 1; }
@@ -158,6 +162,7 @@ static class Program
         }
         catch (Exception e)
         {
+            SetupLog.Error("install", e);
             Console.Error.WriteLine("error: " + e.Message);
             return 1;
         }
