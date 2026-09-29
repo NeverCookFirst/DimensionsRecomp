@@ -13,6 +13,7 @@
 #include <rex/system/xmemory.h>
 
 #include "gpu_native/d3d.h"
+#include "gpu_native/device.h"
 
 namespace legodimensions::gpu_native {
 namespace {
@@ -323,6 +324,7 @@ u32 ReleaseNativeVertexDeclaration(u32 guest_address) {
     released = std::move(it->second);
     g_declarations.erase(it);
   }
+  HostDevice::RetireResource(released);
   REX_KERNEL_MEMORY()->SystemHeapFree(guest_address);
   return 0;
 }

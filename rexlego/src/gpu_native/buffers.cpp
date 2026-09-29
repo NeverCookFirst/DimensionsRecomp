@@ -194,6 +194,7 @@ u32 ReleaseNativeBuffer(u32 guest_address) {
     g_buffers.erase(it);
   }
   auto* memory = REX_KERNEL_MEMORY();
+  HostDevice::RetireResource(released);
   memory->SystemHeapFree(released->mirror_address);
   memory->SystemHeapFree(guest_address);
   return 0;

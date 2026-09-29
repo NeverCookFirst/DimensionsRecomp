@@ -45,6 +45,12 @@ class HostDevice {
   static u32 RegisterTexture(plume::RenderTexture* texture,
                              plume::RenderTextureView* view);
   static void UnregisterTexture(u32 descriptor_index);
+  // Returns the current frame's direct command list, opening a new ring slot
+  // and waiting only when that slot is being reused.
+  static plume::RenderCommandList* BeginFrameCommands();
+  // Keeps a released resource alive through the fence of the command list
+  // which may still reference it.
+  static void RetireResource(std::shared_ptr<void> resource);
   // Copies a single-sample native texture to the host swap chain. This is the
   // first complete submission path and deliberately keeps command allocators
   // in a frame ring so the CPU does not wait for the frame it just submitted.

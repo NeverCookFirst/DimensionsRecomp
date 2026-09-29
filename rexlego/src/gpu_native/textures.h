@@ -6,6 +6,7 @@
 
 namespace plume {
 struct RenderFramebuffer;
+struct RenderCommandList;
 struct RenderTexture;
 struct RenderTextureView;
 }
@@ -34,6 +35,10 @@ struct TextureResourceView {
 };
 
 TextureResourceView ResolveTextureResource(u32 guest_address);
+// Copies the complete CPU mirror into the host texture and leaves it in
+// SHADER_READ. The CPU mirror remains authoritative for readback/correctness.
+bool UploadTextureResource(u32 guest_address,
+                           plume::RenderCommandList* commands);
 plume::RenderFramebuffer* ResolveFramebuffer(u32 render_target,
                                              u32 depth_stencil);
 

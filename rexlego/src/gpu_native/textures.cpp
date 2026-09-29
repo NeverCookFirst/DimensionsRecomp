@@ -1,6 +1,7 @@
 #include "gpu_native/textures.h"
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -356,6 +357,92 @@ TextureResourceView ResolveTextureResource(u32 guest_address) {
           IsDepthFormat(resource->format)};
 }
 
+bool UploadTextureResource(u32 guest_address,
+                           plume::RenderCommandList* commands) {
+  const auto resource = FindTexture(guest_address);
+  if (!resource || !commands || resource->surface ||
+      !resource->mirror_address || !resource->mirror_size ||
+      !resource->texture || IsDepthFormat(resource->format)) {
+    return false;
+  }
+  // Cube LockRect has a separate ABI and is not hooked yet. Do not upload the
+  // same 2D mirror into six faces and silently fabricate corrupt data.
+  if (resource->d3d_type ==
+      static_cast<u32>(D3DResourceType::kCubeTexture)) {
+    return false;
+  }
+
+  std::lock_guard resource_lock(resource->mutex);
+  u64 upload_size = 0;
+  for (u32 level = 0; level < resource->levels; ++level) {
+    upload_size = AlignUp(static_cast<u32>(upload_size), 0x200);
+    upload_size += LevelSize(*resource, level);
+  }
+  auto* device = HostDevice::Device();
+  if (!device || upload_size == 0 || upload_size > UINT32_MAX) {
+    return false;
+  }
+  auto upload = std::shared_ptr<plume::RenderBuffer>(
+      device->createBuffer(plume::RenderBufferDesc::UploadBuffer(upload_size))
+          .release());
+  if (!upload) {
+    REXLOG_ERROR("Native GPU: texture upload allocation failed ({} bytes)",
+                 upload_size);
+    return false;
+  }
+
+  auto* mapped = static_cast<u8*>(upload->map());
+  if (!mapped) {
+    return false;
+  }
+  const auto* source =
+      REX_KERNEL_MEMORY()->virtual_membase() + resource->mirror_address;
+  u64 destination_offset = 0;
+  for (u32 level = 0; level < resource->levels; ++level) {
+    destination_offset = AlignUp(static_cast<u32>(destination_offset), 0x200);
+    const u32 level_size = LevelSize(*resource, level);
+    std::memcpy(mapped + destination_offset,
+                source + LevelOffset(*resource, level), level_size);
+    destination_offset += level_size;
+  }
+  upload->unmap();
+
+  commands->barriers(
+      plume::RenderBarrierStage::COPY,
+      plume::RenderTextureBarrier(resource->texture.get(),
+                                  plume::RenderTextureLayout::COPY_DEST));
+  destination_offset = 0;
+  const u32 format_size = plume::RenderFormatSize(resource->format);
+  const u32 block_width = plume::RenderFormatBlockWidth(resource->format);
+  if (!format_size || !block_width) {
+    return false;
+  }
+  for (u32 level = 0; level < resource->levels; ++level) {
+    destination_offset = AlignUp(static_cast<u32>(destination_offset), 0x200);
+    const u32 width = MipDimension(resource->width, level);
+    const u32 height = MipDimension(resource->height, level);
+    const u32 depth = resource->d3d_type ==
+                              static_cast<u32>(D3DResourceType::kVolumeTexture)
+                          ? MipDimension(resource->depth, level)
+                          : 1;
+    const u32 pitch = RowPitch(resource->format, width);
+    const u32 row_width = (pitch / format_size) * block_width;
+    commands->copyTextureRegion(
+        plume::RenderTextureCopyLocation::Subresource(
+            resource->texture.get(), level),
+        plume::RenderTextureCopyLocation::PlacedFootprint(
+            upload.get(), resource->format, width, height, depth, row_width,
+            destination_offset));
+    destination_offset += LevelSize(*resource, level);
+  }
+  commands->barriers(
+      plume::RenderBarrierStage::GRAPHICS,
+      plume::RenderTextureBarrier(resource->texture.get(),
+                                  plume::RenderTextureLayout::SHADER_READ));
+  HostDevice::RetireResource(std::move(upload));
+  return true;
+}
+
 plume::RenderFramebuffer* ResolveFramebuffer(u32 render_target,
                                              u32 depth_stencil) {
   const auto color = FindTexture(render_target);
@@ -444,6 +531,7 @@ u32 ReleaseNativeTexture(u32 guest_address) {
   auto* memory = REX_KERNEL_MEMORY();
   InvalidateFramebufferReferences(guest_address);
   HostDevice::UnregisterTexture(released->descriptor_index);
+  HostDevice::RetireResource(released);
   if (released->mirror_address) {
     memory->SystemHeapFree(released->mirror_address);
   }

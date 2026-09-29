@@ -192,6 +192,7 @@ u32 ReleaseNativeShader(u32 guest_address) {
     released = std::move(it->second);
     g_registry.erase(it);
   }
+  HostDevice::RetireResource(released);
   REX_KERNEL_MEMORY()->SystemHeapFree(guest_address);
   return 0;
 }
