@@ -27,7 +27,7 @@ work.
 | `0x83FC9450` | reset/default-state initializer | Walks the render- and sampler-state descriptor tables, installs getter/setter dispatch pointers in the device, applies defaults, and clears all 26 fetch slots. Calling it from the native path is unsafe because applying the defaults also emits PM4. |
 | `0x83FAF180` | ring-buffer blocker poll | Checks the device read pointer and timeout state; called from the blocking wait loop. |
 | `0x83FBF7D0` | ring-buffer space wait | Compares requested and available ring space and loops through `0x83FAF180`. |
-| `0x83FB33E0` | surface copy/resolve path | Consumes a 52-byte surface descriptor, rewrites Xenos formats and emits copy/resolve packets. It is not safe to name this `Swap` from position or size alone. |
+| `0x83FB33E0` | `D3DDevice_Swap` | Exact normalized instruction match against the Sep'13 `d3d9:swap.obj` symbol at `0x82467B10`. Its surface descriptor processing is the scanout/present path, not a standalone resolve as initially suspected. |
 | `0x83FB0DA8` | scanout-buffer programming helper | Takes `(device, buffer descriptor, flags)`, walks descriptor fields and emits display/ring packets. A caller at `0x83FC4994` passes one of the device's rotating 16-byte buffer records. This is **not** `Direct3D_CreateDevice`. |
 
 ## TU23 device layout anchors
@@ -64,3 +64,23 @@ library (normally `d3d9.lib` plus its companion graphics libraries). Normalize
 relocations in each PowerPC COFF member, then match instruction windows against
 the decrypted image. Ambiguous matches must be resolved by call graph and
 argument semantics before a hook is enabled.
+
+An independently published 2013-09-13 Xbox 360 MAP-labelled image now provides
+a second route. `match_map_symbols.py` normalizes link-dependent PPC immediates
+and branches and matches the statically linked `d3d9:*` functions against TU23.
+The known `Direct3D_CreateDevice` match is the control. High-confidence results:
+
+| Guest address | MAP symbol |
+|---|---|
+| `0x83FB33E0` | `D3DDevice_Swap` |
+| `0x83FB5570` | `D3DDevice_CreateTexture` |
+| `0x83FB58A8` | `D3DDevice_SetTexture` |
+| `0x83FB6828` | `D3DDevice_SetPixelShader` |
+| `0x83FB6A30` | `D3DDevice_SetVertexShader` |
+| `0x83FB7528` | `D3DDevice_CreatePixelShader` |
+| `0x83FB7750` | `D3DDevice_CreateVertexShader` |
+| `0x83FBC9D8` | `D3DDevice_Clear` |
+| `0x83FBDF80` | `D3DDevice_ResolveEx` |
+| `0x83FBF0D8` | `D3DDevice_Resolve` |
+| `0x83FC6640` | `D3DDevice_DrawVertices` |
+| `0x83FC6A58` | `D3DDevice_DrawIndexedVertices` |

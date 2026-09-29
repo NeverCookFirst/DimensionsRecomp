@@ -1,0 +1,420 @@
+?PixCaptureVideoFrame@D3D@@YAXPAVCDevice@1@KKKW4_D3DFORMAT@@KKPBU_D3DPRIVATE_SCALER_PARAMETERS@@PBU_D3DGAMMARAMP@@@Z	0x823CBA28	0x83FC4338	d3d9:pix.obj
+?QueueShaderWriteback@D3D@@YAXPAVCDevice@1@PAX@Z	0x823CC1E0	0x83FC45E0	d3d9:pix.obj
+# ambiguous ?SetupFormat@D3D@@YAXPAVCDevice@1@W4_D3DFORMAT@@@Z	0x823CCF10	0x83FAF5D8,0x83FB27F0	d3d9:swap.obj
+?SimpleSwap@D3D@@YAXPAVCDevice@1@KW4_D3DFORMAT@@@Z	0x823CCFB8	0x83FB3100	d3d9:swap.obj
+D3DDevice_CreateSurface	0x823D1150	0x83FB5690	d3d9:texture.obj
+?P_QPC@D3D@@YAXPAUD3DDevice@@PAUD3DPerfCounters@@K@Z	0x823D42A8	0x83FB0DA8	d3d9:query.obj
+?DestroyResource@D3D@@YAXPAUD3DResource@@@Z	0x823D8918	0x83FC5730	d3d9:resource.obj
+?PixSyncronizeToPresentationInterval@D3D@@YAXPAVCDevice@1@H@Z	0x823DC628	0x83FC4670	d3d9:pix.obj
+D3DDevice_BlockOnFence	0x823E00A8	0x83FBF8A0	d3d9:ring.obj
+D3DVolumeTexture_LockBox	0x823E0110	0x83FA5F88	d3d9:texture.obj
+?IssueSampleCountQuery@D3D@@YAXPAVCDevice@1@PAUCQuery@1@K@Z	0x823E0248	0x83FCBF00	d3d9:xps.obj
+D3DQuery_Issue	0x823E0410	0x83FB0738	d3d9:query.obj
+?PixSwap@D3D@@YAXPAVCDevice@1@@Z	0x823E06C0	0x83FC4748	d3d9:pix.obj
+?PIXMetaRecordTilingInfo@D3D@@YAXPAVCDevice@1@KPBU_D3DRECT@@K@Z	0x823E5070	0x83FC2C40	d3d9:pix.obj
+D3DDevice_SetShaderGPRAllocation	0x823E9430	0x83FB6DD0	d3d9:shader.obj
+?BuildGprAllocationSetup@D3D@@YAKPAVCDevice@1@PAK1@Z	0x823E9518	0x83FB6120	d3d9:shader.obj
+D3DDevice_SetScreenExtentQueryMode	0x823F0C38	0x83FAFC78	d3d9:query.obj
+?PatchVertexShaderToMatchVertexDeclaration@D3D@@YAXPAVCVertexShader@1@PAKPBVCVertexDeclaration@1@PBEK@Z	0x823F0CA8	0x83FD1470	d3d9:lazy.obj
+D3DDevice_IsFencePending	0x823F83C8	0x83FC0D50	d3d9:ring.obj
+?SetPending_ClipPlanes@D3D@@YAXPAVCDevice@1@_K@Z	0x824001D8	0x83FD1048	d3d9:lazy.obj
+?ResetAllState@D3D@@YAXPAVCDevice@1@H@Z	0x82403C18	0x83FBA618	d3d9:state.obj
+D3DDevice_BeginTiling	0x824041B0	0x83FBCD28	d3d9:tile.obj
+?StartWorkerQueue@D3D@@YAXPAVCDevice@1@@Z	0x82404520	0x83FCAB10	d3d9:xps.obj
+?ClearRect@D3D@@YAXPAVCDevice@1@JJJJPBU__vector4@@MTGPU_SURFACEINFO@@TGPU_COLORINFO@@KKKK@Z	0x82408C90	0x83FBBA18	d3d9:clear.obj
+?ClearRects@D3D@@YAXPAVCDevice@1@KPBU_D3DRECT@@PBU__vector4@@MTGPU_SURFACEINFO@@TGPU_COLORINFO@@KK@Z	0x82408EF8	0x83FBB760	d3d9:clear.obj
+# ambiguous D3DDevice_SetPixelShaderConstantB	0x824152C8	0x83FB6630,0x83FB6690	d3d9:shader.obj
+# ambiguous D3DDevice_SetPixelShaderConstantI	0x82415328	0x83FB66F0,0x83FB6748	d3d9:shader.obj
+D3DDevice_SetRenderState_BlendOpAlpha	0x82415380	0x83FB8078	d3d9:state.obj
+D3DDevice_SetRenderState_DestBlendAlpha	0x82415498	0x83FB8158	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_HighPrecisionBlendEnable1	0x824154F8	0x83FB9020,0x83FB90B8,0x83FB9150,0x83FB91E8	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_HighPrecisionBlendEnable3	0x82415588	0x83FB9020,0x83FB90B8,0x83FB9150,0x83FB91E8	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_PointSizeMax	0x82415658	0x83FB8BD0,0x83FB8C20	d3d9:state.obj
+D3DDevice_SetRenderState_SeparateAlphaBlendEnable	0x824156A0	0x83FB81C8	d3d9:state.obj
+D3DDevice_SetRenderState_SrcBlendAlpha	0x82415728	0x83FB80E8	d3d9:state.obj
+# ambiguous D3DDevice_SetVertexShaderConstantB	0x82415920	0x83FB6630,0x83FB6690	d3d9:shader.obj
+?SetFence@CDevice@D3D@@QAAPAKPAK@Z	0x824169B0	0x83FC0180	d3d9:ring.obj
+D3DDevice_SetRenderState_BlendFactor	0x82418610	0x83FB82F0	d3d9:state.obj
+D3DDevice_SetRenderState_BlendOp	0x824186A0	0x83FB7EC8	d3d9:state.obj
+?ClearSurface@D3D@@YAXPAVCDevice@1@KKJJJJPBU__vector4@@MK@Z	0x8241A928	0x83FBBC80	d3d9:clear.obj
+D3DDevice_SetPixelShader	0x8241DED0	0x83FB6828	d3d9:shader.obj
+D3DDevice_SetVertexShader	0x8241E090	0x83FB6A30	d3d9:shader.obj
+D3DDevice_SetIndices	0x8241E710	0x83FBA308	d3d9:state.obj
+?BlockOnPrimaryRange@CDevice@D3D@@QAAKKK@Z	0x8241F220	0x83FBF260	d3d9:ring.obj
+?AddCallsToPrimaryBuffer@CDevice@D3D@@QAAXPBUSegmentCall@2@K@Z	0x8241F2D0	0x83FBFCA0	d3d9:ring.obj
+?KickOffSegment@CDevice@D3D@@QAAXXZ	0x8241F5A0	0x83FC08D0	d3d9:ring.obj
+D3DDevice_Resolve	0x82420310	0x83FBF0D8	d3d9:resolve.obj
+D3DDevice_AcquireThreadOwnership	0x82424310	0x83FAF588	d3d9:device.obj
+?SetSurfaceInfo@D3D@@YAXPAVCDevice@1@PAUD3DSurface@@@Z	0x82428840	0x83FBAA18	d3d9:state.obj
+D3DDevice_SetViewport	0x824288D0	0x83FBA978	d3d9:state.obj
+?SetViewport@D3D@@YAXPAUD3DDevice@@MMMMMMK@Z	0x82428950	0x83FBA710	d3d9:state.obj
+D3DDevice_SetScissorRect	0x82428BA8	0x83FBA068	d3d9:state.obj
+?SetSurfaceClip@D3D@@YAXPAVCDevice@1@HHHH@Z	0x82428CA0	0x83FB7AB8	d3d9:state.obj
+?KickOff@CDevice@D3D@@QAAPAKXZ	0x82429230	0x83FC0C10	d3d9:ring.obj
+?FindTextureSize@D3D@@YAKKKKKKKHHKHKPAK00@Z	0x82429E20	0x83FB3ED0	d3d9:texture.obj
+?AlignTextureDimensions@D3D@@YAKPAK00KKKH@Z	0x8242A1A0	0x83FB3DB0	d3d9:texture.obj
+D3DDevice_SetPredication	0x8242A778	0x83FBCBB8	d3d9:tile.obj
+D3DDevice_InsertCallback	0x8242A8E8	0x83FC0F38	d3d9:ring.obj
+?InsertCallback@D3D@@YAPAKPAVCDevice@1@PAKKP6AXK@ZK@Z	0x8242A940	0x83FC02C0	d3d9:ring.obj
+?SetPending_HiZEnable@D3D@@YA_KPAVCDevice@1@_K@Z	0x8242ABC0	0x83FD0A00	d3d9:lazy.obj
+?SetPending_FetchConstants@D3D@@YAXPAVCDevice@1@_K@Z	0x8242ADB8	0x83FD11C8	d3d9:lazy.obj
+?SetLiteralShaderConstants@D3D@@YAXPAVCDevice@1@PAU_UCODE_HEADER@@PAX@Z	0x8242AF10	0x83FD1EC8	d3d9:lazy.obj
+?SetPending_Shaders@D3D@@YA_KPAVCDevice@1@_K@Z	0x8242AFC0	0x83FD20B8	d3d9:lazy.obj
+D3DDevice_ResolveEx	0x8242B940	0x83FBDF80	d3d9:resolve.obj
+D3DDevice_DrawIndexedVertices	0x8242CA98	0x83FC6A58	d3d9:draw.obj
+?SetPending_RenderStates@D3D@@YAXPAVCDevice@1@_KKPAX@Z	0x8242CF10	0x83FD0F88	d3d9:lazy.obj
+D3DDevice_BeginVertices	0x8242CFD0	0x83FC6180	d3d9:draw.obj
+?SetPending_AluConstants@D3D@@YAXPAVCDevice@1@_KKPAX@Z	0x8242D490	0x83FD1320	d3d9:lazy.obj
+?BeginRingAlloc@CDevice@D3D@@QAAPAKKK@Z	0x8242D5E0	0x83FBFA48	d3d9:ring.obj
+?RingBufferDeviceAllocate@D3D@@YAPAXPAVCDevice@1@KPAKK@Z	0x8242D6C8	0x83FBF5A0	d3d9:ring.obj
+?BlockOnSecondaryPosition@CDevice@D3D@@QAAXPAKK@Z	0x8242D8F8	0x83FBF1C8	d3d9:ring.obj
+D3DDevice_SetRenderTarget	0x8242D9E0	0x83FBAAA8	d3d9:state.obj
+?GrowableAllocate@CCommandBuffer@D3D@@QAAPAKKPAKK@Z	0x8242E458	0x83FC71A8	d3d9:commands.obj
+D3DDevice_SetStreamSource	0x82443090	0x83FBA160	d3d9:state.obj
+D3DDevice_UnsetAll	0x824431B0	0x83FAF670	d3d9:device.obj
+# ambiguous D3DDevice_SetSamplerState_AnisotropyBias	0x824432C0	0x83FB9B00,0x83FB9BA8	d3d9:state.obj
+D3DDevice_SetSamplerState_MagFilterZ	0x82443320	0x83FB98E8	d3d9:state.obj
+D3DDevice_SetSamplerState_MaxMipLevel	0x824433B0	0x83FB9C48	d3d9:state.obj
+D3DDevice_SetSamplerState_MinFilterZ	0x82443420	0x83FB9740	d3d9:state.obj
+# ambiguous D3DDevice_SetSamplerState_MipMapLodBias	0x824434B8	0x83FB9B00,0x83FB9BA8	d3d9:state.obj
+D3DDevice_SetTexture	0x82443518	0x83FB58A8	d3d9:texture.obj
+# ambiguous D3DDevice_SetVertexShaderConstantFN	0x82444500	0x83FB6480,0x83FB6558	d3d9:shader.obj
+D3DDevice_SetSamplerState_SeparateZFilterEnable	0x824445D8	0x83FB99E0	d3d9:state.obj
+D3DDevice_SetSamplerState_MinMipLevel	0x82444670	0x83FB9CC8	d3d9:state.obj
+# ambiguous D3DDevice_SetSamplerState_MinFilter	0x824446E0	0x83FB9640,0x83FB97E8	d3d9:state.obj
+D3DDevice_SetSamplerState_MaxAnisotropy	0x824447A8	0x83FB9A88	d3d9:state.obj
+# ambiguous D3DDevice_SetSamplerState_MagFilter	0x82444810	0x83FB9640,0x83FB97E8	d3d9:state.obj
+D3DDevice_SetSamplerState_MipFilter	0x82445868	0x83FB9988	d3d9:state.obj
+D3DDevice_SetRenderState_AlphaBlendEnable	0x82445E50	0x83FB7E38	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_HighPrecisionBlendEnable	0x82445F68	0x83FB9020,0x83FB90B8,0x83FB9150,0x83FB91E8	d3d9:state.obj
+D3DDevice_SetRenderState_SrcBlend	0x82445FF8	0x83FB7F58	d3d9:state.obj
+D3DDevice_SetRenderState_DestBlend	0x82446078	0x83FB7FE8	d3d9:state.obj
+?DirectShaderPatch@D3D@@YAHPAVCDevice@1@PAVCVertexShader@1@PAVCVertexDeclaration@1@K@Z	0x82449930	0x83FD1F78	d3d9:lazy.obj
+D3DDevice_SetDepthStencilSurface	0x8244A190	0x83FBAE38	d3d9:state.obj
+?ClearF@D3D@@YAXPAVCDevice@1@KPBU_D3DRECT@@PBU__vector4@@MK@Z	0x8244A5B0	0x83FBC220	d3d9:clear.obj
+?CreateInvalidateBuffer@CDevice@D3D@@QAAXPAK0@Z	0x8244B818	0x83FBFF70	d3d9:ring.obj
+?GrowableFree@CCommandBuffer@D3D@@QAAXXZ	0x8244BCB0	0x83FC7228	d3d9:commands.obj
+?SetPending_Predicated@D3D@@YA_KPAVCDevice@1@_KK@Z	0x8244C0C8	0x83FD0BF8	d3d9:lazy.obj
+?BeginRingBig@CDevice@D3D@@QAAPAKK@Z	0x8244C660	0x83FC0E48	d3d9:ring.obj
+?SetTextureHeader@D3D@@YAXW4_D3DRESOURCETYPE@@IIIIKW4_D3DFORMAT@@W4MIPPACKINGTYPE@1@KHIPAUD3DBaseTexture@@PAK4@Z	0x82450930	0x83FB4FC8	d3d9:texture.obj
+D3DResource_GetType	0x82450E28	0x83FC49E8	d3d9:resource.obj
+?StartNewSegment@CDevice@D3D@@QAAPAKK@Z	0x82451210	0x83FBFB30	d3d9:ring.obj
+D3DResource_Release	0x824599A8	0x83FC59D8	d3d9:resource.obj
+# ambiguous ?MakeSegmentCallSpace@D3D@@YAPAUSegmentCall@1@PAVCDevice@1@@Z	0x8245A4E8	0x83FC7048,0x83FC70F8	d3d9:commands.obj
+# ambiguous D3DDevice_SetVertexShaderConstantI	0x8245B390	0x83FB66F0,0x83FB6748	d3d9:shader.obj
+D3DDevice_SetRenderState_ViewportEnable	0x8245B518	0x83FB8FD0	d3d9:state.obj
+D3DDevice_SetRenderState_SlopeScaleDepthBias	0x8245B5D8	0x83FB88A8	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_PointSizeMin	0x8245B6A0	0x83FB8BD0,0x83FB8C20	d3d9:state.obj
+D3DDevice_SetRenderState_PointSize	0x8245B6E0	0x83FB8B78	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_HighPrecisionBlendEnable2	0x8245B770	0x83FB9020,0x83FB90B8,0x83FB9150,0x83FB91E8	d3d9:state.obj
+D3DDevice_SetRenderState_DepthBias	0x8245B828	0x83FB8970	d3d9:state.obj
+D3DDevice_SetRenderState_ClipPlaneEnable	0x8245B8F8	0x83FB8848	d3d9:state.obj
+# ambiguous D3DDevice_SetPixelShaderConstantFN	0x8245B9A8	0x83FB6480,0x83FB6558	d3d9:shader.obj
+D3DDevice_ClearF	0x8245EA50	0x83FBC8A0	d3d9:clear.obj
+D3DDevice_Clear	0x8245EB88	0x83FBC9D8	d3d9:clear.obj
+?MakeSpace@CRingAllocList@D3D@@AAAPAKXZ	0x82461F28	0x83FC0540	d3d9:ring.obj
+?FlushCachedMemory@D3D@@YAXPAX0H@Z	0x82462038	0x83FCA518	d3d9:memory.obj
+?IncrementalShaderPatchAndLoad@D3D@@YAXPAVCDevice@1@HPAVCVertexShader@1@PATGPU_PROGRAMCONTROL@@PAVCVertexDeclaration@1@PAU_UCODE_R500VSUCODE@@PAU_UCODE_R500PSUCODE@@K@Z	0x82462100	0x83FD1D70	d3d9:lazy.obj
+?StopWorkerQueue@D3D@@YAHPAVCDevice@1@KK@Z	0x82465D80	0x83FCBA68	d3d9:xps.obj
+?Finalize@CRingAllocList@D3D@@QAAXXZ	0x82465F68	0x83FBF960	d3d9:ring.obj
+# ambiguous ?MakeBufferResourceSpace@D3D@@YAPAVBufferResource@1@PAVCDevice@1@@Z	0x824664D8	0x83FC7048,0x83FC70F8	d3d9:commands.obj
+D3DDevice_Swap	0x82467B10	0x83FB33E0	d3d9:swap.obj
+?BlockOnFence@CDevice@D3D@@QAAXKW4_D3DBLOCKTYPE@@PAUD3DResource@@_N@Z	0x82468278	0x83FBF7D0	d3d9:ring.obj
+D3DDevice_EndTiling	0x82468348	0x83FBD098	d3d9:tile.obj
+D3DDevice_GetRenderTarget	0x82469888	0x83FBA398	d3d9:state.obj
+D3DResource_AddRef	0x824698D0	0x83FC4CE0	d3d9:resource.obj
+D3DDevice_GetDepthStencilSurface	0x82469948	0x83FBA3E0	d3d9:state.obj
+?LockResource@D3D@@YAPAXPAUD3DResource@@_KW4_D3DBLOCKTYPE@@KKKKKKK@Z	0x82473648	0x83FC5D68	d3d9:resource.obj
+D3DQuery_GetData	0x82479068	0x83FB09E8	d3d9:query.obj
+?SetTileAndDepthClear@D3D@@YAXPAVCDevice@1@PBU_D3DRESOLVE_PARAMETERSEX@@MK@Z	0x8248DE50	0x83FBD6B0	d3d9:resolve.obj
+?TrainEDRAM@D3D@@YAHPAVCDevice@1@KH@Z	0x82497138	0x83FCE5A8	d3d9:hsio.obj
+?SynchronizeToPresentationInterval@D3D@@YAXPAVCDevice@1@K@Z	0x82497298	0x83FB2F20	d3d9:swap.obj
+?AddChunkNode@CRingAllocList@D3D@@QAAXPAURingAllocChunk@2@PAK@Z	0x8249ACC8	0x83FBF9A8	d3d9:ring.obj
+D3DVertexBuffer_Lock	0x824A0CF8	0x83FC60D8	d3d9:resource.obj
+?UnlockResource@D3D@@YAXPAUD3DResource@@KK@Z	0x824A38B0	0x83FC4A78	d3d9:resource.obj
+?SetColorClear@D3D@@YAXPAVCDevice@1@PBU_D3DRESOLVE_PARAMETERSEX@@KU__vector4@@@Z	0x824A3D78	0x83FBDC48	d3d9:resolve.obj
+?LockSurface@D3D@@YAXPAUD3DBaseTexture@@_KIIKPAK222@Z	0x824A4E68	0x83FB4E60	d3d9:texture.obj
+?FindSurfaceWithinTexture@D3D@@YAXPAUD3DBaseTexture@@IIPAK1111111@Z	0x824A4F40	0x83FB4978	d3d9:texture.obj
+?ComputeClearColor@D3D@@YAKKKU__vector4@@PAK1@Z	0x824A6E58	0x83FBD7D0	d3d9:resolve.obj
+D3DPerfCounters_GetValues	0x824ACCF8	0x83FB22F0	d3d9:query.obj
+?GetGPUPerfCounters@D3D@@YAHPAVCDevice@1@@Z	0x824ACD68	0x83FC1DC0	d3d9:pix.obj
+?CalculateBandwidth@D3D@@YAM_K0@Z	0x824ACE78	0x83FC1640	d3d9:pix.obj
+?HandleCaptureState@D3D@@YAXPAVCDevice@1@@Z	0x824ACEE8	0x83FC4468	d3d9:pix.obj
+D3DDevice_SetRenderState_HiZWriteEnable	0x824AD0A8	0x83FB94F8	d3d9:state.obj
+?XBMProcessSwap@D3D@@YAXPAVCDevice@1@PAUD3DBaseTexture@@@Z	0x824AE1E0	0x83FD0480	d3d9:movie.obj
+?SetSurfaceHeader@D3D@@YAXIIW4_D3DFORMAT@@W4_D3DMULTISAMPLE_TYPE@@PBU_D3DSURFACE_PARAMETERS@@PAUD3DSurface@@PAK4@Z	0x824B09D8	0x83FB52C0	d3d9:texture.obj
+??0CBlocker@D3D@@QAA@PAVCDevice@1@W4_D3DBLOCKTYPE@@@Z	0x83578948	0x83FAF088	d3d9:device.obj
+??1CBlocker@D3D@@QAA@XZ	0x83578978	0x83FAF0B8	d3d9:device.obj
+?Check@CBlocker@D3D@@QAAHXZ	0x83578A40	0x83FAF180	d3d9:device.obj
+?UninitializeAsyncResources@D3D@@YAXPAVCDevice@1@@Z	0x83578B20	0x83FAF260	d3d9:device.obj
+?InitializeAsyncCommandBuffers@D3D@@YAHPAVCDevice@1@@Z	0x83578B70	0x83FAF2B0	d3d9:device.obj
+?UninitializeAsyncCommandBuffers@D3D@@YAXPAVCDevice@1@@Z	0x83578C70	0x83FAF3B0	d3d9:device.obj
+?WaitUntilIdleOrFlushCaches@D3D@@YAXPAVCDevice@1@@Z	0x83578CE8	0x83FAF428	d3d9:device.obj
+D3DDevice_AddRef	0x83578D98	0x83FAF4D8	d3d9:device.obj
+D3DDevice_Release	0x83578DC0	0x83FAF500	d3d9:device.obj
+# ambiguous D3DDevice_FlushHiZStencil	0x83578F68	0x83FAF5D8,0x83FB27F0	d3d9:device.obj
+?InitializeAsyncResources@D3D@@YAHPAVCDevice@1@@Z	0x835790A8	0x83FAF828	d3d9:device.obj
+Direct3D_CreateDevice	0x83579220	0x83FAF9A0	d3d9:device.obj
+D3DDevice_GetRenderState_BlendFactor	0x835793E0	0x83FB8380	d3d9:state.obj
+D3DDevice_SetRenderState_LastPixel	0x83579450	0x83FB83F0	d3d9:state.obj
+D3DDevice_GetRenderState_LastPixel	0x83579478	0x83FB8418	d3d9:state.obj
+D3DDevice_SetRenderState_LineWidth	0x83579488	0x83FB8428	d3d9:state.obj
+D3DDevice_GetRenderState_LineWidth	0x835794C8	0x83FB8468	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_StencilWriteMask	0x835795F8	0x83FB87A0,0x83FB87C0,0x83FB87E0,0x83FB8800	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_CCWStencilRef	0x83579600	0x83FB8788,0x83FB87A8,0x83FB87C8,0x83FB87E8,0x83FB8808	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_CCWStencilRef	0x83579618	0x83FB87A0,0x83FB87C0,0x83FB87E0,0x83FB8800	d3d9:state.obj
+# ambiguous D3DDevice_SetRenderState_CCWStencilMask	0x83579620	0x83FB8788,0x83FB87A8,0x83FB87C8,0x83FB87E8,0x83FB8808	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap0	0x83579718	0x83FB8ED0,0x83FB8F50	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap1	0x83579728	0x83FB8EE0,0x83FB8F60	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap2	0x83579738	0x83FB8EF0,0x83FB8F70	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap3	0x83579748	0x83FB8F00,0x83FB8F80	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap4	0x83579758	0x83FB8F10,0x83FB8F90	d3d9:state.obj
+D3DDevice_GetRenderState_Wrap5	0x83579768	0x83FB8F20	d3d9:state.obj
+D3DDevice_GetRenderState_Wrap6	0x83579778	0x83FB8F30	d3d9:state.obj
+D3DDevice_GetRenderState_Wrap7	0x83579788	0x83FB8F40	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap8	0x83579798	0x83FB8ED0,0x83FB8F50	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap9	0x835797A8	0x83FB8EE0,0x83FB8F60	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap10	0x835797B8	0x83FB8EF0,0x83FB8F70	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap11	0x835797C8	0x83FB8F00,0x83FB8F80	d3d9:state.obj
+# ambiguous D3DDevice_GetRenderState_Wrap12	0x835797D8	0x83FB8F10,0x83FB8F90	d3d9:state.obj
+D3DDevice_GetRenderState_AlphaToMaskOffsets	0x835798B0	0x83FB9408	d3d9:state.obj
+D3DDevice_SetRenderState_GuardBand_X	0x835798B8	0x83FB9410	d3d9:state.obj
+D3DDevice_GetRenderState_GuardBand_X	0x835798E0	0x83FB9438	d3d9:state.obj
+D3DDevice_SetRenderState_GuardBand_Y	0x835798E8	0x83FB9440	d3d9:state.obj
+D3DDevice_GetRenderState_GuardBand_Y	0x83579910	0x83FB9468	d3d9:state.obj
+D3DDevice_SetRenderState_DiscardBand_X	0x83579918	0x83FB9470	d3d9:state.obj
+D3DDevice_GetRenderState_DiscardBand_X	0x83579938	0x83FB9490	d3d9:state.obj
+D3DDevice_SetRenderState_DiscardBand_Y	0x83579940	0x83FB9498	d3d9:state.obj
+D3DDevice_GetRenderState_HiZWriteEnable	0x835799A0	0x83FB9550	d3d9:state.obj
+D3DDevice_SetRenderState_HiStencilEnable	0x835799B0	0x83FB9560	d3d9:state.obj
+D3DDevice_GetRenderState_HiStencilEnable	0x835799D0	0x83FB9580	d3d9:state.obj
+D3DDevice_SetRenderState_HiStencilWriteEnable	0x835799E0	0x83FB9590	d3d9:state.obj
+D3DDevice_GetRenderState_HiStencilWriteEnable	0x83579A00	0x83FB95B0	d3d9:state.obj
+D3DDevice_SetRenderState_HiStencilFunc	0x83579A10	0x83FB95C0	d3d9:state.obj
+D3DDevice_GetRenderState_HiStencilFunc	0x83579A30	0x83FB95E0	d3d9:state.obj
+D3DDevice_SetRenderState_HiStencilRef	0x83579A40	0x83FB95F0	d3d9:state.obj
+D3DDevice_GetSamplerState_AnisotropyBias	0x83579B58	0x83FB9B60	d3d9:state.obj
+D3DDevice_GetSamplerState_MipMapLodBias	0x83579BA0	0x83FB9C08	d3d9:state.obj
+D3DDevice_GetSamplerState_MinMipLevel	0x83579BF0	0x83FB9D38	d3d9:state.obj
+D3DDevice_SetSamplerState_BorderColor	0x83579C00	0x83FB9D48	d3d9:state.obj
+D3DDevice_GetSamplerState_AddressW	0x83579CA0	0x83FB9E90	d3d9:state.obj
+D3DDevice_SetSamplerState_TrilinearThreshold	0x83579CB8	0x83FB9EA8	d3d9:state.obj
+D3DDevice_GetSamplerState_TrilinearThreshold	0x83579CF8	0x83FB9EE8	d3d9:state.obj
+D3DDevice_SetSamplerState_HGradientExpBias	0x83579D10	0x83FB9F00	d3d9:state.obj
+D3DDevice_GetSamplerState_HGradientExpBias	0x83579D50	0x83FB9F40	d3d9:state.obj
+D3DDevice_SetSamplerState_VGradientExpBias	0x83579D68	0x83FB9F58	d3d9:state.obj
+D3DDevice_GetSamplerState_VGradientExpBias	0x83579DA8	0x83FB9F98	d3d9:state.obj
+D3DDevice_SetSamplerState_WhiteBorderColorW	0x83579DC0	0x83FB9FB0	d3d9:state.obj
+D3DDevice_GetSamplerState_WhiteBorderColorW	0x83579E00	0x83FB9FF0	d3d9:state.obj
+D3DDevice_SetSamplerState_PointBorderEnable	0x83579E18	0x83FBA008	d3d9:state.obj
+# ambiguous D3DDevice_SetGammaRamp	0x83579E78	0x83FBA420,0x83FBA4F0	d3d9:state.obj
+# ambiguous D3DDevice_SetPWLGamma	0x83579F48	0x83FBA420,0x83FBA4F0	d3d9:state.obj
+?GetTextureDimensions@D3D@@YAXPBUD3DBaseTexture@@PAK11@Z	0x8357A018	0x83FB3C60	d3d9:texture.obj
+?GetGpuTextureDimensions@D3D@@YAXPBTGPUTEXTURE_FETCH_CONSTANT@@PAK11@Z	0x8357A0B0	0x83FB3CF8	d3d9:texture.obj
+?GetMipTailLevelOffsetCoords@D3D@@YAKKKKKKKKPAI00@Z	0x8357A1F0	0x83FB4250	d3d9:texture.obj
+?GetLevelSize@D3D@@YAXPAUD3DBaseTexture@@KPAK1111@Z	0x8357A348	0x83FB43A8	d3d9:texture.obj
+# ambiguous ?Get2DSurfaceDesc@D3D@@YAXPAUD3DBaseTexture@@IPAU_D3DSURFACE_DESC@@@Z	0x8357A718	0x83FB4778,0x83FB4878	d3d9:texture.obj
+# ambiguous ?Get3DSurfaceDesc@D3D@@YAXPAUD3DBaseTexture@@IPAU_D3DVOLUME_DESC@@@Z	0x8357A818	0x83FB4778,0x83FB4878	d3d9:texture.obj
+?Lock2DSurface@D3D@@YAXPAUD3DBaseTexture@@_KIIPAU_D3DLOCKED_RECT@@PBUtagRECT@@K@Z	0x8357A918	0x83FB4F38	d3d9:texture.obj
+D3DVolumeTexture_GetLevelDesc	0x8357AAA8	0x83FB5568	d3d9:texture.obj
+D3DDevice_CreateTexture	0x8357AAB0	0x83FB5570	d3d9:texture.obj
+D3DSurface_GetDesc	0x8357ABD0	0x83FB57C8	d3d9:texture.obj
+D3DVolume_GetDesc	0x8357AC90	0x83FB5860	d3d9:texture.obj
+?_ComputeDummyValue@@YAKK@Z	0x8357ACD8	0x83FB2448	d3d9:swap.obj
+?IsStereo3DValidationEnabled@@YAHXZ	0x8357ACF0	0x83FB2460	d3d9:swap.obj
+?SetupGamma@D3D@@YAXPAVCDevice@1@W4_D3DFORMAT@@PBU_D3DGAMMARAMP@@H@Z	0x8357AD28	0x83FB2498	d3d9:swap.obj
+?VerticalBlankInterrupt@D3D@@YAXPAVCDevice@1@@Z	0x8357ADA0	0x83FB2510	d3d9:swap.obj
+?SwapCallback@D3D@@YAXK@Z	0x8357AED0	0x83FB2640	d3d9:swap.obj
+?ValidateStereo3DBlankRegion@D3D@@YAXPAVCDevice@1@PAUD3DBaseTexture@@@Z	0x8357B080	0x83FB2898	d3d9:swap.obj
+?ComplexSwap@D3D@@YAXPAVCDevice@1@KKW4_D3DFORMAT@@KKPBU_D3DPRIVATE_SCALER_PARAMETERS@@PBU_D3DGAMMARAMP@@@Z	0x8357B788	0x83FB31B8	d3d9:swap.obj
+?InitVertexDeclarationFromFVF@D3D@@YAXKPAVCVertexDeclaration@1@@Z	0x8357B9A8	0x83FB5A38	d3d9:shader.obj
+?BuildGprAllocationSet@D3D@@YAKPAVCDevice@1@KPAK1@Z	0x8357BFF8	0x83FB6410	d3d9:shader.obj
+XGGetMicrocodeShaderParts	0x8357C068	0x83FB67A0	d3d9:shader.obj
+# ambiguous D3DDevice_GetPixelShader	0x8357C0F0	0x83FB69E8,0x83FB6C00	d3d9:shader.obj
+# ambiguous D3DDevice_GetVertexShader	0x8357C138	0x83FB69E8,0x83FB6C00	d3d9:shader.obj
+XGSetVertexDeclaration	0x8357C180	0x83FB6C60	d3d9:shader.obj
+D3DDevice_CreateVertexDeclaration	0x8357C270	0x83FB6D50	d3d9:shader.obj
+D3DDevice_GetShaderGPRAllocation	0x8357C2F0	0x83FB6EB8	d3d9:shader.obj
+?InitializeGprAllocation@D3D@@YAHPAVCDevice@1@@Z	0x8357C330	0x83FB7310	d3d9:shader.obj
+XGSetPixelShaderHeader	0x8357C460	0x83FB74F0	d3d9:shader.obj
+D3DDevice_CreatePixelShader	0x8357C498	0x83FB7528	d3d9:shader.obj
+XGSetVertexShaderHeader	0x8357C588	0x83FB7618	d3d9:shader.obj
+XGRegisterVertexShader	0x8357C5C8	0x83FB7658	d3d9:shader.obj
+D3DDevice_CreateVertexShader	0x8357C6C0	0x83FB7750	d3d9:shader.obj
+D3DDevice_SetFVF	0x8357C7B0	0x83FB7840	d3d9:shader.obj
+D3DDevice_DrawVertices	0x8357C8A0	0x83FC6640	d3d9:draw.obj
+?SetPendingState_NoInline@D3D@@YAXPAVCDevice@1@W4LazyPrim@1@@Z	0x8357CD60	0x83FBDD20	d3d9:resolve.obj
+?GetExportIdentifier@D3D@@YAKPAUD3DResource@@@Z	0x8357CFC0	0x83FC4BC8	d3d9:resource.obj
+?InvalidateCaches@D3D@@YAXPAVCDevice@1@KK@Z	0x8357D018	0x83FC4C20	d3d9:resource.obj
+D3DDevice_CreateVertexBuffer	0x8357D140	0x83FC4D58	d3d9:resource.obj
+D3DDevice_CreateIndexBuffer	0x8357D2B8	0x83FC4E30	d3d9:resource.obj
+D3DDevice_BeginExport	0x8357D948	0x83FC53D0	d3d9:resource.obj
+D3DDevice_EndExport	0x8357DA40	0x83FC54C8	d3d9:resource.obj
+D3DDevice_InvalidateGpuCache	0x8357DCA8	0x83FC5A58	d3d9:resource.obj
+D3DIndexBuffer_Lock	0x8357DE18	0x83FC6128	d3d9:resource.obj
+?SetPending_Split@D3D@@YAPAKPAVCDevice@1@PIAKK1KK@Z	0x8357E090	0x83FD0948	d3d9:lazy.obj
+?ConfigureForOnePassZPass@D3D@@YAXPAVCDevice@1@HKKK@Z	0x8357E5F8	0x83FBCA98	d3d9:tile.obj
+?RestoreRingBufferState@CDevice@D3D@@QAAXXZ	0x8357E718	0x83FBF188	d3d9:ring.obj
+?AddCommandsToPrimaryBuffer@CDevice@D3D@@QAAXPBKK@Z	0x8357E758	0x83FBF310	d3d9:ring.obj
+?SetPrimaryBufferIndex@D3D@@YAXPAUD3DDevice@@K@Z	0x8357E870	0x83FBF428	d3d9:ring.obj
+?AddAsynchronousInvalidateRange@D3D@@YAXPA_KKK@Z	0x8357E890	0x83FBF448	d3d9:ring.obj
+?GetAsynchronousInvalidateRange@D3D@@YAXPA_KPAK1@Z	0x8357E8F8	0x83FBF4B0	d3d9:ring.obj
+?InterruptCallback@D3D@@YAXKPAVCDevice@1@@Z	0x8357E950	0x83FBF508	d3d9:ring.obj
+D3DResource_BlockUntilNotBusy	0x8357EA30	0x83FBF900	d3d9:ring.obj
+?AppendArrayData@CRingAllocList@D3D@@QAAXPBXKK@Z	0x8357EA90	0x83FC0650	d3d9:ring.obj
+?QueueIndirectBuffer@CDevice@D3D@@QAAPAKPAKKKKPAVCWorkerThreadCommandList@2@H@Z	0x8357EB10	0x83FC06D0	d3d9:ring.obj
+?QueueCommands@CDevice@D3D@@QAAHPBXKKHH@Z	0x8357ECF0	0x83FC0A58	d3d9:ring.obj
+?InvalidateConstants@D3D@@YAXPAUD3DDevice@@@Z	0x8357EEF0	0x83FC0DE0	d3d9:ring.obj
+D3DDevice_BlockUntilIdle	0x8357EF58	0x83FC0EC0	d3d9:ring.obj
+D3DDevice_SetRingBufferParameters	0x8357EFD0	0x83FC0F90	d3d9:ring.obj
+D3DDevice_GetNumPasses	0x8357F418	0x83FAFB08	d3d9:query.obj
+?GetOpenQuerySlot@@YAJPAVCDevice@D3D@@PAPAUCQueryBlock@2@PAPAK@Z	0x8357F460	0x83FAFB50	d3d9:query.obj
+?P_EPC@D3D@@YAXPAUD3DDevice@@H@Z	0x8357F5D0	0x83FAFCE8	d3d9:query.obj
+?P_CPC@D3D@@YAPAUCPerfCounters@1@PAUD3DDevice@@IPAU_D3DPERFCOUNTER_VALUES@@PAU21@@Z	0x8357F6B8	0x83FAFDD0	d3d9:query.obj
+?P_SPCE@D3D@@YAXPAUD3DDevice@@PBU_D3DPERFCOUNTER_EVENTS@@K@Z	0x8357F758	0x83FAFE70	d3d9:query.obj
+# ambiguous ?Destroy@CPerfCounterBatch@D3D@@QAAXXZ	0x8357FD60	0x83E70240,0x83FB0490,0x83FB04D8	d3d9:query.obj
+# ambiguous ?Destroy@COcclusionQueryBatch@D3D@@QAAXXZ	0x8357FDA8	0x83E70240,0x83FB0490,0x83FB04D8	d3d9:query.obj
+?FreeEmptyQueryBlock@@YAXPAVCDevice@D3D@@PAUCQueryBlock@2@@Z	0x8357FDF0	0x83FB0520	d3d9:query.obj
+D3DQuery_Release	0x8357FE80	0x83FB05B0	d3d9:query.obj
+D3DDevice_CreateQueryTiled	0x83580008	0x83FB2360	d3d9:query.obj
+?Destroy@CAsyncCall@D3D@@QAAXXZ	0x835803F8	0x83FC6ED0	d3d9:commands.obj
+?CommandBufferDeviceAllocate@D3D@@YAPAXPAVCDevice@1@KPAKK@Z	0x83580460	0x83FC6F38	d3d9:commands.obj
+?FlushCachedAllocation@CCommandBuffer@D3D@@QAAXXZ	0x83580510	0x83FC6FE8	d3d9:commands.obj
+?Destroy@CCommandBuffer@D3D@@QAAXXZ	0x83580570	0x83FC72A0	d3d9:commands.obj
+?ReadMMRegUlong@D3D@@YAKK@Z	0x83581130	0x83FC8358	d3d9:debug.obj
+?WriteMMRegUlong@D3D@@YAXKK@Z	0x83581140	0x83FC8368	d3d9:debug.obj
+# ambiguous ?Out@Hang@D3D@@QAAXPBDZZ	0x83581158	0x82AB10C0,0x83FC8380	d3d9:debug.obj
+?HangStateDump@D3D@@YAXPAVHang@1@@Z	0x835811E0	0x83FC8408	d3d9:debug.obj
+?HangTextureDump@D3D@@YAXP6AKK@ZP6AXKK@ZKKKPATGPUTEXTURE_FETCH_CONSTANT@@@Z	0x83581448	0x83FC8670	d3d9:debug.obj
+?HangCommandBufferDump@D3D@@YAXPAVHang@1@KH@Z	0x83581508	0x83FC8730	d3d9:debug.obj
+?HangRecognizer@D3D@@YAXPAUD3DDevice@@P6AXPBD@ZP6AKK@ZP6AXKK@Z@Z	0x835816E8	0x83FC8910	d3d9:debug.obj
+?DebugGpuDeadlock@D3D@@YAHPAVCDevice@1@@Z	0x83581FA8	0x83FC91D0	d3d9:debug.obj
+?SetAllSignals@D3D@@YAXPAVCDevice@1@@Z	0x83582068	0x83FC9290	d3d9:initialize.obj
+?Set3DVideoFormat@D3D@@YAKK@Z	0x83582140	0x83FC9368	d3d9:initialize.obj
+?DriverCleanup@D3D@@YAXPAX@Z	0x835821C8	0x83FC93F0	d3d9:initialize.obj
+?D3DHangAvoidanceNotification@D3D@@YAXPAU_EX_TITLE_TERMINATE_REGISTRATION@@@Z	0x835821E8	0x83FC9410	d3d9:initialize.obj
+?InitializeApiState@D3D@@YAXPAVCDevice@1@@Z	0x83582228	0x83FC9450	d3d9:initialize.obj
+?UninitializePresentationParameters@D3D@@YAXPAVCDevice@1@@Z	0x83582490	0x83FC96B8	d3d9:initialize.obj
+?DeleteQueryBlock@D3D@@YAXPAUCQueryBlock@1@@Z	0x83582540	0x83FC9768	d3d9:initialize.obj
+?CreateStereo3DXamBuffer@D3D@@YAHPAVCDevice@1@@Z	0x83582598	0x83FC97C0	d3d9:initialize.obj
+?DestroyStereo3DXamBuffer@D3D@@YAXPAVCDevice@1@@Z	0x83582610	0x83FC9838	d3d9:initialize.obj
+?VideoModeInitialize@D3D@@YAXPAVCDevice@1@PBU_D3DPRESENT_PARAMETERS_@@H@Z	0x83582678	0x83FC98A0	d3d9:initialize.obj
+?D3DTerminateNotification@D3D@@YAXPAU_EX_TITLE_TERMINATE_REGISTRATION@@@Z	0x835827F8	0x83FC9A20	d3d9:initialize.obj
+?DriverInitialize@D3D@@YAHPAVCDevice@1@@Z	0x83582848	0x83FC9A70	d3d9:initialize.obj
+?InitializeCommandBufferDevice@D3D@@YAHPAVCDevice@1@@Z	0x83582950	0x83FC9B78	d3d9:initialize.obj
+?FreePerfCounterMemory@D3D@@YAXPAUD3DDevice@@@Z	0x835829A0	0x83FC9BC8	d3d9:initialize.obj
+?UninitializeDevice@D3D@@YAXPAVCDevice@1@@Z	0x83582A20	0x83FC9C48	d3d9:initialize.obj
+?InitializePresentationParameters@D3D@@YAHPAVCDevice@1@PBU_D3DPRESENT_PARAMETERS_@@@Z	0x83582BF8	0x83FC9E20	d3d9:initialize.obj
+?InitializeHardwareDevice@D3D@@YAHPAVCDevice@1@PBU_D3DPRESENT_PARAMETERS_@@@Z	0x83582E78	0x83FCA0A0	d3d9:initialize.obj
+?AdjustPWLGamma@D3D@@YAXPAU_D3DPWLGAMMAENTRY@@PBU2@PAG@Z	0x835830F8	0x83FCC0C8	d3d9:gamma.obj
+?Gamma_sRGB@D3D@@YAMMH@Z	0x83583148	0x83FCC118	d3d9:gamma.obj
+?Gamma_TV@D3D@@YAMMH@Z	0x835831F8	0x83FCC1C8	d3d9:gamma.obj
+?GammaRampCorrected@D3D@@YAXPAU_D3DGAMMARAMP@@PBU2@H@Z	0x83583430	0x83FCC400	d3d9:gamma.obj
+?GammaPWLCorrected@D3D@@YAXPAU_D3DPWLGAMMA@@PBU2@H@Z	0x835834C8	0x83FCC498	d3d9:gamma.obj
+?SetRawGammaRamp@D3D@@YAXPAVCDevice@1@PBU_D3DGAMMARAMP@@@Z	0x83583550	0x83FCC520	d3d9:gamma.obj
+?SetRawPWLGamma@D3D@@YAXPAVCDevice@1@PBU_D3DPWLGAMMA@@@Z	0x83583640	0x83FCC610	d3d9:gamma.obj
+?ResetGamma@D3D@@YAXPAU_D3DGAMMARAMP@@H@Z	0x83583770	0x83FCC740	d3d9:gamma.obj
+?ResetGamma@D3D@@YAXPAU_D3DPWLGAMMA@@H@Z	0x835837B8	0x83FCC788	d3d9:gamma.obj
+?FindFreeChunk@D3D@@YAKPAUEdram@1@PAK@Z	0x83583820	0x83FD0570	d3d9:allocate.obj
+?MarkBits@D3D@@YAXPAUEdram@1@KKH@Z	0x835838F8	0x83FD0648	d3d9:allocate.obj
+?FreeEdramMemory@D3D@@YAXKK@Z	0x83583A38	0x83FD0788	d3d9:allocate.obj
+?AllocateEdramMemory@D3D@@YAHKPAK@Z	0x83583A88	0x83FD07D8	d3d9:allocate.obj
+?ConvertPWLGammaToGammaRamp@D3D@@YAXPAU_D3DGAMMARAMP@@PBU_D3DPWLGAMMA@@@Z	0x83583BF8	0x83FC1358	d3d9:pix.obj
+?SetAllBlackGamma@D3D@@YAXPAVCDevice@1@@Z	0x83583C68	0x83FC13C8	d3d9:pix.obj
+?PixEnableVideoPlayback@D3D@@YAKPAX@Z	0x83583CC0	0x83FC1420	d3d9:pix.obj
+?PixDisableVideoPlayback@D3D@@YAXPAX@Z	0x83583D48	0x83FC14A8	d3d9:pix.obj
+?PixEstimateVideoCost@D3D@@YAXPAVCDevice@1@PAUPIX_ESTIMATE_VIDEO_COST@@@Z	0x83583DB0	0x83FC1510	d3d9:pix.obj
+?CommandHandler@D3D@@YAJPBDPADKPAU_DM_CMDCONT@@@Z	0x83583F38	0x83FC1718	d3d9:pix.obj
+PIXCaptureGpuFrame	0x83583FD8	0x83FC17B8	d3d9:pix.obj
+?PixTimeSinceVBlank@D3D@@YAKPAX@Z	0x835843A0	0x83FC1B80	d3d9:pix.obj
+?CodecSetState@D3D@@YAXPAVCDevice@1@@Z	0x835843E8	0x83FC1BC8	d3d9:pix.obj
+?FrameDone@D3D@@YAXK@Z	0x83584540	0x83FC1D20	d3d9:pix.obj
+?GetCounter@D3D@@YAMPAVCDevice@1@W4_D3DCOUNTER@@@Z	0x83584A30	0x83FC2320	d3d9:pix.obj
+?BlockUntilIdleCallback@D3D@@YAXPAX@Z	0x83584F10	0x83FC2800	d3d9:pix.obj
+?CounterHandler@D3D@@YAXKK@Z	0x83584F18	0x83FC2808	d3d9:pix.obj
+?InitXBDMInterface@D3D@@YAXPAVCDevice@1@@Z	0x835850F8	0x83FC29E8	d3d9:pix.obj
+?UninitXBDMInterface@D3D@@YAXPAVCDevice@1@@Z	0x835851F8	0x83FC2AE8	d3d9:pix.obj
+?PixInitializePerfMemory@D3D@@YA_NPAVCDevice@1@@Z	0x835852B0	0x83FC2BA0	d3d9:pix.obj
+?CodecShowFrame@D3D@@YAHPAVCDevice@1@KPAPAUPIX_CHUNK@@KKK@Z	0x83585350	0x83FC2C80	d3d9:pix.obj
+?CodecVideoEncode@D3D@@YAXPAVCDevice@1@KPAPAUPIX_CHUNK@@KKPAUD3DTexture@@QBM33K@Z	0x83585B08	0x83FC3438	d3d9:pix.obj
+?PixDecodeVideoFrame@D3D@@YAKPAXKPAPAUPIX_CHUNK@@KKPAUPIX_DECODE_VIDEO_DATA@@K@Z	0x83585FA0	0x83FC38D0	d3d9:pix.obj
+?BuildVideoRecord@D3D@@YAKPAVCDevice@1@KW4_D3DFORMAT@@KKPBU_D3DPRIVATE_SCALER_PARAMETERS@@PBU_D3DGAMMARAMP@@@Z	0x835862F0	0x83FC3C20	d3d9:pix.obj
+?InitializeDefaultScalerParameters@D3D@@YAXPAVCDevice@1@KKPBU_D3DPRIVATE_SCALER_PARAMETERS@@PAU3@H@Z	0x83586A08	0x83FCC7F0	d3d9:scaler.obj
+?ConvertScalerParametersInternal@D3D@@YAXPAVCDevice@1@PBU_D3DVIDEO_SCALER_PARAMETERS@@PAU_D3DPRIVATE_SCALER_PARAMETERS@@@Z	0x83586B30	0x83FCC918	d3d9:scaler.obj
+?SendScalerNotification@D3D@@YAXPAVCDevice@1@KKPBU_D3DPRIVATE_SCALER_PARAMETERS@@@Z	0x83586BA8	0x83FCC990	d3d9:scaler.obj
+?coef_f2c@D3D@@YAXPAMPAIHH@Z	0x83586F78	0x83FCCD60	d3d9:scaler.obj
+?Bessi0@D3D@@YAMM@Z	0x835873D0	0x83FCD1B8	d3d9:scaler.obj
+?KaiserWindow@D3D@@YAMMMM@Z	0x83587578	0x83FCD360	d3d9:scaler.obj
+?sinc@D3D@@YAMM@Z	0x83587638	0x83FCD420	d3d9:scaler.obj
+# ambiguous ?mitchell@D3D@@YAMM@Z	0x83587690	0x83FCD478,0x83FCD580	d3d9:scaler.obj
+# ambiguous ?catmull@D3D@@YAMM@Z	0x83587798	0x83FCD478,0x83FCD580	d3d9:scaler.obj
+?GenerateFilterCoefficients@D3D@@YAXW4_D3DFILTER_TYPE@@KKHMMPAM@Z	0x835878A0	0x83FCD688	d3d9:scaler.obj
+?BuildFilter@D3D@@YAXPAU_FILTER@@HW4_D3DFILTER_TYPE@@PBU_D3DFILTER_PARAMETERS@@MIH@Z	0x83587CD8	0x83FCDAC0	d3d9:scaler.obj
+?InternalScalerSetup@D3D@@YAHPAVCDevice@1@KKKKKAAW4_D3DFILTER_TYPE@@PBU_D3DFILTER_PARAMETERS@@12PAU_HARDWARE_SCALER_PARAMETERS@@@Z	0x83587FB8	0x83FCDDA0	d3d9:scaler.obj
+?SetupScaler@D3D@@YAXPAVCDevice@1@KKPBU_D3DPRIVATE_SCALER_PARAMETERS@@H@Z	0x83588548	0x83FCE330	d3d9:scaler.obj
+D3DDevice_SetScalerParametersInternal	0x835886F8	0x83FCE4E0	d3d9:scaler.obj
+?LowPriSetGprAllocation@D3D@@YAXPAVCXpsGlobal@1@PAVCDevice@1@K@Z	0x835887A8	0x83FC72F8	d3d9:lowpri.obj
+?FinishExecutingLowPriSubmission@D3D@@YAXPAVCXpsGlobal@1@PAVCDevice@1@K@Z	0x83588888	0x83FC73D8	d3d9:lowpri.obj
+?LowPriPrbWritePerfCounter@D3D@@YAXPAVCDevice@1@PCKK@Z	0x83588900	0x83FC7450	d3d9:lowpri.obj
+?D3DDevice_InsertYieldPoint@@YAJPAUD3DDevice@@KK@Z	0x83588A30	0x83FC7580	d3d9:lowpri.obj
+D3DDevice_ResetLowPriorityQueues	0x83588B80	0x83FC76D0	d3d9:lowpri.obj
+?LowPriReportGpuDoneWithYield@D3D@@YAXPAVCDevice@1@@Z	0x83588D08	0x83FC7858	d3d9:lowpri.obj
+?LowPriDoneInterruptCallback@D3D@@YAXK@Z	0x83588E00	0x83FC7950	d3d9:lowpri.obj
+?ProcessLowPriBlockOnFence@D3D@@YA_NPAVCDevice@1@K@Z	0x83588E50	0x83FC79A0	d3d9:lowpri.obj
+?LowPriPrbWriteTimestamp@D3D@@YAXPAVCDevice@1@PCK@Z	0x83588EC0	0x83FC7A10	d3d9:lowpri.obj
+?ExecuteLowPriCommandBuffer@D3D@@YAXPAVCXpsGlobal@1@PAVCDevice@1@KPAULowPrioritySubmission@@@Z	0x83588F28	0x83FC7A78	d3d9:lowpri.obj
+?ExecutePendingSave@D3D@@YAXPAVCXpsGlobal@1@PAVCDevice@1@K@Z	0x83589018	0x83FC7B68	d3d9:lowpri.obj
+?ExecuteLowPriSubmission@D3D@@YAXPAVCXpsGlobal@1@PAVCDevice@1@KPAK@Z	0x835890B8	0x83FC7C08	d3d9:lowpri.obj
+?HandleRequiredLowPriWork@D3D@@YAXPAVCXpsGlobal@1@PAVCDevice@1@PAUQueueRecord_YieldPointParams@1@@Z	0x83589370	0x83FC7EC0	d3d9:lowpri.obj
+?HandleLowPriWork@D3D@@YAPAKPAVCXpsGlobal@1@PAUQueueRecord_YieldPointParams@1@@Z	0x83589478	0x83FC7FC8	d3d9:lowpri.obj
+?XBMHandleConnect@D3D@@YAHPBD@Z	0x83589808	0x83FCE690	d3d9:movie.obj
+?XBMHandleDisconnect@D3D@@YAHPBD@Z	0x83589820	0x83FCE6A8	d3d9:movie.obj
+?XBMHandleVersionCheck@D3D@@YAHPBD@Z	0x83589838	0x83FCE6C0	d3d9:movie.obj
+?XBMHandleLimitCaptureSize@D3D@@YAHPBD@Z	0x83589870	0x83FCE6F8	d3d9:movie.obj
+?XBMHandleBeginCaptureFileCreation@D3D@@YAHPBD@Z	0x835898C8	0x83FCE750	d3d9:movie.obj
+?XBMHandleBeginCapture@D3D@@YAHPBD@Z	0x83589910	0x83FCE798	d3d9:movie.obj
+?XBMHandleEndCapture@D3D@@YAHPBD@Z	0x83589928	0x83FCE7B0	d3d9:movie.obj
+?XBMInitialize@D3D@@YAHPAVCDevice@1@@Z	0x83589940	0x83FCE7C8	d3d9:movie.obj
+?XBMProcessCommand@D3D@@YAJPBDPADKPAU_DM_CMDCONT@@@Z	0x83589968	0x83FCE7F0	d3d9:movie.obj
+?XBMAllocateFrameMemory@D3D@@YAXIPAXPAPAXPAW4MEMORYREGION@1@@Z	0x83589C20	0x83FCEAA8	d3d9:movie.obj
+?XBMDestroyContext@D3D@@YAXPAVCDevice@1@@Z	0x83589CA0	0x83FCEB28	d3d9:movie.obj
+?XBMCreateContext@D3D@@YAJPAVCDevice@1@PAUD3DBaseTexture@@PBD@Z	0x83589DA8	0x83FCEC30	d3d9:movie.obj
+?XBMEndCapture@D3D@@YAXPAVCDevice@1@@Z	0x8358A578	0x83FCF400	d3d9:movie.obj
+?XBMUninitialize@D3D@@YAXPAVCDevice@1@@Z	0x8358A998	0x83FCF820	d3d9:movie.obj
+?XBMBeginCapture@D3D@@YAHPAVCDevice@1@PAUD3DBaseTexture@@PBD@Z	0x8358A9C8	0x83FCF850	d3d9:movie.obj
+?XBMCaptureFrame@D3D@@YAXPAVCDevice@1@PAUD3DBaseTexture@@@Z	0x8358AD30	0x83FCFBB8	d3d9:movie.obj
+?LockL2@D3D@@YAXPAVCXpsGlobal@1@K@Z	0x8358B5F8	0x83FCA5C0	d3d9:xps.obj
+?CalculatePredicationSelect@D3D@@YAKPAVCXpsGlobal@1@@Z	0x8358B6B0	0x83FCA678	d3d9:xps.obj
+?UpdatePredicationSelect@D3D@@YAXPAVCXpsGlobal@1@@Z	0x8358B718	0x83FCA6E0	d3d9:xps.obj
+?WaitForXpsIdle@D3D@@YAXPAVCXpsGlobal@1@@Z	0x8358B7A0	0x83FCA768	d3d9:xps.obj
+?AutoPatch@D3D@@YAXPAUWorkerState@1@PAVCPatchListChunk@1@H@Z	0x8358B840	0x83FCA808	d3d9:xps.obj
+?DispatchCompletion@D3D@@YAPAKPAVCXpsGlobal@1@PAUD3DXpsThread@@PCK@Z	0x8358B948	0x83FCA910	d3d9:xps.obj
+?KickOffWorkerThreadDpc@D3D@@YAXPAU_KDPC@@PAX11@Z	0x8358BA80	0x83FCAA48	d3d9:xps.obj
+?WorkerDpc@D3D@@YAXK@Z	0x8358BAB8	0x83FCAA80	d3d9:xps.obj
+?UninitializeXps@D3D@@YAXPAVCDevice@1@@Z	0x8358BB48	0x83FCAC80	d3d9:xps.obj
+?XpsConfigureForWork@D3D@@YAXPAVCDevice@1@PAVCXpsGlobal@1@K@Z	0x8358BBE8	0x83FCAD20	d3d9:xps.obj
+?XpsVisibilityPatch@D3D@@YAXPBVCXpsVisibilityPatchListChunk@1@@Z	0x8358BD90	0x83FCAEC8	d3d9:xps.obj
+?XpsQueryPatch@D3D@@YAXPAUWorkerState@1@PAVCXpsQueryPatchListChunk@1@@Z	0x8358BE70	0x83FCAFA8	d3d9:xps.obj
+?XpsAutoPatch@D3D@@YAXPAUWorkerState@1@PAVCXpsPatchListChunk@1@@Z	0x8358BFB0	0x83FCB0E8	d3d9:xps.obj
+?TilingPatch@D3D@@YAXPAUWorkerState@1@PAVCPatchListChunk@1@PAVCCommandBufferCallListChunk@1@@Z	0x8358C0A8	0x83FCB1E0	d3d9:xps.obj
+?DispatchCommands@D3D@@YAPAKPAKPAVCXpsGlobal@1@@Z	0x8358C160	0x83FCB298	d3d9:xps.obj
+?DispatchWorker@D3D@@YAXPAUD3DXpsThread@@@Z	0x8358C4D0	0x83FCB608	d3d9:xps.obj
+?WorkerThread@D3D@@YAKPAX@Z	0x8358C790	0x83FCB8C8	d3d9:xps.obj
+?KickOffOnWorkerQueue@D3D@@YAXPAVCDevice@1@KKPAVCWorkerThreadCommandList@1@W4Queue_Commands@1@@Z	0x8358C930	0x83FCBC50	d3d9:xps.obj
+?InitializeXps@D3D@@YAHPAVCDevice@1@@Z	0x8358C9E8	0x83FCBD08	d3d9:xps.obj
+?XenonGpu_Initialize@D3D@@YAXPAVCDevice@1@@Z	0x8358CBE0	0x83FCA320	d3d9:xenongpu.obj
+?PixNullHardwareInterruptCallback@D3D@@YAXPAU_KDPC@@PAX11@Z	0x8358CDD8	0x83FD2A38	d3d9:capture.obj
+?CleanupGprAllocationSetup@D3D@@YAXPAVCDevice@1@@Z	0x8357BEE0	0x83FB62F8	d3d9:shader.obj
+?DoBeginExportNanVertex@@YAXPAUD3DDevice@@@Z	0x8357D468	0x83FC4EF0	d3d9:resource.obj
+?DoEndExport512Pixels@@YAXPAUD3DDevice@@@Z	0x8357D5C0	0x83FC5048	d3d9:resource.obj
+?VertexShaderStubOutput@D3D@@YAXPBU_UCODE_R500VSUCODE@@PATGPUSHADER_INSTRUCTION@@PBT_UCODE_VSOUTPUTDECLARATION@@@Z	0x8357E148	0x83FD1A98	d3d9:lazy.obj
+?VertexShaderRedirectOutput@D3D@@YAXPBU_UCODE_R500VSUCODE@@PATGPUSHADER_INSTRUCTION@@PBT_UCODE_VSOUTPUTDECLARATION@@PBT_UCODE_PSINPUTDECLARATION@@@Z	0x8357E218	0x83FD1B68	d3d9:lazy.obj
+?PatchVertexShaderToMatchPixelShader@D3D@@YAXPAUPIXPatchVertexShaderToMatchPixelShaderData@@PBU_UCODE_R500VSUCODE@@PATGPUSHADER_INSTRUCTION@@PATGPU_PROGRAMCONTROL@@PAU_UCODE_R500PSUCODE@@@Z	0x8357E2D0	0x83FD1C20	d3d9:lazy.obj
+?GetCurrentGammaTable@D3D@@YAPAGH@Z	0x835832A8	0x83FCC278	d3d9:gamma.obj
+?ShortPercentClamp@D3D@@YAK_J0@Z	0x83583ED0	0x83FC16B0	d3d9:pix.obj
+?SubmitGeneralCounters@D3D@@YAXPAVCDevice@1@@Z	0x835845E0	0x83FC1ED0	d3d9:pix.obj
+# ambiguous ??__Eg_RGBScaledToYUV601@D3D@@YAXXZ	0x8394BB88	0x840EBF88,0x840EC020,0x840EC0B8,0x840EC150	d3d9:movie.obj
+# ambiguous ??__Eg_RGBScaledToYUV709@D3D@@YAXXZ	0x8394BC20	0x840EBF88,0x840EC020,0x840EC0B8,0x840EC150	d3d9:movie.obj
+# ambiguous ??__Eg_RGBOneNinthScaledToYUV601@D3D@@YAXXZ	0x8394BCB8	0x840EBF88,0x840EC020,0x840EC0B8,0x840EC150	d3d9:movie.obj
+# ambiguous ??__Eg_RGBOneNinthScaledToYUV709@D3D@@YAXXZ	0x8394BD50	0x840EBF88,0x840EC020,0x840EC0B8,0x840EC150	d3d9:movie.obj
+# matched=370 ambiguous=49 missing=211
