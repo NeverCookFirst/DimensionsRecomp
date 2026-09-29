@@ -35,6 +35,32 @@ struct FetchConstant {
 };
 static_assert(sizeof(FetchConstant) == 0x18);
 
+// Header shared by Xbox 360 D3D resources. The shader create routines in the
+// Sep'13 runtime initialize shaders with type 6 (vertex) / 7 (pixel), a
+// reference count of one, and 0xFFFF0000 in BaseFlush.
+struct D3DResource {
+  be_u32 common;
+  be_u32 reference_count;
+  be_u32 fence;
+  be_u32 read_fence;
+  be_u32 identifier;
+  be_u32 base_flush;
+};
+static_assert(sizeof(D3DResource) == 0x18);
+
+struct ShaderContainer {
+  be_u32 flags;
+  be_u32 virtual_size;
+  be_u32 physical_size;
+  be_u32 field_0c;
+  be_u32 constant_table_offset;
+  be_u32 definition_table_offset;
+  be_u32 shader_offset;
+  be_u32 field_1c;
+  be_u32 field_20;
+};
+static_assert(sizeof(ShaderContainer) == 0x24);
+
 // Only fields proven from TU23 code are named. Keep unknown spans opaque until
 // an accessor or state writer establishes their meaning.
 struct D3DDevice {
@@ -49,7 +75,9 @@ struct D3DDevice {
   D3DViewport9 viewport;
   be_u32 viewport_reserved;
   D3DRect scissor;
-  u8 unknown_330C[kGuestDeviceSize - 0x330C];
+  be_u32 pixel_shader;
+  be_u32 vertex_shader;
+  u8 unknown_3314[kGuestDeviceSize - 0x3314];
 };
 
 static_assert(sizeof(D3DDevice) == kGuestDeviceSize);
@@ -60,5 +88,7 @@ static_assert(offsetof(D3DDevice, get_sampler_state) == 0x3B8);
 static_assert(offsetof(D3DDevice, fetch_constants) == 0x480);
 static_assert(offsetof(D3DDevice, viewport) == 0x32E0);
 static_assert(offsetof(D3DDevice, scissor) == 0x32FC);
+static_assert(offsetof(D3DDevice, pixel_shader) == 0x330C);
+static_assert(offsetof(D3DDevice, vertex_shader) == 0x3310);
 
 }  // namespace legodimensions::gpu_native

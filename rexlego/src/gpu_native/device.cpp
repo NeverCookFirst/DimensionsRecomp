@@ -1,5 +1,8 @@
 #include "gpu_native/device.h"
 
+#include "gpu_native/shaders.h"
+#include "native_gpu_build_info.h"
+
 #include <mutex>
 #include <string>
 
@@ -83,8 +86,9 @@ bool HostDevice::Create(rex::ui::Window* window, Backend backend) {
   }
 
   const auto& description = state->device->getDescription();
-  REXLOG_INFO("Native GPU: {} ready on '{}' ({}x{}, {} images)", NameOf(backend),
-              description.name, state->swap_chain->getWidth(), state->swap_chain->getHeight(),
+  REXLOG_INFO("Native GPU [{}]: {} ready on '{}' ({}x{}, {} images)",
+              kNativeGpuBuildFingerprint, NameOf(backend), description.name,
+              state->swap_chain->getWidth(), state->swap_chain->getHeight(),
               state->swap_chain->getTextureCount());
   g_state = std::move(state);
   return true;
@@ -95,6 +99,7 @@ void HostDevice::Shutdown() {
   if (!g_state) {
     return;
   }
+  ResetShaderResources();
   if (g_state->swap_chain) {
     g_state->swap_chain->wait();
   }

@@ -57,7 +57,9 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     list(APPEND LEGODIMENSIONS_SOURCES
         src/gpu_native/device.cpp
         src/gpu_native/hooks_device.cpp
+        src/gpu_native/hooks_shader.cpp
         src/gpu_native/shader_archive.cpp
+        src/gpu_native/shaders.cpp
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz/miniz.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd/zstddeclib.c"
     )
@@ -148,6 +150,45 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     target_sources(legodimensions PRIVATE "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
     set_source_files_properties("${LEGO_NATIVE_LINKED_SHADER_CACHE}"
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
+    # Fingerprint the exact native renderer inputs. CMAKE_CONFIGURE_DEPENDS
+    # makes a header-only edit trigger reconfigure as well as recompilation,
+    # and the fingerprint printed at startup proves which executable is live.
+    set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/d3d.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_device.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_shader.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shader_archive.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shader_archive.h"
+        "${LEGO_NATIVE_SHADER_CACHE}"
+        "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${LEGO_NATIVE_GPU_FINGERPRINT_INPUTS})
+    set(LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "")
+    foreach(LEGO_NATIVE_GPU_INPUT IN LISTS LEGO_NATIVE_GPU_FINGERPRINT_INPUTS)
+        file(SHA256 "${LEGO_NATIVE_GPU_INPUT}" LEGO_NATIVE_GPU_INPUT_HASH)
+        string(APPEND LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL
+            "${LEGO_NATIVE_GPU_INPUT_HASH}")
+    endforeach()
+    string(SHA256 LEGO_NATIVE_GPU_FINGERPRINT_FULL
+        "${LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL}")
+    string(SUBSTRING "${LEGO_NATIVE_GPU_FINGERPRINT_FULL}" 0 16
+        LEGO_NATIVE_GPU_FINGERPRINT)
+    configure_file(src/gpu_native/build_info.h.in
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h" @ONLY)
+    target_include_directories(legodimensions PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
+        "LEGO Dimensions native GPU ${LEGO_NATIVE_GPU_FINGERPRINT}\n")
+    add_custom_command(TARGET legodimensions POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
+            "$<TARGET_FILE_DIR:legodimensions>/native-gpu-build.txt"
+        VERBATIM)
 endif()
 
 # The achievement unlock sound, converted from the user-supplied MP3 to a quiet
