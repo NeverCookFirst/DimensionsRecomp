@@ -16,6 +16,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(generated/rexglue.cmake)
 
+# Native D3D12 renderer work stays opt-in until its hook map and presentation
+# path are complete. The shipping rexgpu-xenos path is untouched when this is
+# disabled.
+option(LEGODIMENSIONS_NATIVE_GPU "Build the experimental native D3D12 renderer" OFF)
+
 # Sources
 set(LEGODIMENSIONS_SOURCES
     src/main.cpp
@@ -30,6 +35,33 @@ set(LEGODIMENSIONS_SOURCES
     src/updates.cpp
     src/name_trace.cpp
 )
+
+if(LEGODIMENSIONS_NATIVE_GPU)
+    if(NOT WIN32)
+        message(FATAL_ERROR "LEGODIMENSIONS_NATIVE_GPU currently supports Windows D3D12 only")
+    endif()
+
+    enable_language(C)
+    set(PLUME_D3D12_AGILITY_SDK_ENABLED OFF CACHE BOOL "" FORCE)
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume"
+                     "${CMAKE_CURRENT_BINARY_DIR}/thirdparty/plume"
+                     EXCLUDE_FROM_ALL)
+
+    # Plume enables its Vulkan backend unconditionally upstream. This build is
+    # deliberately D3D12-only, so keep the shared interface and Win32 backend
+    # but do not compile or link the unused Vulkan implementation.
+    get_target_property(LEGO_PLUME_SOURCES plume SOURCES)
+    list(FILTER LEGO_PLUME_SOURCES EXCLUDE REGEX "plume_vulkan\\.(cpp|h)$")
+    set_property(TARGET plume PROPERTY SOURCES "${LEGO_PLUME_SOURCES}")
+
+    list(APPEND LEGODIMENSIONS_SOURCES
+        src/gpu_native/device.cpp
+        src/gpu_native/hooks_device.cpp
+        src/gpu_native/shader_archive.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz/miniz.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd/zstddeclib.c"
+    )
+endif()
 
 # Research probes: a guard-page watchpoint on the area flags and the failed
 # attempt at forcing the 3D portrait. They are off in a release because one of
@@ -51,6 +83,72 @@ else()
 endif()
 
 rexglue_setup_target(legodimensions)
+
+if(LEGODIMENSIONS_NATIVE_GPU)
+    target_compile_definitions(legodimensions PRIVATE LEGODIMENSIONS_NATIVE_GPU=1)
+    target_include_directories(legodimensions PRIVATE src)
+    target_include_directories(legodimensions PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd")
+    target_link_libraries(legodimensions PRIVATE plume d3d12 dxgi rex::xxhash)
+
+    # Generated locally by tools/gpu-aot. Keeping it out of Git avoids a
+    # multi-megabyte generated source file while still making an enabled build
+    # fail loudly if the AOT stage has not been run.
+    set(LEGO_NATIVE_SHADER_CACHE
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/lego-dxil-cache.cpp")
+    if(NOT EXISTS "${LEGO_NATIVE_SHADER_CACHE}")
+        message(FATAL_ERROR
+            "Native GPU needs ${LEGO_NATIVE_SHADER_CACHE}; run tools/gpu-aot first")
+    endif()
+    target_sources(legodimensions PRIVATE "${LEGO_NATIVE_SHADER_CACHE}")
+    set_source_files_properties("${LEGO_NATIVE_SHADER_CACHE}"
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
+    # XenosRecomp emits a DXIL library whenever a shader reads one of its two
+    # specialization bits. Link every used value at build time; gameplay then
+    # creates complete shaders directly and never invokes DXC on a frame.
+    set(LEGO_NATIVE_LINKED_SHADER_CACHE
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/lego-linked-dxil-cache.cpp")
+    set(LEGO_DXC_ROOT
+        "${CMAKE_CURRENT_SOURCE_DIR}/../research/reblue/thirdparty/XenosRecomp/thirdparty/dxc-bin"
+        CACHE PATH "Pinned DXC binary package used by the LEGO GPU AOT prelinker")
+    set(LEGO_DXC_ARCH x64)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|arm64|aarch64")
+        set(LEGO_DXC_ARCH arm64)
+    endif()
+
+    add_executable(lego_gpu_prelink EXCLUDE_FROM_ALL
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prelink_shader_cache.cpp"
+        src/gpu_native/dxc_link.cpp
+        "${LEGO_NATIVE_SHADER_CACHE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz/miniz.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd/zstddeclib.c")
+    target_include_directories(lego_gpu_prelink PRIVATE
+        src
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd"
+        "${LEGO_DXC_ROOT}/inc")
+    target_link_libraries(lego_gpu_prelink PRIVATE
+        "${LEGO_DXC_ROOT}/lib/${LEGO_DXC_ARCH}/dxcompiler.lib")
+    add_custom_command(TARGET lego_gpu_prelink POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxcompiler.dll"
+            "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxil.dll"
+            "$<TARGET_FILE_DIR:lego_gpu_prelink>"
+        VERBATIM)
+
+    add_custom_command(
+        OUTPUT "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+        COMMAND "$<TARGET_FILE:lego_gpu_prelink>"
+                "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+        DEPENDS lego_gpu_prelink
+        COMMENT "Pre-linking LEGO specialization-constant shader variants"
+        VERBATIM)
+    target_sources(legodimensions PRIVATE "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
+    set_source_files_properties("${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+endif()
 
 # The achievement unlock sound, converted from the user-supplied MP3 to a quiet
 # 48 kHz WAV. Copied next to the executable because that is where the SDK cvar

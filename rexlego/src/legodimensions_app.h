@@ -31,6 +31,9 @@
 #include "toypad_app.h"
 #include "ui_theme.h"
 #include "updates.h"
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+#include "gpu_native/device.h"
+#endif
 
 class LegodimensionsApp : public rex::ReXApp {
  public:
@@ -63,6 +66,22 @@ class LegodimensionsApp : public rex::ReXApp {
     legodimensions::toypad_app::StartIfEnabled();
   }
 
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+  // Detached renderer mode: the SDK still owns the window/input/audio, while
+  // the title's D3D calls are handled by gpu_native instead of rexgpu-xenos.
+  void OnPreSetup(rex::RuntimeConfig& config) override {
+    config.graphics.reset();
+    config.gpu_plugin.clear();
+  }
+
+  void OnPreLaunchModule() override {
+    if (!legodimensions::gpu_native::HostDevice::Create(window())) {
+      REXLOG_ERROR("Native GPU initialization failed; stopping before guest launch");
+      app_context().QuitFromUIThread();
+    }
+  }
+#endif
+
   // The window closing is where the app must be let go: ReXApp::OnClosing then
   // hard-exits with std::_Exit, so OnShutdown never runs. This asks nicely; the
   // job object is the backstop if the game dies without getting here.
@@ -79,6 +98,9 @@ class LegodimensionsApp : public rex::ReXApp {
 
   // Dropping the pipe is what clears the presence; Discord does the rest.
   void OnShutdown() override {
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+    legodimensions::gpu_native::HostDevice::Shutdown();
+#endif
     legodimensions::discord::Stop();
     legodimensions::toypad_app::StopIfStarted();
     // Drops the freeze thread before the guest memory it writes into goes away.

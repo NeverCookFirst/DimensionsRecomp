@@ -8,3 +8,6 @@
 [submodule "DimensionsSaveConverter"]
 	path = DimensionsSaveConverter
 	url = https://github.com/NeverCookFirst/DimensionsSaveConverter.git
+[submodule "thirdparty/plume"]
+	path = thirdparty/plume
+	url = https://github.com/zolaware/plume.git

@@ -21,6 +21,12 @@
 !/rexglue-sdk
 !/DimensionsModManager
 !/DimensionsSaveConverter
+!/thirdparty/
+!/thirdparty/plume
+!/thirdparty/miniz/
+!/thirdparty/miniz/**
+!/thirdparty/zstd/
+!/thirdparty/zstd/**
 !/xexdump/
 !/tools/
 
