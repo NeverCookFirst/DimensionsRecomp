@@ -128,6 +128,41 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         set(LEGO_DXC_ARCH arm64)
     endif()
 
+    set(LEGO_NATIVE_HOST_SHADER_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders")
+    set(LEGO_NATIVE_GENERATED_SHADER_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/gpu_native/shaders")
+    set(LEGO_NATIVE_DXC
+        "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxc.exe")
+    foreach(LEGO_HOST_SHADER IN ITEMS copy_vs copy_color_ps)
+        if(LEGO_HOST_SHADER STREQUAL "copy_vs")
+            set(LEGO_HOST_SHADER_PROFILE vs_6_6)
+        else()
+            set(LEGO_HOST_SHADER_PROFILE ps_6_6)
+        endif()
+        set(LEGO_HOST_SHADER_HEADER
+            "${LEGO_NATIVE_GENERATED_SHADER_DIR}/${LEGO_HOST_SHADER}.h")
+        add_custom_command(
+            OUTPUT "${LEGO_HOST_SHADER_HEADER}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "${LEGO_NATIVE_GENERATED_SHADER_DIR}"
+            COMMAND "${LEGO_NATIVE_DXC}"
+                    -T ${LEGO_HOST_SHADER_PROFILE} -E main -HV 2021
+                    -all-resources-bound -Wno-ignored-attributes
+                    -I "${LEGO_NATIVE_HOST_SHADER_DIR}"
+                    -Fh "${LEGO_HOST_SHADER_HEADER}"
+                    -Vn g_${LEGO_HOST_SHADER}_dxil
+                    "${LEGO_NATIVE_HOST_SHADER_DIR}/${LEGO_HOST_SHADER}.hlsl"
+            DEPENDS
+                "${LEGO_NATIVE_HOST_SHADER_DIR}/${LEGO_HOST_SHADER}.hlsl"
+                "${LEGO_NATIVE_HOST_SHADER_DIR}/copy_common.hlsli"
+            COMMENT "Compiling ${LEGO_HOST_SHADER}.hlsl (DXIL)"
+            VERBATIM)
+        target_sources(legodimensions PRIVATE "${LEGO_HOST_SHADER_HEADER}")
+    endforeach()
+    target_include_directories(legodimensions PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
     add_executable(lego_gpu_prelink EXCLUDE_FROM_ALL
         "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prelink_shader_cache.cpp"
         src/gpu_native/dxc_link.cpp
@@ -165,6 +200,9 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_common.hlsli"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_vs.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_color_ps.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/d3d.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/format.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/format.h"

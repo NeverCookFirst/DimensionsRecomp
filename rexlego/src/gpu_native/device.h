@@ -9,6 +9,7 @@
 namespace plume {
 struct RenderCommandFence;
 struct RenderCommandQueue;
+struct RenderCommandList;
 struct RenderDescriptorSet;
 struct RenderDevice;
 struct RenderInterface;
@@ -44,6 +45,11 @@ class HostDevice {
   static u32 RegisterTexture(plume::RenderTexture* texture,
                              plume::RenderTextureView* view);
   static void UnregisterTexture(u32 descriptor_index);
+  // Copies a single-sample native texture to the host swap chain. This is the
+  // first complete submission path and deliberately keeps command allocators
+  // in a frame ring so the CPU does not wait for the frame it just submitted.
+  static bool PresentTexture(plume::RenderTexture* texture,
+                             u32 descriptor_index);
   static std::string_view BackendName();
 
  private:
