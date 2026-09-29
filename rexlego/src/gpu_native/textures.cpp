@@ -36,6 +36,8 @@ struct TextureResource {
   std::mutex mutex;
   std::unique_ptr<plume::RenderTexture> texture;
   std::unique_ptr<plume::RenderTextureView> view;
+  std::unordered_map<u32, std::unique_ptr<plume::RenderFramebuffer>>
+      framebuffers;
   u32 descriptor_index = ~u32{0};
 };
 
@@ -52,6 +54,21 @@ std::shared_ptr<TextureResource> FindTexture(u32 guest_address) {
   std::lock_guard lock(g_textures_mutex);
   const auto it = g_textures.find(guest_address);
   return it == g_textures.end() ? nullptr : it->second;
+}
+
+void InvalidateFramebufferReferences(u32 guest_address) {
+  std::vector<std::shared_ptr<TextureResource>> resources;
+  {
+    std::lock_guard lock(g_textures_mutex);
+    resources.reserve(g_textures.size());
+    for (const auto& [address, resource] : g_textures) {
+      resources.push_back(resource);
+    }
+  }
+  for (const auto& resource : resources) {
+    std::lock_guard lock(resource->mutex);
+    resource->framebuffers.erase(guest_address);
+  }
 }
 
 u32 AlignUp(u32 value, u32 alignment) {
@@ -324,6 +341,67 @@ bool DescribeSurfaceResource(u32 guest_address, u32 desc_address) {
   return true;
 }
 
+TextureResourceView ResolveTextureResource(u32 guest_address) {
+  const auto resource = FindTexture(guest_address);
+  if (!resource) {
+    return {};
+  }
+  return {resource->texture.get(),
+          resource->view.get(),
+          resource->format,
+          resource->descriptor_index,
+          resource->width,
+          resource->height,
+          resource->surface,
+          IsDepthFormat(resource->format)};
+}
+
+plume::RenderFramebuffer* ResolveFramebuffer(u32 render_target,
+                                             u32 depth_stencil) {
+  const auto color = FindTexture(render_target);
+  const auto depth = FindTexture(depth_stencil);
+  if ((!color || !color->texture) && (!depth || !depth->texture)) {
+    return nullptr;
+  }
+  if (color && IsDepthFormat(color->format)) {
+    return nullptr;
+  }
+  if (depth && !IsDepthFormat(depth->format)) {
+    return nullptr;
+  }
+  const auto owner = depth ? depth : color;
+  const u32 key = depth ? render_target : depth_stencil;
+  std::lock_guard lock(owner->mutex);
+  const auto existing = owner->framebuffers.find(key);
+  if (existing != owner->framebuffers.end()) {
+    return existing->second.get();
+  }
+
+  plume::RenderFramebufferDesc desc;
+  const plume::RenderTexture* color_attachments[1];
+  if (color && color->texture) {
+    color_attachments[0] = color->texture.get();
+    desc.colorAttachments = color_attachments;
+    desc.colorAttachmentsCount = 1;
+  }
+  if (depth && depth->texture) {
+    desc.depthAttachment = depth->texture.get();
+  }
+  auto* device = HostDevice::Device();
+  if (!device) {
+    return nullptr;
+  }
+  auto framebuffer = device->createFramebuffer(desc);
+  if (!framebuffer) {
+    REXLOG_ERROR("Native GPU: failed to create framebuffer (rt=0x{:08X}, "
+                 "ds=0x{:08X})", render_target, depth_stencil);
+    return nullptr;
+  }
+  auto* result = framebuffer.get();
+  owner->framebuffers.emplace(key, std::move(framebuffer));
+  return result;
+}
+
 bool IsNativeTexture(u32 guest_address) {
   std::lock_guard lock(g_textures_mutex);
   return g_textures.contains(guest_address);
@@ -364,6 +442,7 @@ u32 ReleaseNativeTexture(u32 guest_address) {
     g_textures.erase(it);
   }
   auto* memory = REX_KERNEL_MEMORY();
+  InvalidateFramebufferReferences(guest_address);
   HostDevice::UnregisterTexture(released->descriptor_index);
   if (released->mirror_address) {
     memory->SystemHeapFree(released->mirror_address);
