@@ -353,6 +353,7 @@ TextureResourceView ResolveTextureResource(u32 guest_address) {
           resource->descriptor_index,
           resource->width,
           resource->height,
+          resource->d3d_type,
           resource->surface,
           IsDepthFormat(resource->format)};
 }
@@ -440,6 +441,48 @@ bool UploadTextureResource(u32 guest_address,
       plume::RenderTextureBarrier(resource->texture.get(),
                                   plume::RenderTextureLayout::SHADER_READ));
   HostDevice::RetireResource(std::move(upload));
+  return true;
+}
+
+bool ResolveTextureFromSurface(u32 destination_texture, u32 source_surface,
+                               u32 destination_level,
+                               u32 destination_slice) {
+  const auto destination = FindTexture(destination_texture);
+  const auto source = FindTexture(source_surface);
+  if (!destination || !source || !destination->texture || !source->texture ||
+      !source->surface || destination->surface ||
+      destination_level >= destination->levels ||
+      destination->format != source->format) {
+    return false;
+  }
+  const bool cube = destination->d3d_type ==
+                    static_cast<u32>(D3DResourceType::kCubeTexture);
+  if ((!cube && destination_slice != 0) || (cube && destination_slice >= 6)) {
+    return false;
+  }
+  auto* commands = HostDevice::BeginFrameCommands();
+  if (!commands) {
+    return false;
+  }
+  const plume::RenderTextureBarrier barriers[] = {
+      plume::RenderTextureBarrier(source->texture.get(),
+                                  plume::RenderTextureLayout::COPY_SOURCE),
+      plume::RenderTextureBarrier(destination->texture.get(),
+                                  plume::RenderTextureLayout::COPY_DEST),
+  };
+  commands->barriers(plume::RenderBarrierStage::COPY, barriers, 2);
+  commands->copyTextureRegion(
+      plume::RenderTextureCopyLocation::Subresource(
+          destination->texture.get(), destination_level, destination_slice),
+      plume::RenderTextureCopyLocation::Subresource(source->texture.get(), 0,
+                                                    0));
+  const plume::RenderTextureBarrier final_barriers[] = {
+      plume::RenderTextureBarrier(source->texture.get(),
+                                  plume::RenderTextureLayout::COLOR_WRITE),
+      plume::RenderTextureBarrier(destination->texture.get(),
+                                  plume::RenderTextureLayout::SHADER_READ),
+  };
+  commands->barriers(plume::RenderBarrierStage::GRAPHICS, final_barriers, 2);
   return true;
 }
 

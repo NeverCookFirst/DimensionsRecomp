@@ -57,6 +57,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     list(APPEND LEGODIMENSIONS_SOURCES
         src/gpu_native/buffers.cpp
         src/gpu_native/device.cpp
+        src/gpu_native/draw.cpp
         src/gpu_native/format.cpp
         src/gpu_native/hooks_buffer.cpp
         src/gpu_native/hooks_device.cpp
@@ -200,6 +201,8 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/draw.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/draw.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_common.hlsli"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_vs.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_color_ps.hlsl"

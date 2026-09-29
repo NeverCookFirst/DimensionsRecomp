@@ -30,6 +30,7 @@ struct TextureResourceView {
   u32 descriptor_index = ~u32{0};
   u32 width = 0;
   u32 height = 0;
+  u32 d3d_type = 0;
   bool surface = false;
   bool depth = false;
 };
@@ -39,6 +40,9 @@ TextureResourceView ResolveTextureResource(u32 guest_address);
 // SHADER_READ. The CPU mirror remains authoritative for readback/correctness.
 bool UploadTextureResource(u32 guest_address,
                            plume::RenderCommandList* commands);
+bool ResolveTextureFromSurface(u32 destination_texture, u32 source_surface,
+                               u32 destination_level,
+                               u32 destination_slice);
 plume::RenderFramebuffer* ResolveFramebuffer(u32 render_target,
                                              u32 depth_stencil);
 

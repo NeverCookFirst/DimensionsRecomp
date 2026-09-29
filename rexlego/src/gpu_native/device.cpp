@@ -1,6 +1,7 @@
 #include "gpu_native/device.h"
 
 #include "gpu_native/buffers.h"
+#include "gpu_native/draw.h"
 #include "gpu_native/shaders.h"
 #include "gpu_native/textures.h"
 #include "gpu_native/state.h"
@@ -11,6 +12,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -39,6 +41,11 @@ struct State {
   std::unique_ptr<plume::RenderDescriptorSet> texture_descriptors;
   std::unique_ptr<plume::RenderDescriptorSet> sampler_descriptors;
   std::unique_ptr<plume::RenderSampler> default_sampler;
+  std::unique_ptr<plume::RenderBuffer> null_vertex_buffer;
+  std::array<std::unique_ptr<plume::RenderTexture>, 3> null_textures;
+  std::array<std::unique_ptr<plume::RenderTextureView>, 3> null_texture_views;
+  std::unique_ptr<plume::RenderBuffer> null_texture_upload;
+  bool null_textures_initialized = false;
   std::unique_ptr<plume::RenderShader> copy_vertex_shader;
   std::unique_ptr<plume::RenderShader> copy_pixel_shader;
   std::unique_ptr<plume::RenderPipeline> copy_pipeline;
@@ -203,6 +210,115 @@ bool CreateFrameRing(State& state) {
   return true;
 }
 
+bool CreateNullVertexBuffer(State& state) {
+  state.null_vertex_buffer = state.device->createBuffer(
+      plume::RenderBufferDesc::VertexBuffer(256,
+                                             plume::RenderHeapType::UPLOAD));
+  if (!state.null_vertex_buffer) {
+    return false;
+  }
+  void* mapped = state.null_vertex_buffer->map();
+  if (!mapped) {
+    return false;
+  }
+  std::memset(mapped, 0, 256);
+  state.null_vertex_buffer->unmap();
+  return true;
+}
+
+bool CreateNullTextures(State& state) {
+  const plume::RenderTextureDimension dimensions[] = {
+      plume::RenderTextureDimension::TEXTURE_2D,
+      plume::RenderTextureDimension::TEXTURE_3D,
+      plume::RenderTextureDimension::TEXTURE_2D};
+  const plume::RenderTextureViewDimension view_dimensions[] = {
+      plume::RenderTextureViewDimension::TEXTURE_2D,
+      plume::RenderTextureViewDimension::TEXTURE_3D,
+      plume::RenderTextureViewDimension::TEXTURE_CUBE};
+  for (u32 i = 0; i < 3; ++i) {
+    plume::RenderTextureDesc desc;
+    desc.dimension = dimensions[i];
+    desc.width = desc.height = desc.depth = desc.mipLevels = 1;
+    desc.arraySize = i == 2 ? 6 : 1;
+    desc.format = plume::RenderFormat::R8G8B8A8_UNORM;
+    if (i == 2) {
+      desc.flags = plume::RenderTextureFlag::CUBE;
+    }
+    state.null_textures[i] = state.device->createTexture(desc);
+    if (!state.null_textures[i]) {
+      return false;
+    }
+    plume::RenderTextureViewDesc view_desc;
+    view_desc.format = desc.format;
+    view_desc.dimension = view_dimensions[i];
+    view_desc.mipLevels = 1;
+    state.null_texture_views[i] =
+        state.null_textures[i]->createTextureView(view_desc);
+    if (!state.null_texture_views[i]) {
+      return false;
+    }
+    state.texture_descriptors->setTexture(
+        i, state.null_textures[i].get(),
+        plume::RenderTextureLayout::SHADER_READ,
+        state.null_texture_views[i].get());
+  }
+  // Six cube faces plus the 2D and 3D resources, each with a 512-byte aligned
+  // placed footprint.
+  state.null_texture_upload = state.device->createBuffer(
+      plume::RenderBufferDesc::UploadBuffer(8 * 0x200));
+  if (!state.null_texture_upload) {
+    return false;
+  }
+  void* mapped = state.null_texture_upload->map();
+  if (!mapped) {
+    return false;
+  }
+  std::memset(mapped, 0, 8 * 0x200);
+  state.null_texture_upload->unmap();
+  return true;
+}
+
+void InitializeNullTextures(State& state, plume::RenderCommandList* commands) {
+  if (state.null_textures_initialized) {
+    return;
+  }
+  plume::RenderTextureBarrier pre[3];
+  for (u32 i = 0; i < 3; ++i) {
+    pre[i] = plume::RenderTextureBarrier(
+        state.null_textures[i].get(), plume::RenderTextureLayout::COPY_DEST);
+  }
+  commands->barriers(plume::RenderBarrierStage::COPY, pre, 3);
+  u32 footprint = 0;
+  commands->copyTextureRegion(
+      plume::RenderTextureCopyLocation::Subresource(
+          state.null_textures[0].get()),
+      plume::RenderTextureCopyLocation::PlacedFootprint(
+          state.null_texture_upload.get(), plume::RenderFormat::R8G8B8A8_UNORM,
+          1, 1, 1, 64, footprint++ * 0x200));
+  commands->copyTextureRegion(
+      plume::RenderTextureCopyLocation::Subresource(
+          state.null_textures[1].get()),
+      plume::RenderTextureCopyLocation::PlacedFootprint(
+          state.null_texture_upload.get(), plume::RenderFormat::R8G8B8A8_UNORM,
+          1, 1, 1, 64, footprint++ * 0x200));
+  for (u32 face = 0; face < 6; ++face) {
+    commands->copyTextureRegion(
+        plume::RenderTextureCopyLocation::Subresource(
+            state.null_textures[2].get(), 0, face),
+        plume::RenderTextureCopyLocation::PlacedFootprint(
+            state.null_texture_upload.get(),
+            plume::RenderFormat::R8G8B8A8_UNORM, 1, 1, 1, 64,
+            footprint++ * 0x200));
+  }
+  plume::RenderTextureBarrier post[3];
+  for (u32 i = 0; i < 3; ++i) {
+    post[i] = plume::RenderTextureBarrier(
+        state.null_textures[i].get(), plume::RenderTextureLayout::SHADER_READ);
+  }
+  commands->barriers(plume::RenderBarrierStage::GRAPHICS, post, 3);
+  state.null_textures_initialized = true;
+}
+
 bool RebuildSwapChain(State& state) {
   state.swap_chain->wait();
   state.framebuffers.clear();
@@ -238,6 +354,7 @@ plume::RenderCommandList* BeginFrameCommandsLocked(State& state) {
   state.retired_resources[slot].clear();
   auto* commands = state.command_lists[slot].get();
   commands->begin();
+  InitializeNullTextures(state, commands);
   state.command_list_open = true;
   return commands;
 }
@@ -285,7 +402,8 @@ bool HostDevice::Create(rex::ui::Window* window, Backend backend) {
     REXLOG_ERROR("Native GPU: failed to create or size the swap chain");
     return false;
   }
-  if (!CreatePresentPipeline(*state) || !CreateFrameRing(*state)) {
+  if (!CreatePresentPipeline(*state) || !CreateNullVertexBuffer(*state) ||
+      !CreateNullTextures(*state) || !CreateFrameRing(*state)) {
     REXLOG_ERROR("Native GPU: failed to create present pipeline or frame ring");
     return false;
   }
@@ -308,6 +426,7 @@ void HostDevice::Shutdown() {
     g_state->swap_chain->wait();
   }
   // All GPU users must be idle before Plume resources are released.
+  ResetDrawResources();
   ResetShaderResources();
   ResetBufferResources();
   ResetTextureResources();
@@ -349,6 +468,11 @@ plume::RenderDescriptorSet* HostDevice::TextureDescriptorSet() {
 plume::RenderDescriptorSet* HostDevice::SamplerDescriptorSet() {
   std::lock_guard lock(g_mutex);
   return g_state ? g_state->sampler_descriptors.get() : nullptr;
+}
+
+plume::RenderBuffer* HostDevice::NullVertexBuffer() {
+  std::lock_guard lock(g_mutex);
+  return g_state ? g_state->null_vertex_buffer.get() : nullptr;
 }
 
 u32 HostDevice::RegisterTexture(plume::RenderTexture* texture,

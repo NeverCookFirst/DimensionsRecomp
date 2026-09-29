@@ -26,6 +26,7 @@ bool BindShader(ShaderStage stage, u32 guest_address);
 // Materializes the correct prelinked specialization at pipeline creation time.
 // A null result marks the containing render pass as unsupported by native GPU.
 plume::RenderShader* ResolveBoundShader(ShaderStage stage, u32 spec_constants);
+u32 BoundShaderAddress(ShaderStage stage);
 
 bool IsNativeShader(u32 guest_address);
 u32 AddRefNativeShader(u32 guest_address);

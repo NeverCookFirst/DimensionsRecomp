@@ -24,6 +24,14 @@ u32 LockBufferResource(u32 guest_address, u32 offset, u32 size, u32 flags,
 // and later CPU readback remain visible.
 plume::RenderBuffer* ResolveBufferResource(u32 guest_address, BufferKind kind);
 
+struct BufferResourceView {
+  plume::RenderBuffer* buffer = nullptr;
+  u32 length = 0;
+  u32 guest_format = 0;
+};
+BufferResourceView ResolveBufferResourceView(u32 guest_address,
+                                             BufferKind kind);
+
 bool IsNativeBuffer(u32 guest_address);
 u32 NativeBufferType(u32 guest_address);
 u32 AddRefNativeBuffer(u32 guest_address);

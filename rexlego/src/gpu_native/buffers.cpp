@@ -154,6 +154,16 @@ plume::RenderBuffer* ResolveBufferResource(u32 guest_address, BufferKind kind) {
   return resource->buffer.get();
 }
 
+BufferResourceView ResolveBufferResourceView(u32 guest_address,
+                                             BufferKind kind) {
+  const auto resource = FindBuffer(guest_address);
+  if (!resource || resource->kind != kind) {
+    return {};
+  }
+  auto* buffer = ResolveBufferResource(guest_address, kind);
+  return {buffer, resource->length, resource->format};
+}
+
 bool IsNativeBuffer(u32 guest_address) {
   std::lock_guard lock(g_buffers_mutex);
   return g_buffers.contains(guest_address);

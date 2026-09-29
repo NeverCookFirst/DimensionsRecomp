@@ -7,6 +7,7 @@
 #include <rex/types.h>
 
 namespace plume {
+struct RenderBuffer;
 struct RenderCommandFence;
 struct RenderCommandQueue;
 struct RenderCommandList;
@@ -42,6 +43,7 @@ class HostDevice {
   static plume::RenderPipelineLayout* PipelineLayout();
   static plume::RenderDescriptorSet* TextureDescriptorSet();
   static plume::RenderDescriptorSet* SamplerDescriptorSet();
+  static plume::RenderBuffer* NullVertexBuffer();
   static u32 RegisterTexture(plume::RenderTexture* texture,
                              plume::RenderTextureView* view);
   static void UnregisterTexture(u32 descriptor_index);

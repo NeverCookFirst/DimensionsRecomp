@@ -158,6 +158,12 @@ plume::RenderShader* ResolveBoundShader(ShaderStage stage, u32 spec_constants) {
   return it->second.get();
 }
 
+u32 BoundShaderAddress(ShaderStage stage) {
+  std::lock_guard lock(g_registry_mutex);
+  const auto& resource = g_bound_shaders[StageIndex(stage)];
+  return resource ? resource->guest_address : 0;
+}
+
 bool IsNativeShader(u32 guest_address) {
   std::lock_guard lock(g_registry_mutex);
   return g_registry.contains(guest_address);
