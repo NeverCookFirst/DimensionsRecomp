@@ -6,6 +6,7 @@
 
 #include "gpu_native/d3d.h"
 #include "gpu_native/device.h"
+#include "gpu_native/state.h"
 
 namespace legodimensions::gpu_native {
 namespace {
@@ -40,6 +41,7 @@ u32 Direct3DCreateDeviceHook(u32 /*adapter*/, u32 /*device_type*/, u32 /*focus_w
     return 0x8007000Eu;
   }
   memory->Zero(guest_address, kGuestDeviceSize);
+  ResetDrawBindings();
 
   auto* device = reinterpret_cast<D3DDevice*>(memory->virtual_membase() + guest_address);
   CopyStateDispatch(device, memory->virtual_membase());

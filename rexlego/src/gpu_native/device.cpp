@@ -3,6 +3,7 @@
 #include "gpu_native/buffers.h"
 #include "gpu_native/shaders.h"
 #include "gpu_native/textures.h"
+#include "gpu_native/state.h"
 #include "native_gpu_build_info.h"
 
 #include <mutex>
@@ -108,6 +109,7 @@ void HostDevice::Shutdown() {
   ResetShaderResources();
   ResetBufferResources();
   ResetTextureResources();
+  ResetDrawBindings();
   g_state.reset();
 }
 
