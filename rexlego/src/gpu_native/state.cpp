@@ -34,6 +34,11 @@ void BindIndexBuffer(u32 buffer) {
   g_bindings.index_buffer = buffer;
 }
 
+void BindVertexDeclaration(u32 declaration) {
+  std::lock_guard lock(g_bindings_mutex);
+  g_bindings.vertex_declaration = declaration;
+}
+
 void BindRenderTarget(u32 index, u32 surface) {
   if (index >= kNativeRenderTargets) {
     return;

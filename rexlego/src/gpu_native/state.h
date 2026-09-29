@@ -24,12 +24,14 @@ struct DrawBindings {
   std::array<u32, kNativeRenderTargets> render_targets{};
   u32 depth_stencil = 0;
   u32 index_buffer = 0;
+  u32 vertex_declaration = 0;
 };
 
 void ResetDrawBindings();
 void BindTexture(u32 sampler, u32 texture);
 void BindVertexStream(u32 stream, u32 buffer, u32 offset, u32 stride);
 void BindIndexBuffer(u32 buffer);
+void BindVertexDeclaration(u32 declaration);
 void BindRenderTarget(u32 index, u32 surface);
 void BindDepthStencil(u32 surface);
 u32 BoundRenderTarget(u32 index);

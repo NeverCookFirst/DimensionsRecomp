@@ -6,6 +6,7 @@
 #include "gpu_native/buffers.h"
 #include "gpu_native/shaders.h"
 #include "gpu_native/textures.h"
+#include "gpu_native/vertex_declarations.h"
 
 extern "C" void __imp__sub_83FC4CE0(PPCContext& __restrict ctx, u8* base);
 extern "C" void __imp__sub_83FC59D8(PPCContext& __restrict ctx, u8* base);
@@ -57,6 +58,11 @@ REX_HOOK_RAW(sub_83FC4CE0) {
       ctx.r3.u64 = legodimensions::gpu_native::AddRefNativeTexture(resource);
       return;
     }
+    if (legodimensions::gpu_native::IsNativeVertexDeclaration(resource)) {
+      ctx.r3.u64 =
+          legodimensions::gpu_native::AddRefNativeVertexDeclaration(resource);
+      return;
+    }
     __imp__sub_83FC4CE0(ctx, base);
     return;
   }
@@ -73,6 +79,11 @@ REX_HOOK_RAW(sub_83FC59D8) {
     if (legodimensions::gpu_native::IsNativeTexture(resource)) {
       ctx.r3.u64 =
           legodimensions::gpu_native::ReleaseNativeTexture(resource);
+      return;
+    }
+    if (legodimensions::gpu_native::IsNativeVertexDeclaration(resource)) {
+      ctx.r3.u64 = legodimensions::gpu_native::
+          ReleaseNativeVertexDeclaration(resource);
       return;
     }
     __imp__sub_83FC59D8(ctx, base);

@@ -67,6 +67,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         src/gpu_native/shaders.cpp
         src/gpu_native/state.cpp
         src/gpu_native/textures.cpp
+        src/gpu_native/vertex_declarations.cpp
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz/miniz.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd/zstddeclib.c"
     )
@@ -173,6 +174,8 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/state.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/state.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_state.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/vertex_declarations.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/vertex_declarations.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffers.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffers.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_buffer.cpp"

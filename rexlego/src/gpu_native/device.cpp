@@ -4,6 +4,7 @@
 #include "gpu_native/shaders.h"
 #include "gpu_native/textures.h"
 #include "gpu_native/state.h"
+#include "gpu_native/vertex_declarations.h"
 #include "native_gpu_build_info.h"
 
 #include <mutex>
@@ -110,6 +111,7 @@ void HostDevice::Shutdown() {
   ResetBufferResources();
   ResetTextureResources();
   ResetDrawBindings();
+  ResetVertexDeclarations();
   g_state.reset();
 }
 

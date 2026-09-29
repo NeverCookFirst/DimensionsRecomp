@@ -4,6 +4,7 @@
 #include "gpu_native/d3d.h"
 #include "gpu_native/state.h"
 #include "gpu_native/textures.h"
+#include "gpu_native/vertex_declarations.h"
 
 namespace legodimensions::gpu_native {
 namespace {
@@ -28,6 +29,17 @@ void SetIndicesHook(D3DDevice* device, u32 buffer) {
     device->index_buffer = buffer;
   }
   BindIndexBuffer(buffer);
+}
+
+void SetVertexDeclarationHook(D3DDevice* device, u32 declaration) {
+  if (device) {
+    device->vertex_declaration = declaration;
+  }
+  BindVertexDeclaration(declaration);
+}
+
+u32 CreateVertexDeclarationHook(u32 elements) {
+  return CreateVertexDeclarationResource(elements);
 }
 
 void SetRenderTargetHook(D3DDevice* device, u32 index, u32 surface) {
@@ -78,6 +90,10 @@ void SetScissorRectHook(D3DDevice* device, const D3DRect* rect) {
 REX_HOOK(sub_83FB58A8, legodimensions::gpu_native::SetTextureHook);
 REX_HOOK(sub_83FBA160, legodimensions::gpu_native::SetStreamSourceHook);
 REX_HOOK(sub_83FBA308, legodimensions::gpu_native::SetIndicesHook);
+REX_HOOK(sub_83FB6D50,
+         legodimensions::gpu_native::CreateVertexDeclarationHook);
+REX_HOOK(sub_83FB7840,
+         legodimensions::gpu_native::SetVertexDeclarationHook);
 REX_HOOK(sub_83FBAAA8, legodimensions::gpu_native::SetRenderTargetHook);
 REX_HOOK(sub_83FBAE38, legodimensions::gpu_native::SetDepthStencilHook);
 REX_HOOK(sub_83FBA398, legodimensions::gpu_native::GetRenderTargetHook);

@@ -124,7 +124,8 @@ struct D3DDevice {
   be_u32 get_sampler_state[kSamplerStateCount];
   u8 unknown_0408[0x480 - 0x408];
   FetchConstant fetch_constants[kFetchConstantCount];
-  u8 unknown_06F0[0x320C - 0x6F0];
+  u8 unknown_06F0[0x3208 - 0x6F0];
+  be_u32 vertex_declaration;
   be_u32 index_buffer;
   be_u32 render_targets[kNativeRenderTargets];
   be_u32 depth_stencil;
@@ -148,6 +149,7 @@ static_assert(offsetof(D3DDevice, get_sampler_state) == 0x3B8);
 static_assert(offsetof(D3DDevice, fetch_constants) == 0x480);
 static_assert(offsetof(D3DDevice, viewport) == 0x32E0);
 static_assert(offsetof(D3DDevice, index_buffer) == 0x320C);
+static_assert(offsetof(D3DDevice, vertex_declaration) == 0x3208);
 static_assert(offsetof(D3DDevice, render_targets) == 0x3210);
 static_assert(offsetof(D3DDevice, depth_stencil) == 0x3220);
 static_assert(offsetof(D3DDevice, vertex_stream_buffers) == 0x3224);
