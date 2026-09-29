@@ -3,6 +3,7 @@
 #include <rex/types.h>
 
 #include "gpu_native/d3d.h"
+#include "gpu_native/buffers.h"
 #include "gpu_native/shaders.h"
 
 extern "C" void __imp__sub_83FC4CE0(PPCContext& __restrict ctx, u8* base);
@@ -47,6 +48,10 @@ REX_HOOK(sub_83FB6A30, legodimensions::gpu_native::SetVertexShaderHook);
 REX_HOOK_RAW(sub_83FC4CE0) {
   const u32 resource = ctx.r3.u32;
   if (!legodimensions::gpu_native::IsNativeShader(resource)) {
+    if (legodimensions::gpu_native::IsNativeBuffer(resource)) {
+      ctx.r3.u64 = legodimensions::gpu_native::AddRefNativeBuffer(resource);
+      return;
+    }
     __imp__sub_83FC4CE0(ctx, base);
     return;
   }
@@ -56,6 +61,10 @@ REX_HOOK_RAW(sub_83FC4CE0) {
 REX_HOOK_RAW(sub_83FC59D8) {
   const u32 resource = ctx.r3.u32;
   if (!legodimensions::gpu_native::IsNativeShader(resource)) {
+    if (legodimensions::gpu_native::IsNativeBuffer(resource)) {
+      ctx.r3.u64 = legodimensions::gpu_native::ReleaseNativeBuffer(resource);
+      return;
+    }
     __imp__sub_83FC59D8(ctx, base);
     return;
   }

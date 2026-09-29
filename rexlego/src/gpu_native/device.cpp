@@ -1,5 +1,6 @@
 #include "gpu_native/device.h"
 
+#include "gpu_native/buffers.h"
 #include "gpu_native/shaders.h"
 #include "native_gpu_build_info.h"
 
@@ -99,10 +100,12 @@ void HostDevice::Shutdown() {
   if (!g_state) {
     return;
   }
-  ResetShaderResources();
   if (g_state->swap_chain) {
     g_state->swap_chain->wait();
   }
+  // All GPU users must be idle before Plume resources are released.
+  ResetShaderResources();
+  ResetBufferResources();
   g_state.reset();
 }
 

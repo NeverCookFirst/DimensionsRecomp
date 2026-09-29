@@ -55,7 +55,9 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     set_property(TARGET plume PROPERTY SOURCES "${LEGO_PLUME_SOURCES}")
 
     list(APPEND LEGODIMENSIONS_SOURCES
+        src/gpu_native/buffers.cpp
         src/gpu_native/device.cpp
+        src/gpu_native/hooks_buffer.cpp
         src/gpu_native/hooks_device.cpp
         src/gpu_native/hooks_shader.cpp
         src/gpu_native/shader_archive.cpp
@@ -158,6 +160,9 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/d3d.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffers.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffers.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_buffer.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_shader.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders.cpp"

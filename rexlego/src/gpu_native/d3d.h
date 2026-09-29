@@ -48,6 +48,13 @@ struct D3DResource {
 };
 static_assert(sizeof(D3DResource) == 0x18);
 
+struct D3DBuffer {
+  D3DResource resource;
+  be_u32 fetch_lo;
+  be_u32 fetch_hi;
+};
+static_assert(sizeof(D3DBuffer) == 0x20);
+
 struct ShaderContainer {
   be_u32 flags;
   be_u32 virtual_size;
