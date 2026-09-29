@@ -3,6 +3,7 @@
 #include <rex/types.h>
 
 #include "gpu_native/buffers.h"
+#include "gpu_native/textures.h"
 
 extern "C" void __imp__sub_83FC49E8(PPCContext& __restrict ctx, u8* base);
 
@@ -36,8 +37,10 @@ REX_HOOK(sub_83FC6128, legodimensions::gpu_native::LockIndexBufferHook);
 REX_HOOK_RAW(sub_83FC49E8) {
   const u32 resource = ctx.r3.u32;
   const u32 type = legodimensions::gpu_native::NativeBufferType(resource);
-  if (type) {
-    ctx.r3.u64 = type;
+  const u32 texture_type =
+      legodimensions::gpu_native::NativeTextureType(resource);
+  if (type || texture_type) {
+    ctx.r3.u64 = type ? type : texture_type;
     return;
   }
   __imp__sub_83FC49E8(ctx, base);

@@ -2,6 +2,7 @@
 
 #include "gpu_native/buffers.h"
 #include "gpu_native/shaders.h"
+#include "gpu_native/textures.h"
 #include "native_gpu_build_info.h"
 
 #include <mutex>
@@ -106,6 +107,7 @@ void HostDevice::Shutdown() {
   // All GPU users must be idle before Plume resources are released.
   ResetShaderResources();
   ResetBufferResources();
+  ResetTextureResources();
   g_state.reset();
 }
 

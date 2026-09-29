@@ -55,6 +55,50 @@ struct D3DBuffer {
 };
 static_assert(sizeof(D3DBuffer) == 0x20);
 
+enum class D3DResourceType : u32 {
+  kSurface = 1,
+  kTexture = 3,
+  kVolumeTexture = 17,
+  kCubeTexture = 18,
+};
+
+struct D3DTexture {
+  D3DResource resource;
+  be_u32 mip_flush;
+  FetchConstant format;
+};
+static_assert(sizeof(D3DTexture) == 0x34);
+static_assert(offsetof(D3DTexture, format) == 0x1C);
+
+struct D3DSurface {
+  D3DResource resource;
+  be_u32 surface_info;
+  be_u32 depth_info;
+  be_u32 hi_control;
+  be_u32 size_bits;
+  be_u32 format;
+  be_u32 size;
+};
+static_assert(sizeof(D3DSurface) == 0x30);
+
+struct D3DSurfaceDesc {
+  be_u32 format;
+  be_u32 type;
+  be_u32 usage;
+  be_u32 pool;
+  be_u32 multi_sample_type;
+  be_u32 multi_sample_quality;
+  be_u32 width;
+  be_u32 height;
+};
+static_assert(sizeof(D3DSurfaceDesc) == 0x20);
+
+struct D3DLockedRect {
+  be_u32 pitch;
+  be_u32 bits;
+};
+static_assert(sizeof(D3DLockedRect) == 8);
+
 struct ShaderContainer {
   be_u32 flags;
   be_u32 virtual_size;
