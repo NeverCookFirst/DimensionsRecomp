@@ -4,12 +4,18 @@
 #include <memory>
 #include <string_view>
 
+#include <rex/types.h>
+
 namespace plume {
 struct RenderCommandFence;
 struct RenderCommandQueue;
+struct RenderDescriptorSet;
 struct RenderDevice;
 struct RenderInterface;
+struct RenderPipelineLayout;
 struct RenderSwapChain;
+struct RenderTexture;
+struct RenderTextureView;
 }  // namespace plume
 
 namespace rex::ui {
@@ -32,6 +38,12 @@ class HostDevice {
   static plume::RenderDevice* Device();
   static plume::RenderCommandQueue* Queue();
   static plume::RenderSwapChain* SwapChain();
+  static plume::RenderPipelineLayout* PipelineLayout();
+  static plume::RenderDescriptorSet* TextureDescriptorSet();
+  static plume::RenderDescriptorSet* SamplerDescriptorSet();
+  static u32 RegisterTexture(plume::RenderTexture* texture,
+                             plume::RenderTextureView* view);
+  static void UnregisterTexture(u32 descriptor_index);
   static std::string_view BackendName();
 
  private:

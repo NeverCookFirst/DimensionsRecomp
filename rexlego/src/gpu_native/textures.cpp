@@ -36,6 +36,7 @@ struct TextureResource {
   std::mutex mutex;
   std::unique_ptr<plume::RenderTexture> texture;
   std::unique_ptr<plume::RenderTextureView> view;
+  u32 descriptor_index = ~u32{0};
 };
 
 std::mutex g_textures_mutex;
@@ -182,6 +183,25 @@ u32 AllocateResource(const std::shared_ptr<TextureResource>& resource,
   }
   resource->texture->setName(resource->surface ? "LEGO guest surface"
                                                : "LEGO guest texture");
+  if (!IsDepthFormat(resource->format)) {
+    plume::RenderTextureViewDesc view_desc;
+    view_desc.format = resource->format;
+    view_desc.mipLevels = resource->levels;
+    if (resource->d3d_type ==
+        static_cast<u32>(D3DResourceType::kVolumeTexture)) {
+      view_desc.dimension = plume::RenderTextureViewDimension::TEXTURE_3D;
+    } else if (resource->d3d_type ==
+               static_cast<u32>(D3DResourceType::kCubeTexture)) {
+      view_desc.dimension = plume::RenderTextureViewDimension::TEXTURE_CUBE;
+    } else {
+      view_desc.dimension = plume::RenderTextureViewDimension::TEXTURE_2D;
+    }
+    resource->view = resource->texture->createTextureView(view_desc);
+    if (resource->view) {
+      resource->descriptor_index = HostDevice::RegisterTexture(
+          resource->texture.get(), resource->view.get());
+    }
+  }
 
   if (resource->surface) {
     auto* guest = GuestAt<D3DSurface>(resource->guest_address);
@@ -344,6 +364,7 @@ u32 ReleaseNativeTexture(u32 guest_address) {
     g_textures.erase(it);
   }
   auto* memory = REX_KERNEL_MEMORY();
+  HostDevice::UnregisterTexture(released->descriptor_index);
   if (released->mirror_address) {
     memory->SystemHeapFree(released->mirror_address);
   }
