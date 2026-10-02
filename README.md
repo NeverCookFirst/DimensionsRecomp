@@ -257,12 +257,28 @@ translate what the Xbox 360 GPU was asked to do.
 
 Known issues:
 
+- **Random freeze in some levels** (seen most in the LEGO Movie world): the
+  picture stops, the music keeps playing. Two game threads end up waiting on
+  each other. Being worked on; if it happens to you, attach the `hang-*.dmp`
+  the game writes next to the exe to your issue.
+- **Stutter when a level or cutscene loads**, settling after about half a
+  minute. It comes from how GPU data is synced back during those scenes. A
+  faster way exists but broke geometry on AMD cards, so it is off for now.
+- **Mods can break abilities.** With several characters out at once, some mods
+  have stopped characters from using gadgets and ranged attacks. Turn mods off
+  in `F8` before reporting gameplay bugs.
 - Starting a **new save** and quitting before the opening cutscenes finish can
   leave a save that will not load. Play until you are walking around first.
 - **60 FPS** is an unlock the original never ran at, and most remaining bugs
   live there. Set Performance &rarr; **Frame rate target** to 30 in `F4` before
   reporting anything odd.
-- Some scenes render with **wrong colours or missing effects**.
+- Some scenes render with **wrong colours or missing effects** (darker
+  lighting in parts of the Simpsons and Ghostbusters worlds, for one).
+- **Lag with AMD FSR 1 or CAS selected.** On weaker GPUs the upscaling
+  filter itself can cost frames. If the game stutters, set `F4` &rarr;
+  Graphics &rarr; **Upscaling filter** to **Bilinear (fastest)**.
+- **Windows on ARM** (Snapdragon laptops, Surface Pro 11) is not supported:
+  the game starts but shows a black screen.
 - **Screen tearing.** The `vsync` setting never controlled it - despite the
   name, it only paces the emulated console - so it is now locked off and greyed
   out of `F4` rather than left there to be tried. Stopping the tearing properly
@@ -297,19 +313,30 @@ Put plainly: Vulkan went from unusable to *look at it and see*. That is all.
 
 Roughly in the order I want to get to it. No dates.
 
+- **GPU recompilation - in progress now.** Graphics is the one part still
+  done the emulator way: the game's draw calls are translated while it runs.
+  A native Direct3D 12 renderer is being built that does to them what was
+  already done to the CPU code - shaders translated ahead of time, and the
+  game's draw calls going straight to the PC GPU instead of through an
+  emulated Xbox 360 one. That is where the remaining performance and most of
+  the visual bugs are. It already draws frames in development builds, but it
+  is not in releases yet and there is no date. Until it lands, bug fixes keep
+  shipping on the current renderer.
 - **Fixing the crashes that keep coming back.** A handful of them are
   reproducible and hit a lot of people, so they matter more than anything new.
+- **Real Toy Pad auto-detect.** Plug a real portal in and the game finds it
+  and switches over by itself, without changing settings by hand.
+- **Settings inside the game.** The game's own options menu gets the port's
+  settings (graphics, frame rate, Toy Pad, updates), so `F4` is no longer the
+  only way in.
+- **Switching language while playing**, without a restart.
+- **A launcher before the first start**, like the PC ports of Sony games:
+  pick resolution, graphics quality, controller and language, check the game
+  files, then play.
 - **UI fixes, and layouts for other gamepads.** Right now the button prompts
   assume an Xbox pad. PlayStation, Switch and generic controllers should show
   their own.
 - **Updating the Discord Rich Presence** so it shows more than a static line.
-- **Recompiling the GPU side too, in some form.** *Research, not a promise.*
-  Graphics is the one part still done the emulator way: the game's draw calls
-  are translated while it runs. Doing to them what was already done to the CPU
-  code, translating ahead of time instead of live, is where the remaining
-  performance and most of the visual bugs are. It is a large piece of work and
-  it may turn out not to be practical. I would rather say that now than promise
-  it.
 
 > [!IMPORTANT]
 > **This project needs people.** It is one person plus a lot of community
@@ -364,30 +391,32 @@ stable performance on any device, including that one.** This is a public beta.
 As for now, game is playable on Steam Deck through Proton, native port is not coming soon.
 
 > [!TIP]
-> Minimum: a 64-bit CPU with AVX2 (Haswell or Zen 1 and newer) and a Direct3D 12
-GPU at feature level 11_0.
+> Minimum: a 64-bit CPU with SSE4.2 (Intel Nehalem / AMD Bulldozer, roughly
+2009, and newer) and a Direct3D 12 GPU at feature level 11_0.
+
+> [!WARNING]
+> **Low-end PCs and AMD graphics cards are a known problem right now.**
+> Meeting the minimum means the game starts, not that it runs well: on weaker
+> machines (older CPUs, integrated graphics, handhelds) expect low frame rates
+> and stutter. AMD cards have their own set of issues, from black or missing
+> world geometry to graphical glitches that NVIDIA cards do not show. I am doing
+> my best to get both playable, but for now there is **no ETA** for when that
+> will be fixed. If you are on either, reports with a `game.log` help a lot.
 
 <details>
-<summary><b>Why AVX2, and what it takes to build without it</b></summary>
+<summary><b>Why the CPU floor changed in 0.1.30</b></summary>
 
-The requirement is deliberate, not an accident of the toolchain. `legodimensions`
-and `legodimensions_recomp` are compiled with `-march=x86-64-v3`, which means
-AVX2, BMI2 and FMA. The recompiled translation units are where essentially all
-guest CPU time goes, so building them for a modern baseline (plus `-O3`) is a
-measurable speed win rather than a free-floating restriction. The runtime
-libraries, `rexruntime.dll` and `rexgpu-xenos.dll`, are built at `x86-64-v2` and
-need no AVX2 - the floor comes from the game executable alone.
+Up to 0.1.29 the game executable was built with `-march=x86-64-v3` (AVX2, BMI2,
+FMA), so on any CPU older than Haswell / Zen 1 it closed at startup without an
+error. From 0.1.30 everything - the game, the recompiled code and the runtime
+libraries - is built for `x86-64-v2`, which only needs SSE4.2 and POPCNT. The
+game is limited by the GPU far more than the CPU, so this was not worth locking
+people out over.
 
-Building without it is one small change, not a fork: the block near the end of
-[`rexlego/CMakeLists.txt`](rexlego/CMakeLists.txt) that applies
-`-march=x86-64-v3` can be dropped to `-march=x86-64-v2` or removed. `x86-64-v2`
-still requires SSE4.2 and POPCNT, so anything older than Nehalem is out either
-way.
-
-Expect it to run slower - that block exists precisely because it is not free -
-and be aware that **no non-AVX2 configuration has ever been built or tested**.
-Nothing in the code is knowingly AVX2-specific beyond that flag, but it is
-untravelled ground. If you try it, please report back.
+To build for a newer baseline yourself, pass
+`-DLEGODIMENSIONS_X86_BASELINE=x86-64-v3` (and the same to the SDK as
+`-DREXGLUE_X86_BASELINE`) when configuring; see
+[`rexlego/CMakeLists.txt`](rexlego/CMakeLists.txt).
 
 </details>
 

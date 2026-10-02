@@ -29,6 +29,7 @@ set(LEGODIMENSIONS_SOURCES
     src/toypad_app.cpp
     src/updates.cpp
     src/name_trace.cpp
+    src/crash_guards.cpp
 )
 
 # Research probes: a guard-page watchpoint on the area flags and the failed
@@ -66,7 +67,11 @@ endif()
 # The generated translation units (legodimensions_recomp) are where nearly all
 # guest CPU time goes, and they were being built for a bare x86-64 without
 # AVX2/BMI2/FMA. TheSimpsonsGameRecomp measured this + -O3 as a real win, so
-# the shipped builds use x86-64-v3 (Haswell / Zen 1 or newer).
+# the shipped builds used x86-64-v3 (Haswell / Zen 1 or newer) up to 0.1.29.
+#
+# From 0.1.30 the default is x86-64-v2: v3 meant a silent exit at startup on
+# every pre-Haswell CPU (issue #15, a Xeon E5-2650 v2), and the game is GPU
+# bound, so the AVX2 gain was not worth locking those players out.
 #
 # It is a cache variable rather than a hard-coded flag because people do build
 # this for older CPUs. Passing -DCMAKE_CXX_FLAGS=-march=... does NOT work for
@@ -80,7 +85,7 @@ endif()
 # CMAKE_CXX_FLAGS. Whatever is chosen here must also be passed to the SDK
 # (-DREXGLUE_X86_BASELINE=...), or the two halves disagree about AVX2 and the
 # game crashes with an illegal instruction on the CPU that cannot run it.
-set(LEGODIMENSIONS_X86_BASELINE "x86-64-v3" CACHE STRING
+set(LEGODIMENSIONS_X86_BASELINE "x86-64-v2" CACHE STRING
     "x86 -march baseline for the game and the recompiled code (or \"none\")")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"

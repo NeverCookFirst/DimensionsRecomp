@@ -98,7 +98,7 @@ void LogInstalledVersion() {
 
 }  // namespace
 
-void CheckAtStartup() {
+void CheckAtStartup(std::function<void()> close_game) {
   LogInstalledVersion();
   if (!REXCVAR_GET(updates_check)) {
     REXLOG_INFO("Update check disabled (updates_check = false)");
@@ -124,7 +124,7 @@ void CheckAtStartup() {
   // Letting the updater raise its own window at startup proved unreliable -
   // players saw nothing and only found the update by running the tool by hand -
   // so the game now tells them itself, and names the file that does the work.
-  std::thread([updater, target, repo] {
+  std::thread([updater, target, repo, close_game = std::move(close_game)] {
     std::wstring command_line = L"\"" + updater.wstring() + L"\" --check --console" + target;
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
@@ -149,7 +149,8 @@ void CheckAtStartup() {
 
     const std::wstring text =
         L"A new version of Dimensions Recompiled is available.\n\n"
-        L"Install it now? The updater will open:\n" + updater.wstring();
+        L"Install it now? The game will close and the updater will open.\n"
+        L"Progress since your last save will be lost.";
     if (MessageBoxW(nullptr, text.c_str(), L"Dimensions Recompiled - Update available",
                     MB_YESNO | MB_ICONINFORMATION | MB_SETFOREGROUND) != IDYES) {
       REXLOG_INFO("Update declined by the player");
@@ -158,6 +159,12 @@ void CheckAtStartup() {
     std::wstring launch = L"\"" + updater.wstring() + L"\"" + target;
     if (StartDetached(updater, launch)) {
       REXLOG_INFO("Updater launched");
+      // Only once the updater is really running: closing first and then failing
+      // to start it would leave the player with neither.
+      if (close_game) {
+        REXLOG_INFO("Closing the game so the updater can replace its files");
+        close_game();
+      }
     } else {
       REXLOG_WARN("Could not launch the updater at {} (error {})", updater.string(),
                   GetLastError());

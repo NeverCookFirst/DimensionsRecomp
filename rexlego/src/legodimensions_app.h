@@ -59,7 +59,12 @@ class LegodimensionsApp : public rex::ReXApp {
     legodimensions::cheats::InstallGraphicsToggles();
     legodimensions::skip_cutscenes::Start();
     legodimensions::discord::Start();
-    legodimensions::updates::CheckAtStartup();
+    // Same way out as Quit Game in the main menu.
+    legodimensions::updates::CheckAtStartup([] {
+      legodimensions::toypad_app::StopIfStarted();
+      rex::FlushLogging();
+      std::_Exit(0);
+    });
     legodimensions::toypad_app::StartIfEnabled();
   }
 

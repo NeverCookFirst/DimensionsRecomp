@@ -9,11 +9,17 @@
 
 #pragma once
 
+#include <functional>
+
 namespace legodimensions::updates {
 
 // Starts the updater in the background when updates_check is on and the updater
 // is where the config says. It opens a window only if there is something new.
 // Never blocks: a slow or unreachable GitHub is the updater's problem.
-void CheckAtStartup();
+//
+// When the player accepts an update, the updater is started and then
+// close_game runs: the updater cannot replace the exe and DLLs while the game
+// holds them, and players asked for the game to get out of the way by itself.
+void CheckAtStartup(std::function<void()> close_game);
 
 }  // namespace legodimensions::updates

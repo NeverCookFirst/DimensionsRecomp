@@ -150,7 +150,15 @@ public sealed class UpdaterForm : Form
                 + (plan.Missing.Count > 3 ? $" and {plan.Missing.Count - 3} more" : "")
                 + ".\r\n\r\nDownload the full installer from the release page instead.");
         }
+        // The game closes itself when the player accepts the update, but it can
+        // still be on its way out, so give it a moment before giving up.
         string? locked = job.WhatIsLocked(plan);
+        for (int waited = 0; locked is not null && waited < 20; waited++)
+        {
+            BeginInvoke(() => Set(0.5, "Waiting for the game to close..."));
+            Thread.Sleep(500);
+            locked = job.WhatIsLocked(plan);
+        }
         if (locked is not null)
             throw new InvalidOperationException($"{locked} is in use. Close the game and try again.");
 
