@@ -91,7 +91,10 @@ Copy-Item $exe $updaterHost -Force
 
 # 2. The game. Verify each file exists rather than copying whatever is there.
 Write-Host "== Game binaries from $GameBuild"
-$gameFiles = "legodimensions.exe", "rexruntime.dll", "rexgpu-xenos.dll", "FiraSans-Regular.ttf", "achievement_unlocked.wav"
+# amd_fidelityfx_dx12.dll: rexruntime.dll imports it once the SDK is built with
+# REXGLUE_ENABLE_FIDELITYFX=ON (FSR 1 / CAS). 0.1.30 shipped without it and
+# would not start at all ("amd_fidelityfx_dx12.dll was not found").
+$gameFiles = "legodimensions.exe", "rexruntime.dll", "rexgpu-xenos.dll", "amd_fidelityfx_dx12.dll", "FiraSans-Regular.ttf", "achievement_unlocked.wav"
 # Two of those are not produced by the game build at all: rexgpu-xenos.dll is
 # the SDK's GPU plugin and stays in the SDK output tree, and the UI font is a
 # source file in rexlego\res. Both used to have to be copied by hand, which
@@ -101,6 +104,8 @@ $gameFileFallbacks = @{
     "rexgpu-xenos.dll"     = @(
         "$SdkDir\out\win-amd64\Release\rexgpu-xenos.dll",
         "$SdkDir\out\install\win-amd64\bin\rexgpu-xenos.dll")
+    "amd_fidelityfx_dx12.dll" = @(
+        "$SdkDir\out\install\win-amd64\bin\amd_fidelityfx_dx12.dll")
     "FiraSans-Regular.ttf" = @("$root\rexlego\res\FiraSans-Regular.ttf")
 }
 foreach ($f in $gameFiles) {

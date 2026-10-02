@@ -105,7 +105,8 @@ public abstract class PayloadSource : IDisposable
     public const string GamepadDb = "gamecontrollerdb.txt";   // optional
 
     public static readonly string[] GameFiles =
-        { "legodimensions.exe", "rexruntime.dll", "rexgpu-xenos.dll", "FiraSans-Regular.ttf", "achievement_unlocked.wav" };
+        { "legodimensions.exe", "rexruntime.dll", "rexgpu-xenos.dll", "amd_fidelityfx_dx12.dll",
+          "FiraSans-Regular.ttf", "achievement_unlocked.wav" };
 
     public IEnumerable<PayloadEntry> Under(string prefix) =>
         Entries.Where(e => e.Path.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase));
