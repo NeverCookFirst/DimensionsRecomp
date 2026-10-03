@@ -7,6 +7,8 @@ param(
     [switch]$NoMemoryWatch,
     [switch]$StaticTextureWatch,
     [switch]$AuditTextureWatch,
+    [switch]$BufferWatch,
+    [switch]$AuditBufferWatch,
     [switch]$NoDrawArena,
     [switch]$AsyncCpuResources,
     [switch]$Stencil,
@@ -25,7 +27,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($ConfiguredRenderer -and $Pm4Reference) { throw 'Select configured renderer or explicit PM4 reference, not both' }
 if ($DepthAlias -and $DisableDepthAlias) { throw 'DepthAlias and DisableDepthAlias are mutually exclusive' }
-if (($Pm4Reference -or $ConfiguredRenderer) -and ($Stencil -or $MeshTrace -or $LogoUploads -or $Viewport -or $BufferWindows -or $DepthAlias -or $DisableDepthAlias -or $LongProbe -or $LogoCaptureRenderDocDll)) {
+if (($Pm4Reference -or $ConfiguredRenderer) -and ($Stencil -or $MeshTrace -or $LogoUploads -or $Viewport -or $BufferWindows -or $BufferWatch -or $AuditBufferWatch -or $DepthAlias -or $DisableDepthAlias -or $LongProbe -or $LogoCaptureRenderDocDll)) {
     throw 'PM4 reference mode uses original XDK/SDK objects; native-only diagnostic/candidate switches must be disabled'
 }
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -50,7 +52,7 @@ $keys = @('SDL_WINDOW_ACTIVATE_WHEN_SHOWN','LEGO_NATIVE_TIMING','LEGO_NATIVE_ALL
     'LEGO_GPU_SNAPSHOT_DIR','LEGO_GPU_SNAPSHOT_START_AT_TILING',
     'LEGO_GPU_SNAPSHOT_TIME_WINDOWS','LEGO_DUMP_MISSING_SHADERS',
     'LEGO_NATIVE_GPU_DEBUG','LEGO_XENOS_TILING_TRACE','LEGO_DUMP_TEXTURE_UPLOADS','LEGO_NATIVE_TRACE_DIR',
-    'LEGO_NATIVE_NO_MEMORY_WATCH','LEGO_NATIVE_STATIC_TEXTURE_WATCH','LEGO_NATIVE_AUDIT_TEXTURE_WATCH','LEGO_NATIVE_NO_DRAW_ARENA',
+    'LEGO_NATIVE_NO_MEMORY_WATCH','LEGO_NATIVE_STATIC_TEXTURE_WATCH','LEGO_NATIVE_AUDIT_TEXTURE_WATCH','LEGO_NATIVE_BUFFER_WATCH','LEGO_NATIVE_AUDIT_BUFFER_WATCH','LEGO_NATIVE_NO_DRAW_ARENA',
     'LEGO_NATIVE_FRAME_METRICS','LEGO_NATIVE_ASYNC_CPU_RESOURCES','LEGO_NATIVE_STENCIL','LEGO_NATIVE_MESH_TRACE',
     'LEGO_NATIVE_VIEWPORT','LEGO_DUMP_TEXTURE_UPLOADS_LOGOS_ONLY','LEGO_NATIVE_BUFFER_WINDOWS','LEGO_NATIVE_PM4_REFERENCE',
     'LEGO_NATIVE_RENDERDOC_DLL','LEGO_NATIVE_RENDERDOC_CAPTURE','LEGO_NATIVE_DEPTH_ALIAS')
@@ -66,12 +68,14 @@ try {
     if (!$ConfiguredRenderer) {
         $env:LEGO_NATIVE_STATIC_TEXTURE_WATCH = $(if ($StaticTextureWatch -or $AuditTextureWatch) {'1'} else {'0'})
         $env:LEGO_NATIVE_BUFFER_WINDOWS = $(if ($BufferWindows) {'1'} else {'0'})
+        $env:LEGO_NATIVE_BUFFER_WATCH = $(if ($BufferWatch -or $AuditBufferWatch) {'1'} else {'0'})
     }
     if ($StaticTextureWatch) { $env:LEGO_NATIVE_STATIC_TEXTURE_WATCH = '1' }
     if ($AuditTextureWatch) {
         $env:LEGO_NATIVE_STATIC_TEXTURE_WATCH = '1'
         $env:LEGO_NATIVE_AUDIT_TEXTURE_WATCH = '1'
     }
+    if ($AuditBufferWatch) { $env:LEGO_NATIVE_AUDIT_BUFFER_WATCH = '1' }
     if ($NoDrawArena) { $env:LEGO_NATIVE_NO_DRAW_ARENA = '1' }
     if ($AsyncCpuResources) { $env:LEGO_NATIVE_ASYNC_CPU_RESOURCES = '1' }
     if ($Stencil) { $env:LEGO_NATIVE_STENCIL = '1' }
@@ -127,6 +131,7 @@ try {
         mode=$Mode;allTextures=[bool]$AllTextures;captureMissing=[bool]$CaptureMissing;monitor=$Monitor;
         longProbe=[bool]$LongProbe;noMemoryWatch=[bool]$NoMemoryWatch;staticTextureWatch=[bool]$StaticTextureWatch;
         auditTextureWatch=[bool]$AuditTextureWatch;
+        bufferWatch=[bool]$BufferWatch; auditBufferWatch=[bool]$AuditBufferWatch;
         noDrawArena=[bool]$NoDrawArena;asyncCpuResources=[bool]$AsyncCpuResources;
         stencil=[bool]$Stencil;meshTrace=[bool]$MeshTrace;
         logoUploads=[bool]$LogoUploads;viewport=[bool]$Viewport;bufferWindows=[bool]$BufferWindows;

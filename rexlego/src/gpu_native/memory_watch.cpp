@@ -12,6 +12,9 @@
 REXCVAR_DEFINE_BOOL(gpu_native_texture_watch, false, "GPU",
     "Reuse unchanged native pixel textures with physical page write invalidation")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(gpu_native_buffer_watch, false, "GPU",
+    "Reuse unchanged native vertex/index uploads with physical page write invalidation")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace legodimensions::gpu_native {
 namespace {
@@ -24,12 +27,21 @@ rex::memory::Memory* g_memory = nullptr;
 void* g_callback = nullptr;
 
 bool SelectedMemoryWatch() {
-  // Only pixel textures may use this path. Vertex animation textures and
-  // vertex/index buffers retain every-use content checks.
+  // Vertex animation textures retain every-use content checks.
   static const bool enabled = [] {
     const char* value = std::getenv("LEGO_NATIVE_STATIC_TEXTURE_WATCH");
     const bool selected = value ? std::strcmp(value, "0") != 0 :
         REXCVAR_GET(gpu_native_texture_watch);
+    return selected && !std::getenv("LEGO_NATIVE_NO_MEMORY_WATCH");
+  }();
+  return enabled;
+}
+
+bool SelectedBufferWatch() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("LEGO_NATIVE_BUFFER_WATCH");
+    const bool selected = value ? std::strcmp(value, "0") != 0 :
+        REXCVAR_GET(gpu_native_buffer_watch);
     return selected && !std::getenv("LEGO_NATIVE_NO_MEMORY_WATCH");
   }();
   return enabled;
@@ -75,10 +87,11 @@ bool PhysicalSpan(rex::memory::Memory* memory, CpuMemorySpan input, CpuMemorySpa
 }  // namespace
 
 bool CpuMemoryWatchEnabled() { return SelectedMemoryWatch(); }
+bool CpuBufferMemoryWatchEnabled() { return SelectedBufferWatch(); }
 
 CpuMemoryStamp WatchCpuMemory(std::span<const CpuMemorySpan> spans) {
   CpuMemoryStamp stamp;
-  if (!CpuMemoryWatchEnabled()) return stamp;
+  if (!SelectedMemoryWatch() && !SelectedBufferWatch()) return stamp;
   auto lock = g_watch_region.Acquire();
   auto* memory = REX_KERNEL_MEMORY();
   if (!memory) return stamp;

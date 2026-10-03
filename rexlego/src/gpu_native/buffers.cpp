@@ -3,6 +3,7 @@
 #include "gpu_native/memory_watch.h"
 
 #include <cstring>
+#include <cstdlib>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -223,10 +224,32 @@ plume::RenderBuffer* ResolveBufferContents(const std::shared_ptr<BufferResource>
   const bool timing = NativeTextureTimingEnabled();
   const auto hash_start = timing ? std::chrono::steady_clock::now()
                                 : std::chrono::steady_clock::time_point{};
-  const u64 content_hash = XXH3_64bits(source, resource->length);
+  const bool watch_enabled = CpuBufferMemoryWatchEnabled();
+  const bool watch_hit = watch_enabled && !resource->variants.empty() &&
+      CpuMemoryUnchanged(resource->cpu_stamp);
+  static const bool audit_watch = std::getenv("LEGO_NATIVE_AUDIT_BUFFER_WATCH") != nullptr;
+  CpuMemoryStamp next_stamp;
+  u64 content_hash = resource->content_hash;
+  if (!watch_hit || audit_watch) {
+    // Arm before hashing/conversion. A concurrent write invalidates this
+    // stamp, so a mixed snapshot cannot remain cached as permanently clean.
+    if (watch_enabled) {
+      const CpuMemorySpan span{resource->mirror_address, resource->length};
+      next_stamp = WatchCpuMemory({&span, 1});
+    }
+    content_hash = XXH3_64bits(source, resource->length);
+    if (timing) g_buffer_timing.hashed_bytes += resource->length;
+    if (watch_hit && audit_watch) {
+      if (timing) ++g_buffer_timing.watch_audits;
+      if (content_hash != resource->content_hash) {
+        if (timing) ++g_buffer_timing.watch_mismatches;
+        REXLOG_ERROR("Native buffer watch: stale clean stamp guest={:08X} data={:08X} bytes={}",
+            guest_address, resource->mirror_address, resource->length);
+      }
+    }
+  } else if (timing) ++g_buffer_timing.watch_hits;
   if (timing) {
     ++g_buffer_timing.calls;
-    g_buffer_timing.hashed_bytes += resource->length;
     g_buffer_timing.hash_ms += std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - hash_start).count();
   }
@@ -235,6 +258,7 @@ plume::RenderBuffer* ResolveBufferContents(const std::shared_ptr<BufferResource>
     resource->variants.clear();
     resource->buffer.reset();
   } else if (const auto it = resource->variants.find(byte_order_hash); it != resource->variants.end()) {
+    if (!watch_hit || audit_watch) resource->cpu_stamp = std::move(next_stamp);
     resource->buffer = it->second;
     return it->second.get();
   }
@@ -297,6 +321,7 @@ plume::RenderBuffer* ResolveBufferContents(const std::shared_ptr<BufferResource>
   resource->buffer = std::move(next_buffer);
   resource->content_hash = content_hash;
   resource->byte_order_hash = byte_order_hash;
+  if (!watch_hit || audit_watch) resource->cpu_stamp = std::move(next_stamp);
   return resource->buffer.get();
 }
 

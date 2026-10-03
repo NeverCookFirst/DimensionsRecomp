@@ -23,9 +23,11 @@ cpp.write_text(r'''
 rex::memory::Memory* tested_memory=nullptr;
 using namespace legodimensions::gpu_native;
 REXCVAR_DECLARE(bool, gpu_native_texture_watch);
+REXCVAR_DECLARE(bool, gpu_native_buffer_watch);
 int main(int argc,char**){
  rex::InitLogging();
- if(argc>1) REXCVAR_SET(gpu_native_texture_watch,true);
+ if(argc==2) REXCVAR_SET(gpu_native_texture_watch,true);
+ if(argc==3) REXCVAR_SET(gpu_native_buffer_watch,true);
  rex::memory::Memory memory;tested_memory=&memory;
  assert(memory.Initialize());
  auto* heap=memory.LookupHeapByType(true,4096);
@@ -68,3 +70,7 @@ env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='1';env.pop('LEGO_NATIVE_NO_MEMORY_WATCH
 subprocess.run([str(exe)],cwd=a.output,env=env,check=True,timeout=30)
 env.pop('LEGO_NATIVE_STATIC_TEXTURE_WATCH')
 subprocess.run([str(exe),'configured'],cwd=a.output,env=env,check=True,timeout=30)
+env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='0';env['LEGO_NATIVE_BUFFER_WATCH']='1'
+subprocess.run([str(exe)],cwd=a.output,env=env,check=True,timeout=30)
+env.pop('LEGO_NATIVE_BUFFER_WATCH')
+subprocess.run([str(exe),'buffer','configured'],cwd=a.output,env=env,check=True,timeout=30)

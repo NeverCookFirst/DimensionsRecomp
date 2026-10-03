@@ -1021,7 +1021,7 @@ bool UploadTextureResource(u32 guest_address,
     const CpuMemorySpan source_spans[] = {
       {u32(fetch.base_address << 12), layout.base.level_data_extent_bytes},
       {u32(fetch.mip_address << 12), mip_size}};
-    auto cpu_stamp = WatchCpuMemory(source_spans);
+    auto cpu_stamp = CpuMemoryWatchEnabled() ? WatchCpuMemory(source_spans) : CpuMemoryStamp{};
     const auto source_start = timer.enabled ? std::chrono::steady_clock::now()
                                             : std::chrono::steady_clock::time_point{};
     const bool source_key_valid =

@@ -1270,8 +1270,9 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
             "pipeline={:.2f} constants={:.2f} vertices={:.2f} issue={:.2f} tail={:.2f}ms",
             draws.calls, draws.stages_ms[0], draws.stages_ms[1], draws.stages_ms[2],
             draws.stages_ms[3], draws.stages_ms[4], draws.stages_ms[5], draws.stages_ms[6]);
-        REXLOG_INFO("Native buffer timing: calls={} hash={:.2f}ms hashed={} converted={}",
-            buffers.calls, buffers.hash_ms, buffers.hashed_bytes, buffers.converted_bytes);
+        REXLOG_INFO("Native buffer timing: calls={} hash={:.2f}ms hashed={} converted={} watch_hits={} watch_audits={} watch_mismatches={}",
+            buffers.calls, buffers.hash_ms, buffers.hashed_bytes, buffers.converted_bytes,
+            buffers.watch_hits, buffers.watch_audits, buffers.watch_mismatches);
         REXLOG_INFO("Native synchronization timing: calls={} cpu_resource_skips={} time={:.2f}ms",
                     state.sync_calls, state.cpu_resource_wait_skips, state.sync_ms);
         REXLOG_INFO("Native synchronization reasons ms: other={:.2f} idle={:.2f} fence={:.2f} resource={:.2f} callback={:.2f} query_begin={:.2f} query_release={:.2f}",

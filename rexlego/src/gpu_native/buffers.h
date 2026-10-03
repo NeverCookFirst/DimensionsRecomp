@@ -20,6 +20,9 @@ struct BufferUploadTiming {
   u64 calls = 0;
   u64 hashed_bytes = 0;
   u64 converted_bytes = 0;
+  u64 watch_hits = 0;
+  u64 watch_audits = 0;
+  u64 watch_mismatches = 0;
   double hash_ms = 0;
 };
 BufferUploadTiming ConsumeBufferUploadTiming();
@@ -30,6 +33,7 @@ u32 LockBufferResource(u32 guest_address, u32 offset, u32 size, u32 flags,
                        BufferKind kind);
 
 // Checks current guest contents on every call, including placement buffers.
+// Opt-in buffer watches use physical page generations; unknown memory hashes.
 // Changed contents get a new upload buffer retained through the frame fence,
 // so later CPU writes cannot overwrite geometry in earlier recorded draws.
 plume::RenderBuffer* ResolveBufferResource(u32 guest_address, BufferKind kind,

@@ -14,7 +14,7 @@ namespace rex::cvar {
 enum class Lifecycle { kRequiresRestart };
 struct FixtureCvar { FixtureCvar lifecycle(Lifecycle) { return *this; } };
 }
-#define REXCVAR_DEFINE_BOOL(...) static auto fixture_cvar = rex::cvar::FixtureCvar{}
+#define REXCVAR_DEFINE_BOOL(name,...) static auto fixture_##name = rex::cvar::FixtureCvar{}
 #define REXCVAR_GET(...) false
 ''')
 (stub/'xmemory.h').write_text(r'''
@@ -121,6 +121,10 @@ env['LEGO_NATIVE_NO_MEMORY_WATCH']='1';subprocess.run([str(exe.resolve()),'disab
 env.pop('LEGO_NATIVE_NO_MEMORY_WATCH');env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='0'
 subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True)
 env.pop('LEGO_NATIVE_STATIC_TEXTURE_WATCH')
+subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True)
+env['LEGO_NATIVE_BUFFER_WATCH']='1';env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='0'
+subprocess.run([str(exe.resolve())],env=env,check=True)
+env['LEGO_NATIVE_NO_MEMORY_WATCH']='1'
 subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True)
 (a.output/'verification.json').write_text(json.dumps({'production_source':True,'sdk_model':True,'checks':[
  'A/C/E aliases and +4KB','same-frame writes','neighbor watch retained','base+mips','physical host write',

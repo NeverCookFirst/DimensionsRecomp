@@ -12,6 +12,7 @@ struct CpuMemoryStamp {
   std::vector<std::pair<uint32_t, uint64_t>> pages;
 };
 bool CpuMemoryWatchEnabled();
+bool CpuBufferMemoryWatchEnabled();
 
 // Uses the SDK's physical write notifications across A/C/E aliases. Unknown
 // virtual storage has no stamp and must still be hashed at each use.

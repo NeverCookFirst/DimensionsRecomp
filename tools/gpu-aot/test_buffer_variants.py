@@ -1,6 +1,7 @@
 """Check fetched-byte equivalence and actual buffer conversion cache behavior."""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
@@ -19,6 +20,7 @@ h.write_text(r'''
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <random>
@@ -66,8 +68,22 @@ struct Memory {
 Memory memory;
 #define REX_KERNEL_MEMORY() (&memory)
 bool NativeTextureTimingEnabled(){return true;}
-struct BufferUploadTiming {u64 calls=0,hashed_bytes=0,converted_bytes=0;double hash_ms=0;};
+struct BufferUploadTiming {u64 calls=0,hashed_bytes=0,converted_bytes=0,watch_hits=0,watch_audits=0,watch_mismatches=0;double hash_ms=0;};
 BufferUploadTiming g_buffer_timing;
+bool watch_enabled=false,watchable=true;
+std::array<u64,16> versions{};
+bool legodimensions::gpu_native::CpuBufferMemoryWatchEnabled(){return watch_enabled;}
+CpuMemoryStamp legodimensions::gpu_native::WatchCpuMemory(std::span<const CpuMemorySpan> spans){
+ CpuMemoryStamp stamp;if(!watch_enabled||!watchable)return stamp;
+ for(auto span:spans)for(u32 page=span.address/4096;page<=(span.address+span.length-1)/4096;++page)
+  stamp.pages.emplace_back(page,versions.at(page));
+ return stamp;
+}
+bool legodimensions::gpu_native::CpuMemoryUnchanged(const CpuMemoryStamp& stamp){
+ if(stamp.pages.empty())return false;
+ for(auto [page,version]:stamp.pages)if(versions.at(page)!=version)return false;
+ return true;
+}
 '''+resource+r'''
 std::shared_ptr<BufferResource> resource;
 auto AdoptBuffer(u32,BufferKind)->std::shared_ptr<BufferResource>{return resource;}
@@ -197,18 +213,61 @@ int main() {
  assert(g_buffer_timing.hashed_bytes-hashed_before==256*100);
  assert(!ResolveBufferResourceWindow(1,BufferKind::kVertex,129,256,{}).buffer);
  assert(!ResolveBufferResourceWindow(1,BufferKind::kVertex,32760,16,{}).buffer);
+ // Buffer watches retain every-use invalidation and immutable conversions.
+ // Unknown virtual storage must hash even when the candidate is selected.
+ watch_enabled=true;
+ auto warm=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
+ assert(!resource->windows.at((u64(128)<<32)|256)->cpu_stamp.pages.empty());
+ const bool audit=std::getenv("LEGO_NATIVE_AUDIT_BUFFER_WATCH")!=nullptr;
+ const auto watch_hash_before=g_buffer_timing.hashed_bytes;
+ const auto allocations_before=HostDevice::device.allocations;
+ for(u32 i=0;i<100;++i)assert(ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{}).buffer==warm.buffer);
+ assert(g_buffer_timing.hashed_bytes-watch_hash_before==(audit?256*100:0));
+ assert(HostDevice::device.allocations==allocations_before);
+ assert(audit?g_buffer_timing.watch_audits>=100:g_buffer_timing.watch_hits>=100);
+ memory.bytes[16000+128+7]^=0x80;++versions[(16000+128+7)/4096];
+ auto dirty=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
+ assert(dirty.buffer!=warm.buffer&&dirty.buffer->data!=warm.buffer->data);
+ const auto dirty_bytes=dirty.buffer->data;
+ // Another same-frame physical/alias write re-invalidates a rearmed stamp.
+ memory.bytes[16000+128+8]^=0x40;++versions[(16000+128+8)/4096];
+ auto dirty_again=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
+ assert(dirty_again.buffer!=dirty.buffer&&dirty.buffer->data==dirty_bytes);
+ if(audit){
+  // Simulate a writer missing notification: audit must catch and repair it.
+  memory.bytes[16000+128+9]^=0x20;
+  auto repaired=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
+  assert(repaired.buffer!=dirty_again.buffer&&g_buffer_timing.watch_mismatches==1);
+ }
+ watchable=false;resource->windows.clear();resource->window_cache_bytes=0;
+ auto unknown=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
+ auto unknown_hash_before=g_buffer_timing.hashed_bytes;
+ for(u32 i=0;i<100;++i)assert(ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{}).buffer==unknown.buffer);
+ assert(g_buffer_timing.hashed_bytes-unknown_hash_before==256*100);
+ // Global shutdown invalidates all otherwise-clean stamps.
+ watchable=true;resource->windows.clear();resource->window_cache_bytes=0;
+ auto before_reset=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
+ for(auto& version:versions)++version;
+ auto reset_hash_before=g_buffer_timing.hashed_bytes;
+ assert(ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{}).buffer==before_reset.buffer);
+ assert(g_buffer_timing.hashed_bytes-reset_hash_before==256);
 }
 ''')
 exe=a.output/'buffer-variants-test.exe'
 subprocess.run(['clang++','-std=c++20','-DNOMINMAX','-I'+str(root/'rexlego/src'),
  '-I'+str(root/'rexglue-sdk/thirdparty/xxHash'),str(h),'-o',str(exe)],check=True)
-subprocess.run([str(exe.resolve())],check=True)
+env=dict(os.environ);env.pop('LEGO_NATIVE_AUDIT_BUFFER_WATCH',None)
+subprocess.run([str(exe.resolve())],env=env,check=True)
+env['LEGO_NATIVE_AUDIT_BUFFER_WATCH']='1'
+subprocess.run([str(exe.resolve())],env=env,check=True)
 (a.output/'verification.json').write_text(json.dumps({'actual_buffer_resolve_body':True,'fake_driver':True,
  'canonical_equivalence_cases':10000,'checks':['same-phase reuse','alternating declarations','same-frame CPU update',
  'immutable old versions','8-version bound','invalid offset','index endian','every-use content hashing',
  'actual placement adoption','32 alternating owner-header frames','same-header relocation',
  'same-frame rewritten placement data','all recorded placement versions preserved',
  '1000 window rebasing/conversion cases','byte/entry cache bound','256-range working set reused without allocations','immutable rewritten windows',
- 'every-use hashing restricted to requested window','invalid window/overflow rejection'],
+ 'every-use hashing restricted to requested window','invalid window/overflow rejection',
+ 'opt-in generation reuse eliminates 100 unchanged hashes','same-frame watched rewrites',
+ 'audit detects and repairs false clean stamp','unknown memory hashes every use','shutdown generation invalidation'],
  'actual_buffer_adoption_body':True,'passed':True},indent=2))
 print('Passed 10000 fetched-byte equivalence cases and actual conversion-cache body, including same-frame writes and old-version lifetime.')
