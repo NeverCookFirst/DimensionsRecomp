@@ -39,7 +39,7 @@ struct HostDevice {
  static bool EnqueueCompletionCallback(std::function<void()> fn){if(!ready)return false;pending.push_back(fn);return true;}
  static void PollCompletionCallbacks(){if(!completed)return;auto tasks=std::move(pending);pending.clear();for(auto& fn:tasks)fn();}
 };
-struct Texture {std::mutex mutex;bool surface=false,resolved_on_host=false,owns_guest_memory=false;};
+struct Texture {std::mutex mutex;bool surface=false,resolved_on_host=false,owns_guest_memory=false;unsigned depth_alias_generation=0;};
 std::shared_ptr<Texture> texture=std::make_shared<Texture>();
 auto FindTexture(u32 address){return address==3?texture:nullptr;}
 bool IsNativeBuffer(u32 address){return address==1;}
@@ -56,7 +56,7 @@ int main(){
   BlockUntilNotBusyHook(resource);assert(HostDevice::skips==u32(enabled&&safe));
   assert(HostDevice::syncs==u32(!enabled||!safe));};
  check(0,false);check(100,false);check(1,true);check(2,true);
- for(u32 bits=0;bits<8;++bits){texture->surface=bits&1;texture->resolved_on_host=bits&2;texture->owns_guest_memory=bits&4;
+ for(u32 bits=0;bits<16;++bits){texture->surface=bits&1;texture->resolved_on_host=bits&2;texture->owns_guest_memory=bits&4;texture->depth_alias_generation=bits&8;
   check(3,bits==0);}
  HostDevice::syncs=0;BlockUntilIdleHook(nullptr);assert(HostDevice::syncs==1);
  HostDevice::syncs=0;BlockOnFenceHook(1);assert(HostDevice::syncs==1);
@@ -74,7 +74,7 @@ for enabled in (False,True):
  subprocess.run([str(exe.resolve())],check=True,env=env)
 (a.output/'verification.json').write_text(json.dumps({'actual_native_hook_bodies':True,
  'opt_in_and_default_tested':True,'checks':['known CPU buffers/shaders','borrowed CPU textures',
- 'all surface/resolved/owned texture exclusions','unknown resource fallback','explicit idle and fence waits',
+ 'all surface/resolved/owned/depth-alias texture exclusions','unknown resource fallback','explicit idle and fence waits',
  'GPU completion before guest callback','unavailable device does not call guest'],'passed':True,
  'real_GPU_gameplay_not_proven':True},indent=2))
 print('Passed actual wait hooks: conservative default, CPU-only opt-in, exclusions and deferred callback ordering.')

@@ -9,6 +9,9 @@ from pathlib import Path
 import re
 import struct
 import subprocess
+import sys
+# The portable embedded Python does not add the script directory to sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_depth_export import fixture
 
 p = argparse.ArgumentParser(description=__doc__)

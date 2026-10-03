@@ -45,6 +45,7 @@ struct TextureResource {
   u32 adopted_header_type=3,descriptor_index=4,resolved_descriptor_index=5,sampled_descriptor_index=6,mirror_address=0;
   std::vector<u32> previous_surface_descriptors{7};
   std::mutex mutex; std::array<u32,6> guest_fetch;
+  u32 cpu_stamp=0,depth_alias_generation=0;
 };
 std::mutex g_textures_mutex;
 std::unordered_map<u32,std::shared_ptr<TextureResource>> g_textures;
@@ -67,11 +68,13 @@ harness += body + r'''
 void Check(std::array<u32,6> before,std::array<u32,6> after,bool replace,bool host=false,bool owned=false,u32 type=3) {
   g_textures.clear(); retired.clear(); descriptors.clear(); framebuffer_invalidations=0;
   auto old=std::make_shared<TextureResource>(); old->guest_fetch=before;
+  old->cpu_stamp=11; old->depth_alias_generation=12;
   old->resolved_on_host=host; old->owns_guest_memory=owned;
   header.format.dword=after; header.resource.common=type; g_textures.emplace(1,old);
   RefreshTextureHeader(1);
   if(owned || (before==after && type==3)) {
     assert(FindTexture(1)==old && old->guest_fetch==before && old->upload_source_key_valid);
+    assert(old->cpu_stamp==11 && old->depth_alias_generation==12);
     assert(retired.empty() && descriptors.empty()); return;
   }
   if(replace) {
@@ -80,6 +83,7 @@ void Check(std::array<u32,6> before,std::array<u32,6> after,bool replace,bool ho
   } else {
     assert(FindTexture(1)==old && old->guest_fetch==after);
     assert(!old->upload_source_key_valid && old->guest_uploaded==host);
+    assert(old->cpu_stamp==0 && old->depth_alias_generation==0);
     assert(retired.empty() && descriptors.empty());
   }
 }
