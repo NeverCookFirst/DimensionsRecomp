@@ -297,6 +297,30 @@ separate limitations.
 
 ## Bank118 and menu idle reproduction, September 30
 
+### October 3 hub continuation
+
+`oct03-hub-diagnostics` captured 57 additional validated placement containers
+in Vorton. The local candidate combines these with all 118 previous runtime
+containers: 175/175 compile with the October 1 compiler and its existing
+624-byte constants ABI. The merged index contains 18836 signatures and preserves
+all 18722 earlier records; runtime prelink produces 304 variants. Inputs,
+rollback archives and build proof are in
+`rexlego/out/native-gpu/session-20261003/hub-bank-candidate`.
+
+`test_placement_capture_lookup.py <placement-containers> <index.cpp>
+<runtime-cache.cpp> <output-directory>` exercises the production lookup against
+both the physical and instruction sections of each actual capture, requiring
+the exact compiled container hash. All 57 new containers pass. Raw placement
+fragments remain diagnostic-only and must never be compiler inputs.
+
+The second native capture (`oct03-hub-bank175`) shows restored HUD icons and
+additional hub geometry, and captured no further placement containers during
+this short run. The character portrait remains a blank blue circle. This is
+a partial improvement, not completed hub correctness or performance validation.
+Both native probes were closed; further probes use monitor 2 per the user's
+October 3 instruction. Do not infer a performance result from snapshot/trace
+runs. Emulated comparison and further character/portrait investigation remain.
+
 The production runtime bank now contains 118 validated containers, 18722
 microcode signatures and 192 linked runtime variants. It retains the current
 624-byte constants ABI. The six late containers had valid nonzero instruction
