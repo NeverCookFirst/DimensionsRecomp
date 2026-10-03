@@ -194,6 +194,7 @@ struct State {
   std::array<double, static_cast<u32>(SyncReason::kCount)> sync_reason_ms{};
   std::chrono::steady_clock::time_point probe_next_snapshot{};
   std::chrono::steady_clock::time_point probe_next_present{};
+  u32 probe_present_burst_remaining = 0;
   std::chrono::steady_clock::time_point probe_last_anomaly_snapshot{};
   u64 probe_snapshot_bytes = 0;
   bool probe_budget_reported = false;
@@ -1365,6 +1366,17 @@ void HostDevice::SnapshotTexture(plume::RenderTexture* texture,
       // The trigger can be noticed in the middle of a pass. Capture the next
       // frame from its first snapshot, not just the remainder of this one.
       state.snapshot_selected_frame = state.present_number + 1;
+    const auto burst_path = SnapshotDirectory() / "capture-present-frames";
+    std::ifstream burst_file(burst_path);
+    u32 requested_frames = 0;
+    if (burst_file >> requested_frames) {
+      burst_file.close();
+      if (std::filesystem::remove(burst_path, trigger_error)) {
+        state.probe_present_burst_remaining = std::min(requested_frames, 240u);
+        if (LongProbeEnabled()) LongProbeEvent("present_burst_armed", false,
+            "frames=", state.probe_present_burst_remaining);
+      }
+    }
   }
   static const bool time_windows = [] {
     char* value = nullptr;
@@ -1384,7 +1396,10 @@ void HostDevice::SnapshotTexture(plume::RenderTexture* texture,
       LongProbeEvent("snapshot_scheduled", false, "target_frame=", state.snapshot_selected_frame,
           "reason=", anomaly_due ? "anomaly_candidate" : "periodic");
     }
-    const bool present_sample = label=="present" && now>=state.probe_next_present;
+    const bool present_burst = label=="present" && state.probe_present_burst_remaining;
+    if (present_burst) --state.probe_present_burst_remaining;
+    const bool present_sample = present_burst ||
+        (label=="present" && now>=state.probe_next_present);
     if (present_sample) state.probe_next_present=now+std::chrono::seconds(5);
     if (state.present_number != state.snapshot_selected_frame && !present_sample) return;
   } else if (time_windows) {

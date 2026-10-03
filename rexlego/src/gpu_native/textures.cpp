@@ -1,4 +1,5 @@
 #include "gpu_native/textures.h"
+#include "gpu_native/color_resolve_swizzle.h"
 
 #include <algorithm>
 #include <array>
@@ -301,11 +302,12 @@ std::shared_ptr<TextureResource> AdoptTexture(u32 guest_address) {
     // A native color resolve instead copies logical RGBA render-target data.
     // Give that representation its own immutable SRV; applying the guest
     // storage swizzle a second time swaps red and blue in every resolved image.
+    const u32 resolved_swizzle = NativeColorResolveSwizzle(swizzle);
     if (resource->format == plume::RenderFormat::R8G8B8A8_UNORM &&
-        swizzle == 0x60Au) {
+        resolved_swizzle != swizzle) {
       view_desc.componentMapping = plume::RenderComponentMapping(
           plume::RenderSwizzle::R, plume::RenderSwizzle::G,
-          plume::RenderSwizzle::B, plume::RenderSwizzle::A);
+          plume::RenderSwizzle::B, swizzles[(resolved_swizzle >> 9) & 7]);
       resource->resolved_view = resource->texture->createTextureView(view_desc);
       if (resource->resolved_view)
         resource->resolved_descriptor_index = HostDevice::RegisterTexture(
@@ -919,6 +921,19 @@ TextureResourceView ResolveTextureResource(u32 guest_address) {
             resource->width, resource->height, resource->d3d_type, false, false};
   const bool native_color = resource->resolved_on_host &&
       resource->resolved_descriptor_index != ~u32{0};
+  if (LongProbeEnabled()) {
+    const u64 signature = (u64(guest_address) << 32) ^
+        (u64(resource->descriptor_index) << 3) ^
+        (u64(resource->resolved_descriptor_index) << 11) ^
+        (u64(resource->resolved_on_host) << 1) ^ u64(native_color);
+    if (LongProbeOnce(signature ^ 0xC010A07000000000ull))
+      LongProbeEvent("texture_color_authority", false, "guest=", guest_address,
+          "host_resolved=", resource->resolved_on_host, "logical_rgba=", native_color,
+          "raw_descriptor=", resource->descriptor_index,
+          "resolved_descriptor=", resource->resolved_descriptor_index,
+          "guest_swizzle=", u32(resource->guest_fetch.swizzle),
+          "width=", resource->width, "height=", resource->height);
+  }
   return {resource->texture.get(),
           native_color ? resource->resolved_view.get() : resource->view.get(),
           resource->format,
