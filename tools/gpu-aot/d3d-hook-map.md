@@ -32,6 +32,17 @@ work.
 
 ## TU23 device layout anchors
 
+### Tiling lifecycle (startup crash, 2026-09-29)
+
+Sep'13 symbol matching identifies `83FBCD28` as `D3DDevice_BeginTiling`,
+`83FBD098` as `D3DDevice_EndTiling`, and `83FCAB10` as
+`D3D::StartWorkerQueue`. The 17:03 crash (`lr=83FCABCC`, guest write `0x4`)
+occurs in this worker initialization, not in audio decoding. The native path
+now hooks the outer Begin/End pair to clear/draw/resolve full-size host targets
+without invoking the Xbox worker queue. Begin's bit0 skips the initial clear,
+as confirmed at original branch `83FBCF08`. Tile-specific resolve rectangles,
+depth conversion and GPU-to-CPU readback are not fully implemented.
+
 The Sep'13 device is `0x6080` bytes, not the `0x5000`-byte device used by the
 older re:Blue target. The reset loop at `0x83FC9450` proves these offsets:
 

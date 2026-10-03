@@ -1,10 +1,5 @@
-warning: in the working copy of 'XenosRecomp/dxc_compiler.cpp', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'XenosRecomp/main.cpp', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'XenosRecomp/shader_common.h', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'XenosRecomp/shader_recompiler.cpp', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'XenosRecomp/shader_recompiler.h', LF will be replaced by CRLF the next time Git touches it
 diff --git a/XenosRecomp/dxc_compiler.cpp b/XenosRecomp/dxc_compiler.cpp
-index 4a851c2..ceffb3f 100644
+index 4a851c2..412aa39 100644
 --- a/XenosRecomp/dxc_compiler.cpp
 +++ b/XenosRecomp/dxc_compiler.cpp
 @@ -1,5 +1,7 @@
@@ -15,7 +10,17 @@ index 4a851c2..ceffb3f 100644
  DxcCompiler::DxcCompiler()
  {
      HRESULT hr = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&dxcCompiler));
-@@ -82,7 +84,19 @@ IDxcBlob* DxcCompiler::compile(const std::string& shaderSource, bool compilePixe
+@@ -62,6 +64,9 @@ IDxcBlob* DxcCompiler::compile(const std::string& shaderSource, bool compilePixe
+     args[argCount++] = L"-DUNLEASHED_RECOMP";
+ #endif
+ 
++    if (std::getenv("XENOS_RECOMP_LEGO_NATIVE_SCALE"))
++        args[argCount++] = L"-DLEGO_NATIVE_GPU";
++
+     IDxcResult* result = nullptr;
+     HRESULT hr = dxcCompiler->Compile(&source, args, argCount, nullptr, IID_PPV_ARGS(&result));
+ 
+@@ -82,7 +87,19 @@ IDxcBlob* DxcCompiler::compile(const std::string& shaderSource, bool compilePixe
                  hr = result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
                  assert(SUCCEEDED(hr) && errors != nullptr);
  
@@ -37,10 +42,24 @@ index 4a851c2..ceffb3f 100644
                  errors->Release();
              }
 diff --git a/XenosRecomp/main.cpp b/XenosRecomp/main.cpp
-index 754198c..5ee2ca9 100644
+index 754198c..dcab846 100644
 --- a/XenosRecomp/main.cpp
 +++ b/XenosRecomp/main.cpp
-@@ -31,6 +31,8 @@ struct RecompiledShader
+@@ -2,6 +2,7 @@
+ #include "shader_recompiler.h"
+ #include "dxc_compiler.h"
+ 
++#include <algorithm>
+ #include <mutex>
+ #include <vector>
+ 
+@@ -26,11 +27,13 @@ static void writeAllBytes(const char* filePath, const void* data, size_t dataSiz
+ 
+ struct RecompiledShader
+ {
+-    uint8_t* data = nullptr;
++    std::vector<uint8_t> data;
+     IDxcBlob* dxil = nullptr;
      std::vector<uint8_t> spirv;
      uint32_t specConstantsMask = 0;
      std::string sourceName;
@@ -49,7 +68,15 @@ index 754198c..5ee2ca9 100644
  };
  
  // Per-shader recompile failures, collected from the parallel loop and reported before exit.
-@@ -83,6 +85,8 @@ int main(int argc, char** argv)
+@@ -45,6 +48,7 @@ static std::vector<ShaderFailure> g_failures;
+ 
+ int main(int argc, char** argv)
+ {
++    setvbuf(stdout, nullptr, _IONBF, 0);
+ #ifndef XENOS_RECOMP_INPUT
+     if (argc < 4)
+     {
+@@ -83,13 +87,14 @@ int main(int argc, char** argv)
      else if (const char* env = std::getenv("XENOS_RECOMP_HLSL_DUMP"))
          hlslDumpDir = env;
  
@@ -58,17 +85,41 @@ index 754198c..5ee2ca9 100644
      size_t includeSize = 0;
      auto includeData = readAllBytes(includeInput, includeSize);
      std::string_view include(reinterpret_cast<const char*>(includeData.get()), includeSize);
-@@ -107,7 +111,8 @@ int main(int argc, char** argv)
+ 
+     if (std::filesystem::is_directory(input))
+     {
+-        std::vector<std::unique_ptr<uint8_t[]>> files;
+         std::map<XXH64_hash_t, RecompiledShader> shaders;
+ 
+         for (auto& file : std::filesystem::recursive_directory_iterator(input))
+@@ -107,7 +112,18 @@ int main(int argc, char** argv)
              for (size_t i = 0; fileSize > sizeof(ShaderContainer) && i < fileSize - sizeof(ShaderContainer) - 1;)
              {
                  auto shaderContainer = reinterpret_cast<const ShaderContainer*>(fileData.get() + i);
 -                size_t dataSize = shaderContainer->virtualSize + shaderContainer->physicalSize;
 +                const size_t virtualSize = shaderContainer->virtualSize;
-+                const size_t dataSize = virtualSize + sizeof(uint32_t) + shaderContainer->physicalSize;
++                const size_t physicalSize = shaderContainer->physicalSize;
++                const size_t unpaddedSize = virtualSize + physicalSize;
++                size_t physicalPadding = 0;
++                if (virtualSize + sizeof(uint32_t) <= fileSize - i)
++                {
++                    const auto marker = reinterpret_cast<const be<uint32_t>*>(
++                        fileData.get() + i + virtualSize);
++                    if (uint32_t(*marker) == physicalSize)
++                        physicalPadding = sizeof(uint32_t);
++                }
++                const size_t dataSize = unpaddedSize + physicalPadding;
  
                  if ((shaderContainer->flags & 0xFFFFFF00) == 0x102A1100 &&
                      dataSize <= (fileSize - i) &&
-@@ -123,6 +128,8 @@ int main(int argc, char** argv)
+@@ -118,11 +134,14 @@ int main(int argc, char** argv)
+                     auto shader = shaders.try_emplace(hash);
+                     if (shader.second)
+                     {
+-                        shader.first->second.data = fileData.get() + i;
++                        shader.first->second.data.assign(fileData.get() + i,
++                            fileData.get() + i + dataSize);
+                         std::string stem = file.path().stem().string();
                          if (containerIndex > 0)
                              stem += fmt::format(".{}", containerIndex);
                          shader.first->second.sourceName = std::move(stem);
@@ -77,7 +128,20 @@ index 754198c..5ee2ca9 100644
                          foundAny = true;
                      }
  
-@@ -142,12 +149,36 @@ int main(int argc, char** argv)
+@@ -131,23 +150,63 @@ int main(int argc, char** argv)
+                 }
+                 else
+                 {
+-                    i += sizeof(uint32_t);
++                    ++i; // TT shader records are byte-packed, not dword-aligned.
+                 }
+             }
+ 
+-            if (foundAny)
+-                files.emplace_back(std::move(fileData));
++            (void)foundAny;
+         }
+ 
          if (!hlslDumpDir.empty())
              std::filesystem::create_directories(hlslDumpDir);
  
@@ -97,17 +161,36 @@ index 754198c..5ee2ca9 100644
          std::atomic<uint32_t> progress = 0;
  
 -        std::for_each(std::execution::par_unseq, shaders.begin(), shaders.end(), [&](auto& hashShaderPair)
++        using ShaderPair = decltype(shaders)::value_type;
++        std::vector<ShaderPair*> compileOrder;
++        compileOrder.reserve(shaders.size());
++        for (auto& shader : shaders)
++            compileOrder.push_back(&shader);
++        // Runtime-generated containers use the markerless physical layout.
++        // Compile them before the large archive corpus so their result cannot
++        // depend on long-lived compiler state or peak batch memory.
++        std::stable_sort(compileOrder.begin(), compileOrder.end(),
++            [](const ShaderPair* lhs, const ShaderPair* rhs)
++            {
++                const bool lhsRuntime = lhs->second.sourcePath.find("runtime") != std::string::npos;
++                const bool rhsRuntime = rhs->second.sourcePath.find("runtime") != std::string::npos;
++                return lhsRuntime && !rhsRuntime;
++            });
++
 +        // DXC's COM implementation is unstable under this tool's parallel
 +        // invocation on Windows. Deterministic AOT is more important here.
-+        std::for_each(std::execution::seq, shaders.begin(), shaders.end(), [&](auto& hashShaderPair)
++        std::for_each(std::execution::seq, compileOrder.begin(), compileOrder.end(), [&](ShaderPair* hashShaderPair)
              {
-                 auto& shader = hashShaderPair.second;
-                 const XXH64_hash_t hash = hashShaderPair.first;
+-                auto& shader = hashShaderPair.second;
+-                const XXH64_hash_t hash = hashShaderPair.first;
++                auto& shader = hashShaderPair->second;
++                const XXH64_hash_t hash = hashShaderPair->first;
 +                if (std::getenv("XENOS_RECOMP_VERBOSE_RANGE") != nullptr)
 +                {
-+                    const auto container = reinterpret_cast<const ShaderContainer*>(shader.data);
-+                    const auto metadata = reinterpret_cast<const Shader*>(shader.data + container->shaderOffset);
-+                    fmt::println(stderr, "Container virtual={} physical={} shaderOffset={} codeOffset={} codeSize={}",
++                    const auto container = reinterpret_cast<const ShaderContainer*>(shader.data.data());
++                    const auto metadata = reinterpret_cast<const Shader*>(shader.data.data() + container->shaderOffset);
++                    fmt::println(stderr, "Container hash=0x{:016X} virtual={} physical={} shaderOffset={} codeOffset={} codeSize={}",
++                        hash,
 +                        uint32_t(container->virtualSize), uint32_t(container->physicalSize),
 +                        uint32_t(container->shaderOffset), uint32_t(metadata->physicalOffset), uint32_t(metadata->size));
 +                    fmt::println(stderr, "Source path={} offset={}", shader.sourcePath, shader.sourceOffset);
@@ -115,20 +198,47 @@ index 754198c..5ee2ca9 100644
  
                  auto recordFailure = [hash](const char* reason)
                  {
-@@ -159,6 +190,12 @@ int main(int argc, char** argv)
-                 recompiler = {};
-                 recompiler.recompile(shader.data, include);
+@@ -155,9 +214,27 @@ int main(int argc, char** argv)
+                     g_failures.push_back({hash, reason});
+                 };
  
+-                thread_local ShaderRecompiler recompiler;
+-                recompiler = {};
+-                recompiler.recompile(shader.data, include);
++                // ShaderRecompiler owns DXC/COM state and a large amount of
++                // per-program scratch storage. Reconstruct it for each shader:
++                // aggregate assignment left stale internal state after large
++                // LEGO batches and made runtime shaders order-dependent.
++                ShaderRecompiler recompiler;
++                try {
++                    recompiler.recompile(shader.data.data(), include);
++                } catch (const std::exception& error) {
++                    fprintf(stderr, "Recompile 0x%016llX: %s\n", static_cast<unsigned long long>(hash), error.what());
++                    fprintf(stderr, "Last HLSL: %s\n", recompiler.out.substr(recompiler.out.size() > 1024 ? recompiler.out.size() - 1024 : 0).c_str());
++                    recordFailure("recompiler-exception");
++                    return;
++                }
++                if (std::getenv("XENOS_RECOMP_VERBOSE_RANGE"))
++                    fprintf(stderr, "HLSL ready: %zu bytes\n", recompiler.out.size());
++
 +                if (!recompiler.valid)
 +                {
 +                    recordFailure("invalid-microcode-range");
 +                    return;
 +                }
-+
+ 
                  shader.specConstantsMask = recompiler.specConstantsMask;
  
-                 if (!hlslDumpDir.empty())
-@@ -193,35 +230,69 @@ int main(int argc, char** argv)
+@@ -181,6 +258,8 @@ int main(int argc, char** argv)
+ 
+ #ifdef XENOS_RECOMP_DXIL
+                 shader.dxil = dxcCompiler.compile(recompiler.out, recompiler.isPixelShader, recompiler.specConstantsMask != 0, false);
++                if (std::getenv("XENOS_RECOMP_VERBOSE_RANGE"))
++                    fprintf(stderr, "DXIL compile returned\n");
+                 if (shader.dxil == nullptr)
+                 {
+                     recordFailure("dxc-dxil-compile-failed");
+@@ -193,35 +272,69 @@ int main(int argc, char** argv)
                  }
  #endif
  
@@ -214,7 +324,7 @@ index 754198c..5ee2ca9 100644
          fmt::println("Creating shader cache...");
  
          StringBuffer f;
-@@ -286,6 +357,9 @@ int main(int argc, char** argv)
+@@ -286,6 +399,9 @@ int main(int argc, char** argv)
          f.println("const size_t g_shaderCacheEntryCount = {};", shaders.size());
  
          writeAllBytes(output, f.out.data(), f.out.size());
@@ -224,11 +334,33 @@ index 754198c..5ee2ca9 100644
      }
      else
      {
+diff --git a/XenosRecomp/shader.h b/XenosRecomp/shader.h
+index 67968f6..ab25e58 100644
+--- a/XenosRecomp/shader.h
++++ b/XenosRecomp/shader.h
+@@ -104,4 +104,15 @@ struct ShaderContainer
+     be<uint32_t> shaderOffset;
+     be<uint32_t> field1C;
+     be<uint32_t> field20;
+-};
+\ No newline at end of file
++
++    uint32_t physicalBase() const
++    {
++        const uint32_t virtualBytes = virtualSize;
++        const auto marker = reinterpret_cast<const be<uint32_t>*>(
++            reinterpret_cast<const uint8_t*>(this) + virtualBytes);
++        // Archived LEGO containers repeat physicalSize at the virtual/physical
++        // boundary. Runtime-compiled containers omit that four-byte marker.
++        return virtualBytes + (uint32_t(*marker) == uint32_t(physicalSize)
++            ? sizeof(uint32_t) : 0u);
++    }
++};
 diff --git a/XenosRecomp/shader_common.h b/XenosRecomp/shader_common.h
-index 63c37c9..64e2d6c 100644
+index 63c37c9..ae3b0fe 100644
 --- a/XenosRecomp/shader_common.h
 +++ b/XenosRecomp/shader_common.h
-@@ -44,17 +44,17 @@ struct PushConstants
+@@ -44,17 +44,20 @@ struct PushConstants
  
  #ifdef REBLUE_RECOMP
  // 256-bit boolean register file (BD bool addresses reach ~158), then per-usage 16-bit-pair swap masks.
@@ -254,12 +386,21 @@ index 63c37c9..64e2d6c 100644
 +#define g_SwappedPositions         vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 576)
 +#define g_SintTexcoords            vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 580)
 +#define g_ShadowPcfScale           vk::RawBufferLoad<float>(g_PushConstants.SharedConstants + 584)
++#ifdef LEGO_NATIVE_GPU
++#define g_ColorOutputScale        vk::RawBufferLoad<float4>(g_PushConstants.SharedConstants + 608)
++#endif
  #else
  #define g_Booleans                 vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 256)
  #define g_SwappedTexcoords         vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 260)
-@@ -70,17 +70,17 @@ struct PushConstants
+@@ -69,18 +72,24 @@ struct PushConstants
+ #else
  
  #ifdef REBLUE_RECOMP
++#ifdef LEGO_NATIVE_GPU
++#define LEGO_SHARED_CONSTANTS() float4 g_ColorOutputScale : packoffset(c38);
++#else
++#define LEGO_SHARED_CONSTANTS()
++#endif
  #define DEFINE_SHARED_CONSTANTS() \
 -    uint4 g_BooleansArr[2] : packoffset(c16); \
 -    uint g_SwappedTexcoords : packoffset(c18.x); \
@@ -282,11 +423,12 @@ index 63c37c9..64e2d6c 100644
 +    uint g_SwappedBlendWeights : packoffset(c35.w); \
 +    uint g_SwappedPositions : packoffset(c36.x); \
 +    uint g_SintTexcoords : packoffset(c36.y); \
-+    float g_ShadowPcfScale : packoffset(c36.z);
++    float g_ShadowPcfScale : packoffset(c36.z); \
++    LEGO_SHARED_CONSTANTS()
  
  #define g_Booleans(i) (g_BooleansArr[(i) / 4][(i) % 4])
  #else
-@@ -118,6 +118,12 @@ float4 tfetch2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float
+@@ -118,6 +127,12 @@ float4 tfetch2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float
      return texture.Sample(g_SamplerDescriptorHeap[samplerDescriptorIndex], texCoord + offset / getTexture2DDimensions(texture));
  }
  
@@ -299,7 +441,7 @@ index 63c37c9..64e2d6c 100644
  float2 getWeights2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float2 texCoord, float2 offset)
  {
      Texture2D<float4> texture = g_Texture2DDescriptorHeap[resourceDescriptorIndex];
-@@ -221,6 +227,11 @@ float4 tfetch3D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float
+@@ -221,6 +236,11 @@ float4 tfetch3D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float
      return g_Texture3DDescriptorHeap[resourceDescriptorIndex].Sample(g_SamplerDescriptorHeap[samplerDescriptorIndex], texCoord);
  }
  
@@ -311,7 +453,7 @@ index 63c37c9..64e2d6c 100644
  struct CubeMapData
  {
  	#ifdef REBLUE_RECOMP
-@@ -239,6 +250,11 @@ float4 tfetchCube(uint resourceDescriptorIndex, uint samplerDescriptorIndex, flo
+@@ -239,6 +259,11 @@ float4 tfetchCube(uint resourceDescriptorIndex, uint samplerDescriptorIndex, flo
      return g_TextureCubeDescriptorHeap[resourceDescriptorIndex].Sample(g_SamplerDescriptorHeap[samplerDescriptorIndex], cubeMapData.cubeMapDirections[texCoord.z]);
  }
  
@@ -324,7 +466,7 @@ index 63c37c9..64e2d6c 100644
  // DEC3N normal decode; IA binds as R32_UINT so lane .x carries the raw bits (asuint recovers them).
  float4 tfetchR11G11B10(float4 value)
 diff --git a/XenosRecomp/shader_recompiler.cpp b/XenosRecomp/shader_recompiler.cpp
-index feaa90b..5e34dc0 100644
+index feaa90b..32e74f7 100644
 --- a/XenosRecomp/shader_recompiler.cpp
 +++ b/XenosRecomp/shader_recompiler.cpp
 @@ -372,7 +372,7 @@ void ShaderRecompiler::recompile(const TextureFetchInstruction& instr, bool bicu
@@ -389,7 +531,25 @@ index feaa90b..5e34dc0 100644
                  }
              }
  
-@@ -1368,11 +1358,11 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -699,6 +689,7 @@ void ShaderRecompiler::recompile(const AluInstruction& instr)
+                 break;           
+             case ExportRegister::PSDepth:
+                 exportRegister = "oDepth";
++                exportsDepth = true;
+                 break;
+             }
+         }
+@@ -727,7 +718,8 @@ void ShaderRecompiler::recompile(const AluInstruction& instr)
+             default:
+             {
+                 auto findResult = interpolators.find(instr.vectorDest);
+-                assert(findResult != interpolators.end());
++                if (findResult == interpolators.end())
++                    throw std::runtime_error(fmt::format("unsupported vertex export register {} (no interpolator; memexport requires writeback)", uint32_t(instr.vectorDest)));
+                 exportRegister = findResult->second;
+                 break;
+             }
+@@ -1368,11 +1360,11 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
              for (size_t j = 0; j < std::size(TEXTURE_DIMENSIONS); j++)
              {
                  println("#define {}_Texture{}DescriptorIndex vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {})",
@@ -403,7 +563,7 @@ index feaa90b..5e34dc0 100644
  
              samplers.emplace(constantInfo->registerIndex, constantName);
              break;
-@@ -1382,18 +1372,18 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1382,18 +1374,18 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
      }
  
  #ifdef REBLUE_RECOMP
@@ -426,7 +586,7 @@ index feaa90b..5e34dc0 100644
      }
  #endif
  
-@@ -1401,37 +1391,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1401,37 +1393,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
  
      println("cbuffer {}ShaderConstants : register(b{}, space4)", isPixelShader ? "Pixel" : "Vertex", isPixelShader ? 1 : 0);
      out += "{\n";
@@ -465,7 +625,7 @@ index feaa90b..5e34dc0 100644
  
      out += "};\n\n";
  
-@@ -1450,33 +1410,39 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1450,33 +1412,39 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
              for (size_t j = 0; j < std::size(TEXTURE_DIMENSIONS); j++)
              {
                  println("\tuint {}_Texture{}DescriptorIndex : packoffset(c{}.{});",
@@ -510,10 +670,21 @@ index feaa90b..5e34dc0 100644
      out += "#endif\n";
  
      for (uint32_t i = 0; i < constantTableContainer->constantTable.constants; i++)
-@@ -1535,16 +1501,14 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1514,6 +1482,9 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+ 
+     out += "void main(\n";
+ 
++    size_t depthSignatureOffset = 0;
++    size_t depthInitializerOffset = 0;
++
+     if (isPixelShader)
+     {
+         out += "\tin float4 iPos : SV_Position,\n";
+@@ -1534,17 +1505,15 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+         out += "\tin uint iFace : SV_IsFrontFace\n";
          out += "#endif\n";
  
-         auto pixelShader = reinterpret_cast<const PixelShader*>(shader);
+-        auto pixelShader = reinterpret_cast<const PixelShader*>(shader);
 -        if (pixelShader->outputs & PIXEL_SHADER_OUTPUT_COLOR0)
 -            out += ",\n\tout float4 oC0 : SV_Target0";
 -        if (pixelShader->outputs & PIXEL_SHADER_OUTPUT_COLOR1)
@@ -525,17 +696,18 @@ index feaa90b..5e34dc0 100644
 -        if (pixelShader->outputs & PIXEL_SHADER_OUTPUT_DEPTH)
 -            out += ",\n\tout float oDepth : SV_Depth";
 +        // Some LEGO containers under-report MRT outputs in reflection while
-+        // the microcode still exports them. A superset signature is harmless
-+        // in D3D12 and prevents valid shaders from failing AOT compilation.
++        // the microcode still exports them. Keep the color-output superset,
++        // but add SV_Depth only after decoding an actual depth export. Merely
++        // declaring SV_Depth overrides raster depth, even with no guest export.
 +        out += ",\n\tout float4 oC0 : SV_Target0";
 +        out += ",\n\tout float4 oC1 : SV_Target1";
 +        out += ",\n\tout float4 oC2 : SV_Target2";
 +        out += ",\n\tout float4 oC3 : SV_Target3";
-+        out += ",\n\tout float oDepth : SV_Depth";
++        depthSignatureOffset = out.size();
      }
      else
      {
-@@ -1606,6 +1570,21 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1606,6 +1575,21 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
      out += ")\n";
      out += "{\n";
  
@@ -551,23 +723,23 @@ index feaa90b..5e34dc0 100644
 +        out += "\toC1 = 0.0;\n";
 +        out += "\toC2 = 0.0;\n";
 +        out += "\toC3 = 0.0;\n";
-+        out += "\toDepth = 0.0;\n";
++        depthInitializerOffset = out.size();
 +    }
 +
  #ifdef UNLEASHED_RECOMP
      if (hasMtxProjection)
      {
-@@ -1628,7 +1607,8 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1628,7 +1612,8 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
          while (*definitions != 0)
          {
              auto definition = reinterpret_cast<const Float4Definition*>(definitions);
 -            auto value = reinterpret_cast<const be<uint32_t>*>(shaderData + shaderContainer->virtualSize + definition->physicalOffset);
-+            const uint32_t physicalBase = uint32_t(shaderContainer->virtualSize) + sizeof(uint32_t);
++            const uint32_t physicalBase = shaderContainer->physicalBase();
 +            auto value = reinterpret_cast<const be<uint32_t>*>(shaderData + physicalBase + definition->physicalOffset);
              for (uint16_t i = 0; i < (definition->count + 3) / 4; i++)
              {
  #ifdef REBLUE_RECOMP
-@@ -1659,11 +1639,13 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1659,11 +1644,13 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
                      }
                      return fmt::format("asfloat(0x{:X}u)", u);
                  };
@@ -581,7 +753,7 @@ index feaa90b..5e34dc0 100644
                  println("\tfloat4 c{} = asfloat(uint4(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}));",
                      definition->registerIndex + i - (isPixelShader ? 256 : 0), value[0].get(), value[1].get(), value[2].get(), value[3].get());
  #endif
-@@ -1692,7 +1674,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1692,7 +1679,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
  
                  value = definition->values[i].get();
  
@@ -590,7 +762,7 @@ index feaa90b..5e34dc0 100644
                      (definition->registerIndex - 8992) / 4 + i, x, y, z, w);
              }
              definitions += 2;
-@@ -1702,7 +1684,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1702,7 +1689,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
          out += "\n";
      }
  
@@ -599,7 +771,7 @@ index feaa90b..5e34dc0 100644
  
      uint32_t interpolatorCount = (shader->interpolatorInfo >> 5) & 0x1F;
  
-@@ -1744,7 +1726,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1744,7 +1731,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
          out += "\n";
      }
  
@@ -608,17 +780,17 @@ index feaa90b..5e34dc0 100644
      {
          if (!printedRegisters[i])
          {
-@@ -1782,7 +1764,8 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1782,7 +1769,8 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
  #endif
      }
  
 -    const be<uint32_t>* code = reinterpret_cast<const be<uint32_t>*>(shaderData + shaderContainer->virtualSize + shader->physicalOffset);
-+    const uint32_t physicalBase = uint32_t(shaderContainer->virtualSize) + sizeof(uint32_t);
++    const uint32_t physicalBase = shaderContainer->physicalBase();
 +    const be<uint32_t>* code = reinterpret_cast<const be<uint32_t>*>(shaderData + physicalBase + shader->physicalOffset);
  
      union
      {
-@@ -1798,7 +1781,13 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1798,7 +1786,13 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
  
      auto controlFlowCode = code;
      uint32_t instrAddress = 0;
@@ -633,7 +805,7 @@ index feaa90b..5e34dc0 100644
      bool simpleControlFlow = true;
  
      // Per-instruction control flow summary for the structurizer below.
-@@ -2209,6 +2198,16 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -2209,6 +2203,16 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
              }
              }
  
@@ -650,16 +822,45 @@ index feaa90b..5e34dc0 100644
              auto instructionCode = code + address * 3;
              
              for (uint32_t i = 0; i < count; i++)
+@@ -2315,6 +2319,13 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+                     indent();
+                     out += '}';
+                 #endif
++                    // Native EDRAM format/exponent is bound dynamically per RT.
++                    // Alpha testing above uses the original shader alpha.
++                    out += "\n#ifdef LEGO_NATIVE_GPU\n";
++                    out += "\toC0 *= g_ColorOutputScale.x;\n";
++                    out += "\toC1 *= g_ColorOutputScale.y;\n";
++                    out += "\toC2 *= g_ColorOutputScale.z;\n";
++                    out += "\toC3 *= g_ColorOutputScale.w;\n#endif\n";
+                 }
+                 else
+                 {
+@@ -2390,4 +2401,13 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+ #endif
+ 
+     out += "}";
++
++    if (isPixelShader && exportsDepth)
++    {
++        // Insert from back to front so offsets remain valid. Keep the existing
++        // deterministic initialization for real depth-export shaders only;
++        // ordinary shaders must retain fixed-function raster depth instead.
++        out.insert(depthInitializerOffset, "\toDepth = 0.0;\n");
++        out.insert(depthSignatureOffset, ",\n\tout float oDepth : SV_Depth");
++    }
+ }
 diff --git a/XenosRecomp/shader_recompiler.h b/XenosRecomp/shader_recompiler.h
-index 791def7..c7336ad 100644
+index 791def7..b307770 100644
 --- a/XenosRecomp/shader_recompiler.h
 +++ b/XenosRecomp/shader_recompiler.h
-@@ -24,11 +24,13 @@ struct StringBuffer
+@@ -24,11 +24,14 @@ struct StringBuffer
  struct ShaderRecompiler : StringBuffer
  {
      uint32_t indentation = 0;
 +    bool valid = true;
      bool isPixelShader = false;
++    bool exportsDepth = false;
      const uint8_t* constantTableData = nullptr;
      std::unordered_map<uint32_t, VertexElement> vertexElements;
      std::unordered_map<uint32_t, std::string> interpolators;
@@ -668,4 +869,12 @@ index 791def7..c7336ad 100644
      std::unordered_map<uint32_t, const char*> boolConstants;
      std::unordered_map<uint32_t, const char*> samplers;
      std::unordered_map<uint32_t, uint32_t> ifEndLabels;
-
+@@ -50,6 +53,8 @@ struct ShaderRecompiler : StringBuffer
+ 
+     void indent()
+     {
++        if (indentation > 256)
++            throw std::runtime_error("unbalanced shader control-flow indentation");
+         for (uint32_t i = 0; i < indentation; i++)
+             out += '\t';
+     }
