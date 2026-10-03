@@ -722,7 +722,12 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   auto* pipeline = GetPipeline(key, declaration, topology, depth.format);
   if (!pipeline) {
     LongProbeEvent("draw_pipeline_unavailable", true, "VS=", key.vertex_shader_hash,
-        "PS=", key.pixel_shader_hash, "decl_hash=", key.declaration_hash);
+        "PS=", key.pixel_shader_hash, "decl_hash=", key.declaration_hash,
+        "guest_vs=", key.vertex_shader, "guest_ps=", key.pixel_shader,
+        "guest_decl=", bindings.vertex_declaration, "primitive=", primitive_type,
+        "indexed=", indexed, "start=", start, "count=", count,
+        "base_vertex=", base_vertex, "rt=", bindings.render_targets[0],
+        "depth=", bindings.depth_stencil);
     return false;
   }
   timing.Next();
@@ -1024,6 +1029,9 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
         LongProbeOnce(key.vertex_shader_hash ^ key.pixel_shader_hash ^ declaration.content_hash)))
       LongProbeEvent("draw_stage", false, "VS=", key.vertex_shader_hash,
           "PS=", key.pixel_shader_hash, "count=", count, "indexed=", indexed,
+          "guest_vs=", key.vertex_shader, "guest_ps=", key.pixel_shader,
+          "guest_decl=", bindings.vertex_declaration, "primitive=", primitive_type,
+          "start=", start, "base_vertex=", base_vertex,
           "decl_hash=", declaration.content_hash, "rt=", bindings.render_targets[0],
           "width=", color.width, "height=", color.height, "format=", u32(color.format),
           "depth=", bindings.depth_stencil, "write_mask=", key.color_write_mask,
