@@ -1,6 +1,7 @@
 #include "gpu_native/device.h"
 #include "gpu_native/descriptor_retirement.h"
 #include "gpu_native/completion_queue.h"
+#include "gpu_native/present_rect.h"
 
 #include "gpu_native/buffers.h"
 #include "gpu_native/queries.h"
@@ -1170,8 +1171,14 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
 
   const u32 width = state.swap_chain->getWidth();
   const u32 height = state.swap_chain->getHeight();
+  const auto source_desc = static_cast<plume::D3D12Texture*>(texture)->d3d->GetDesc();
+  const auto present_rect = FitPresentRect(u32(source_desc.Width), source_desc.Height,
+                                         width, height);
+  // Clear the whole acquired image, including bars left by a previous size.
+  commands->clearColor(0, plume::RenderColor(0.0f, 0.0f, 0.0f, 1.0f));
   commands->setViewports(
-      plume::RenderViewport(0.0f, 0.0f, float(width), float(height)));
+      plume::RenderViewport(float(present_rect.x), float(present_rect.y),
+                            float(present_rect.width), float(present_rect.height)));
   commands->setScissors(plume::RenderRect(0, 0, width, height));
   commands->setGraphicsPipelineLayout(state.pipeline_layout.get());
   commands->setGraphicsDescriptorSet(state.texture_descriptors.get(), 0);
