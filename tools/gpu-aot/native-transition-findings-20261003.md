@@ -23,6 +23,14 @@ regular rendering does not enable these readbacks. The diagnostic probe
 `oct03-enter-burst` captured240 frames and was closed. Heavy captures are not
 valid performance measurements.
 
+Offline examination of the240 final DDS frames confirms the corruption:
+snapshot-relative frames1557..1560 have a blue tile (1049 sampled blue pixels,
+zero red); the surrounding title frames have a red tile and zero sampled blue.
+Saved image `session-20261003/enter-gpu-f1557.png` reproduces the user's yellow
+lights and blue tile; `enter-gpu-f1563.png` shows normal cyan/red again. The
+snapshot anchor is absolute frame777, so frame1557 corresponds to the trace's
+frame2334 swizzle0xA0A event. These are pre-fix captures, not proof of the fix.
+
 The earlier aspect-ratio correction was confirmed in normal title window
 captures: the portrait monitor window now has black letterbox bars. This does
 not establish the remaining HUD portrait or general gameplay correctness.
