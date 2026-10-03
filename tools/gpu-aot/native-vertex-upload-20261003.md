@@ -29,6 +29,9 @@ Verification:
   writes; trial order alternates. Clang20.1.8,-O2,-march=x86-64-v3:
   old7.67321/7.59433/8.03351ms, fused0.624520/0.576703/0.585677ms.
   Raw log: `session-20261003/vertex-upload-benchmark-v3.log`.
+  Repeated at the actual native build's-O3 ISA flags: old6.56941/6.61659/
+  6.52649ms, fused0.548512/0.405378/0.413095ms; raw log
+  `session-20261003/vertex-upload-benchmark-native.log`.
 
 Reproduce after loading `E:\devtools\env.ps1`:
 
