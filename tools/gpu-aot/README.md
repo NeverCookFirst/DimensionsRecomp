@@ -319,9 +319,15 @@ this short run. The character portrait remains a blank blue circle. This is
 a partial improvement, not completed hub correctness or performance validation.
 Both native probes were closed; further probes use monitor 2 per the user's
 October 3 instruction. Do not infer a performance result from snapshot/trace
-runs. Emulated comparison and further character/portrait investigation remain.
+runs. The subsequent emulated Vorton comparison shows Sonic's portrait; native
+Sonic and Batman both have the shared empty portrait. After the Enter burst
+test the user prohibited further game launches until explicitly authorized.
+Offline follow-ups: `native-transition-findings-20261003.md`,
+`native-buffer-watch-20261003.md`, `native-vertex-upload-20261003.md`, and
+`avengers-reference-findings-20261003.md`. The fused vertex optimization is
+built; buffer watches remain opt-in. No post-change gameplay FPS claim.
 
-The production runtime bank now contains 118 validated containers, 18722
+The September30 production runtime bank contained 118 validated containers, 18722
 microcode signatures and 192 linked runtime variants. It retains the current
 624-byte constants ABI. The six late containers had valid nonzero instruction
 streams despite leading zero words. `merge_microcode_index.py` preserves the
