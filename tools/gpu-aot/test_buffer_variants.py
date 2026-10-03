@@ -30,6 +30,7 @@ h.write_text(r'''
 #define XXH_INLINE_ALL
 #include <xxhash.h>
 #include "gpu_native/vertex_byte_order.h"
+#include "gpu_native/vertex_upload.h"
 #include "gpu_native/memory_watch.h"
 #include "gpu_native/buffer_header.h"
 #include "gpu_native/buffer_window.h"
@@ -254,7 +255,7 @@ int main() {
 }
 ''')
 exe=a.output/'buffer-variants-test.exe'
-subprocess.run(['clang++','-std=c++20','-DNOMINMAX','-I'+str(root/'rexlego/src'),
+subprocess.run(['clang++','-std=c++20','-O2','-mssse3','-DNOMINMAX','-I'+str(root/'rexlego/src'),
  '-I'+str(root/'rexglue-sdk/thirdparty/xxHash'),str(h),'-o',str(exe)],check=True)
 env=dict(os.environ);env.pop('LEGO_NATIVE_AUDIT_BUFFER_WATCH',None)
 subprocess.run([str(exe.resolve())],env=env,check=True)

@@ -1,6 +1,7 @@
 #include "gpu_native/buffers.h"
 #include "gpu_native/buffer_header.h"
 #include "gpu_native/memory_watch.h"
+#include "gpu_native/vertex_upload.h"
 
 #include <cstring>
 #include <cstdlib>
@@ -297,13 +298,17 @@ plume::RenderBuffer* ResolveBufferContents(const std::shared_ptr<BufferResource>
   // then perform a sequential write-only copy into the new GPU version.
   std::vector<u8> converted;
   void* conversion_target = mapped;
-  if (kind == BufferKind::kVertex && !byte_order.reversed_elements.empty()) {
-    converted.resize(resource->length);
-    conversion_target = converted.data();
+  const bool fused_upload = kind == BufferKind::kVertex &&
+      WriteAlignedVertexUpload(static_cast<u8*>(mapped), source, resource->length, conversion_order);
+  if (!fused_upload) {
+    if (kind == BufferKind::kVertex && !byte_order.reversed_elements.empty()) {
+      converted.resize(resource->length);
+      conversion_target = converted.data();
+    }
+    ByteSwapElements(conversion_target, source, resource->length, element_size);
   }
-  ByteSwapElements(conversion_target, source, resource->length, element_size);
   if (timing) g_buffer_timing.converted_bytes += resource->length;
-  if (kind == BufferKind::kVertex &&
+  if (!fused_upload && kind == BufferKind::kVertex &&
       !ApplyVertexByteOrder(static_cast<u8*>(conversion_target), resource->length, conversion_order)) {
     next_buffer->unmap();
     REXLOG_WARN("Native GPU: rejected invalid packed vertex layout stride={}",
