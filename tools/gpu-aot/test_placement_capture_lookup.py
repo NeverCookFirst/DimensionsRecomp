@@ -16,6 +16,8 @@ def main():
     p.add_argument('index', type=Path)
     p.add_argument('cache', type=Path)
     p.add_argument('output', type=Path)
+    p.add_argument('--main-cache', type=Path,
+                   help='Also expose the compiled main archive, as gameplay does')
     a = p.parse_args()
     root = Path(__file__).resolve().parents[2]
     a.output.mkdir(parents=True, exist_ok=True)
@@ -23,6 +25,9 @@ def main():
     hashes = re.findall(r'\{ 0x([0-9A-Fa-f]+), \d+, \d+, \d+, \d+, \d+ \}', cache)
     if not hashes:
         raise ValueError('No compiled cache entries')
+    if a.main_cache:
+        hashes += re.findall(r'\{ 0x([0-9A-Fa-f]+), \d+, \d+, \d+, \d+, \d+ \}',
+                             a.main_cache.read_text())
     index = a.index.read_text()
     sizes = re.findall(r'\{\s*0x[\dA-Fa-f]+,\s*0x[\dA-Fa-f]+,\s*0x[\dA-Fa-f]+,\s*(\d+),', index)
     padding = max(map(int, sizes))
