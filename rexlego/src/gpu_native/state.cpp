@@ -52,6 +52,24 @@ void BindDepthStencil(u32 surface) {
   g_bindings.depth_stencil = surface;
 }
 
+void BeginExportBinding(u32 index, u32 resource, u32 format) {
+  std::lock_guard lock(g_bindings_mutex);
+  g_bindings.export_index = index;
+  g_bindings.export_resource = resource;
+  g_bindings.export_format = format;
+}
+
+void EndExportBinding(u32 index, u32 resource, u32 format) {
+  std::lock_guard lock(g_bindings_mutex);
+  if (g_bindings.export_index == index &&
+      g_bindings.export_resource == resource &&
+      g_bindings.export_format == format) {
+    g_bindings.export_index = 0;
+    g_bindings.export_resource = 0;
+    g_bindings.export_format = 0;
+  }
+}
+
 u32 BoundRenderTarget(u32 index) {
   if (index >= kNativeRenderTargets) {
     return 0;

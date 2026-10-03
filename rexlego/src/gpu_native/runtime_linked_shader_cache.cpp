@@ -1,0 +1,6 @@
+#define g_linkedShaderCacheEntries g_runtimeLinkedShaderCacheEntries
+#define g_linkedShaderCacheEntryCount g_runtimeLinkedShaderCacheEntryCount
+#define g_compressedLinkedDxilCache g_runtimeCompressedLinkedDxilCache
+#define g_linkedDxilCacheCompressedSize g_runtimeLinkedDxilCacheCompressedSize
+#define g_linkedDxilCacheDecompressedSize g_runtimeLinkedDxilCacheDecompressedSize
+#include "../../out/native-gpu/runtime-linked-dxil-cache.cpp"

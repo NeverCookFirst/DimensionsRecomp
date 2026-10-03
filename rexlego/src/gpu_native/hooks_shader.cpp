@@ -1,4 +1,4 @@
-#include <rex/hook.h>
+#include "gpu_native/renderer_route.h"
 #include <rex/ppc/context.h>
 #include <rex/types.h>
 
@@ -10,6 +10,8 @@
 
 extern "C" void __imp__sub_83FC4CE0(PPCContext& __restrict ctx, u8* base);
 extern "C" void __imp__sub_83FC59D8(PPCContext& __restrict ctx, u8* base);
+extern "C" void __imp__sub_83FB7658(PPCContext& __restrict ctx, u8* base);
+extern "C" void __imp__sub_83FB67F0(PPCContext& __restrict ctx, u8* base);
 
 namespace legodimensions::gpu_native {
 namespace {
@@ -43,6 +45,16 @@ REX_HOOK(sub_83FB7528, legodimensions::gpu_native::CreatePixelShaderHook);
 REX_HOOK(sub_83FB7750, legodimensions::gpu_native::CreateVertexShaderHook);
 REX_HOOK(sub_83FB6828, legodimensions::gpu_native::SetPixelShaderHook);
 REX_HOOK(sub_83FB6A30, legodimensions::gpu_native::SetVertexShaderHook);
+
+REX_HOOK_RAW(sub_83FB7658) {
+  legodimensions::gpu_native::InvalidatePlacementShader(ctx.r3.u32);
+  __imp__sub_83FB7658(ctx, base);
+}
+
+REX_HOOK_RAW(sub_83FB67F0) {
+  legodimensions::gpu_native::InvalidatePlacementShader(ctx.r3.u32);
+  __imp__sub_83FB67F0(ctx, base);
+}
 
 // Resource AddRef/Release serve all D3D resource types. Only intercept objects
 // created by the native shader hooks; every other pointer retains the exact

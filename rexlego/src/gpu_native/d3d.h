@@ -124,15 +124,16 @@ struct D3DDevice {
   be_u32 get_sampler_state[kSamplerStateCount];
   u8 unknown_0408[0x480 - 0x408];
   FetchConstant fetch_constants[kFetchConstantCount];
-  u8 unknown_06F0[0x3208 - 0x6F0];
+  u8 unknown_06F0[0x2FD0 - 0x6F0];
   be_u32 vertex_declaration;
+  u8 unknown_2FD4[0x3208 - 0x2FD4];
+  be_u32 fvf;
   be_u32 index_buffer;
   be_u32 render_targets[kNativeRenderTargets];
   be_u32 depth_stencil;
   be_u32 vertex_stream_buffers[18];
   u8 unknown_326C[0x3278 - 0x326C];
   be_u32 textures[kNativeTextureSlots];
-  u8 unknown_32B8[0x32E0 - 0x32B8];
   D3DViewport9 viewport;
   be_u32 viewport_reserved;
   D3DRect scissor;
@@ -149,7 +150,7 @@ static_assert(offsetof(D3DDevice, get_sampler_state) == 0x3B8);
 static_assert(offsetof(D3DDevice, fetch_constants) == 0x480);
 static_assert(offsetof(D3DDevice, viewport) == 0x32E0);
 static_assert(offsetof(D3DDevice, index_buffer) == 0x320C);
-static_assert(offsetof(D3DDevice, vertex_declaration) == 0x3208);
+static_assert(offsetof(D3DDevice, vertex_declaration) == 0x2FD0);
 static_assert(offsetof(D3DDevice, render_targets) == 0x3210);
 static_assert(offsetof(D3DDevice, depth_stencil) == 0x3220);
 static_assert(offsetof(D3DDevice, vertex_stream_buffers) == 0x3224);
@@ -157,5 +158,7 @@ static_assert(offsetof(D3DDevice, textures) == 0x3278);
 static_assert(offsetof(D3DDevice, scissor) == 0x32FC);
 static_assert(offsetof(D3DDevice, pixel_shader) == 0x330C);
 static_assert(offsetof(D3DDevice, vertex_shader) == 0x3310);
+
+void SetNativeTexture(D3DDevice* device, u32 sampler, u32 texture, u64 dirty);
 
 }  // namespace legodimensions::gpu_native

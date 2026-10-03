@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <rex/types.h>
+#include "gpu_native/pool_copy.h"
 
 namespace plume {
 struct RenderShader;
@@ -27,10 +28,18 @@ bool BindShader(ShaderStage stage, u32 guest_address);
 // A null result marks the containing render pass as unsupported by native GPU.
 plume::RenderShader* ResolveBoundShader(ShaderStage stage, u32 spec_constants);
 u32 BoundShaderAddress(ShaderStage stage);
+u32 BoundShaderTextureMask(ShaderStage stage);
+u64 BoundShaderHash(ShaderStage stage);
+// Same microcode skip list used by the existing Graphics/DoF setting.
+bool ShouldSkipBoundPixelShader();
 
 bool IsNativeShader(u32 guest_address);
 u32 AddRefNativeShader(u32 guest_address);
 u32 ReleaseNativeShader(u32 guest_address);
+// XDK placement storage can be re-registered at the same guest address.
+// The next bind must resolve its new physical code rather than a stale record.
+void InvalidatePlacementShader(u32 guest_address);
+u32 InvalidatePoolCopyShaders(PhysicalCopyRange destination);
 
 // Must run before the Plume device is destroyed.
 void ResetShaderResources();

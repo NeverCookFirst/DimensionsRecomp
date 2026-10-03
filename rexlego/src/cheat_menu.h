@@ -6,6 +6,7 @@
 #pragma once
 
 #include <memory>
+#include <string_view>
 
 namespace rex::ui {
 class ImGuiDialog;
@@ -13,6 +14,7 @@ class ImGuiDrawer;
 }  // namespace rex::ui
 
 namespace legodimensions::cheats {
+inline constexpr std::string_view kDofPixelShaderHash = "CFEAC7ADB912F8A9";
 
 // Creates the DEL dialog. The caller owns it; destroying it closes the menu,
 // the same way the mod menu and the SDK overlays are toggled. The scanner

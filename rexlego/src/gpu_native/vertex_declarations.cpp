@@ -5,12 +5,14 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <plume_render_interface.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 #include <rex/system/xmemory.h>
+#include <xxhash.h>
 
 #include "gpu_native/d3d.h"
 #include "gpu_native/device.h"
@@ -51,6 +53,8 @@ static_assert(sizeof(GuestVertexElement) == 12);
 
 struct VertexDeclarationResource {
   u32 guest_address = 0;
+  u64 content_hash = 0;
+  bool owns_guest_memory = true;
   std::vector<plume::RenderInputElement> inputs;
   bool supported = true;
   u32 swapped_texcoords = 0;
@@ -61,6 +65,7 @@ struct VertexDeclarationResource {
   u32 swapped_positions = 0;
   u32 sint_texcoords = 0;
   bool has_r11g11b10_normal = false;
+  u64 reversed_byte_elements = 0;
 };
 
 std::mutex g_declarations_mutex;
@@ -108,8 +113,15 @@ plume::RenderFormat ConvertDeclFormat(u32 type) {
     case 0x001A2386: return RF::R8G8B8A8_UINT;
     case 0x002C2359: return RF::R16G16_SINT;
     case 0x001A235A: return RF::R16G16B16A16_SNORM;
+    case 0x001A225A: return RF::R16G16B16A16_SINT;
     case 0x001A2086:
     case 0x001A2186: return RF::R8G8B8A8_UNORM;
+    // TT UBYTE4[N] with WZYX component swizzle (bits 10..21 = 0x053).
+    // Sign bit 8 is CLEAR; bit 9 selects integer vs normalized conversion.
+    // Apply the component reversal to the host vertex upload, separately
+    // from the DWORD endian swap used for guest floating-point attributes.
+    case 0x00014C86: return RF::R8G8B8A8_UNORM;
+    case 0x00014E86: return RF::R8G8B8A8_UINT;
     case 0x002C2159: return RF::R16G16_SNORM;
     case 0x001A215A: return RF::R16G16B16A16_SNORM;
     case 0x002C2059: return RF::R16G16_UNORM;
@@ -146,29 +158,32 @@ std::shared_ptr<VertexDeclarationResource> FindDeclaration(u32 address) {
 }
 
 D3DResource* GuestHeader(u32 address) {
-  return reinterpret_cast<D3DResource*>(REX_KERNEL_MEMORY()->virtual_membase() +
-                                        address);
+  return REX_KERNEL_MEMORY()->TranslateVirtual<D3DResource*>(address);
 }
 
 }  // namespace
 
-u32 CreateVertexDeclarationResource(u32 elements_address) {
+static u32 BuildVertexDeclaration(u32 elements_address, u32 existing_address = 0,
+                                  u32 existing_count = 0) {
   if (!elements_address) {
     return 0;
   }
-  const auto* elements = reinterpret_cast<const GuestVertexElement*>(
-      REX_KERNEL_MEMORY()->virtual_membase() + elements_address);
-  u32 count = 0;
-  while (count < kMaxElements && static_cast<u16>(elements[count].stream) != 0xFF &&
+  const auto* elements =
+      REX_KERNEL_MEMORY()->TranslateVirtual<const GuestVertexElement*>(
+          elements_address);
+  u32 count = existing_count;
+  while (!existing_address && count < kMaxElements && static_cast<u16>(elements[count].stream) != 0xFF &&
          static_cast<u32>(elements[count].type) != 0xFFFFFFFFu) {
     ++count;
   }
-  if (count == kMaxElements) {
+  if (count >= kMaxElements) {
     REXLOG_ERROR("Native GPU: unterminated vertex declaration");
     return 0;
   }
 
   auto resource = std::make_shared<VertexDeclarationResource>();
+  resource->content_hash = XXH3_64bits(elements, count * sizeof(GuestVertexElement));
+  resource->owns_guest_memory = existing_address == 0;
   resource->inputs.reserve(count);
   for (u32 i = 0; i < count; ++i) {
     const auto& element = elements[i];
@@ -180,6 +195,8 @@ u32 CreateVertexDeclarationResource(u32 elements_address) {
     input.format = ConvertDeclFormat(element.type);
     input.slotIndex = element.stream;
     input.alignedByteOffset = element.offset;
+    if (u32(element.type) == 0x00014C86 || u32(element.type) == 0x00014E86)
+      resource->reversed_byte_elements |= u64{1} << i;
     if (input.format == plume::RenderFormat::UNKNOWN) {
       resource->supported = false;
       REXLOG_WARN("Native GPU: unsupported vertex element usage={} index={} "
@@ -256,30 +273,56 @@ u32 CreateVertexDeclarationResource(u32 elements_address) {
 
   const u32 allocation_size = 52 + (count + 1) * sizeof(GuestVertexElement);
   auto* memory = REX_KERNEL_MEMORY();
-  const u32 guest_address = memory->SystemHeapAlloc(allocation_size, 0x10);
+  const u32 guest_address = existing_address ? existing_address :
+      memory->SystemHeapAlloc(allocation_size, 0x10);
   if (!guest_address) {
     return 0;
   }
-  memory->Zero(guest_address, allocation_size);
-  auto* header = GuestHeader(guest_address);
-  header->common = kDeclarationFlag;
-  header->reference_count = 1;
-  header->base_flush = 0xFFFF0000u;
-  auto* bytes = memory->virtual_membase() + guest_address;
-  *reinterpret_cast<be_u32*>(bytes + 24) = count;
-  std::memcpy(bytes + 52, elements,
-              (count + 1) * sizeof(GuestVertexElement));
+  if (!existing_address) {
+    memory->Zero(guest_address, allocation_size);
+    auto* header = GuestHeader(guest_address);
+    header->common = kDeclarationFlag;
+    header->reference_count = 1;
+    header->base_flush = 0xFFFF0000u;
+    auto* bytes = memory->TranslateVirtual<uint8_t*>(guest_address);
+    *reinterpret_cast<be_u32*>(bytes + 24) = count;
+    std::memcpy(bytes + 52, elements,
+                (count + 1) * sizeof(GuestVertexElement));
+  }
 
   resource->guest_address = guest_address;
+  std::shared_ptr<VertexDeclarationResource> previous;
   {
     std::lock_guard lock(g_declarations_mutex);
-    g_declarations.emplace(guest_address, resource);
+    auto& entry = g_declarations[guest_address];
+    previous = std::exchange(entry, resource);
   }
+  if (previous) HostDevice::RetireResource(std::move(previous));
   return guest_address;
 }
 
+u32 CreateVertexDeclarationResource(u32 elements_address) {
+  return BuildVertexDeclaration(elements_address);
+}
+
 VertexDeclarationView ResolveVertexDeclaration(u32 guest_address) {
-  const auto resource = FindDeclaration(guest_address);
+  auto resource = FindDeclaration(guest_address);
+  if (guest_address && (!resource || !resource->owns_guest_memory)) {
+    const auto* words = REX_KERNEL_MEMORY()->TranslateVirtual<const be_u32*>(guest_address);
+    if ((static_cast<u32>(words[0]) & 0xFu) == 5 &&
+        static_cast<u32>(words[6]) < kMaxElements) {
+      const auto* elements = REX_KERNEL_MEMORY()->TranslateVirtual<const u8*>(guest_address + 52);
+      const u64 hash = XXH3_64bits(elements, u32(words[6]) * sizeof(GuestVertexElement));
+      if (!resource || resource->content_hash != hash) {
+        if (resource)
+          REXLOG_INFO("Native GPU: placement declaration contents changed at {:08X}", guest_address);
+        BuildVertexDeclaration(guest_address + 52, guest_address, words[6]);
+        resource = FindDeclaration(guest_address);
+      }
+    } else {
+      return {};
+    }
+  }
   if (!resource) {
     return {};
   }
@@ -293,7 +336,9 @@ VertexDeclarationView ResolveVertexDeclaration(u32 guest_address) {
           resource->swapped_blend_weights,
           resource->swapped_positions,
           resource->sint_texcoords,
-          resource->has_r11g11b10_normal};
+          resource->has_r11g11b10_normal,
+          resource->reversed_byte_elements,
+          resource->content_hash};
 }
 
 bool IsNativeVertexDeclaration(u32 guest_address) {
@@ -325,7 +370,7 @@ u32 ReleaseNativeVertexDeclaration(u32 guest_address) {
     g_declarations.erase(it);
   }
   HostDevice::RetireResource(released);
-  REX_KERNEL_MEMORY()->SystemHeapFree(guest_address);
+  if (released->owns_guest_memory) REX_KERNEL_MEMORY()->SystemHeapFree(guest_address);
   return 0;
 }
 
@@ -335,7 +380,7 @@ void ResetVertexDeclarations() {
     std::lock_guard lock(g_declarations_mutex);
     addresses.reserve(g_declarations.size());
     for (const auto& [address, resource] : g_declarations) {
-      addresses.push_back(address);
+      if (resource->owns_guest_memory) addresses.push_back(address);
     }
     g_declarations.clear();
   }

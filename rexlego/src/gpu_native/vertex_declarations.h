@@ -21,6 +21,8 @@ struct VertexDeclarationView {
   u32 swapped_positions = 0;
   u32 sint_texcoords = 0;
   bool has_r11g11b10_normal = false;
+  u64 reversed_byte_elements = 0;
+  u64 content_hash = 0;
 };
 
 u32 CreateVertexDeclarationResource(u32 elements_address);

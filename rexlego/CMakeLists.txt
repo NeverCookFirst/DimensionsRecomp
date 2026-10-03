@@ -56,6 +56,9 @@ if(LEGODIMENSIONS_NATIVE_GPU)
 
     list(APPEND LEGODIMENSIONS_SOURCES
         src/gpu_native/buffers.cpp
+        src/gpu_native/renderer_mode.cpp
+        src/gpu_native/memory_watch.cpp
+        src/gpu_native/queries.cpp
         src/gpu_native/device.cpp
         src/gpu_native/draw.cpp
         src/gpu_native/format.cpp
@@ -69,6 +72,8 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         src/gpu_native/state.cpp
         src/gpu_native/textures.cpp
         src/gpu_native/vertex_declarations.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/../rexglue-sdk/src/graphics/pipeline/texture/util.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../rexglue-sdk/src/graphics/pipeline/texture/info.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz/miniz.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd/zstddeclib.c"
     )
@@ -107,7 +112,8 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     # multi-megabyte generated source file while still making an enabled build
     # fail loudly if the AOT stage has not been run.
     set(LEGO_NATIVE_SHADER_CACHE
-        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/lego-dxil-cache.cpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/lego-dxil-cache.cpp"
+        CACHE FILEPATH "AOT DXIL cache to embed (keep older caches for rollback)")
     if(NOT EXISTS "${LEGO_NATIVE_SHADER_CACHE}")
         message(FATAL_ERROR
             "Native GPU needs ${LEGO_NATIVE_SHADER_CACHE}; run tools/gpu-aot first")
@@ -115,6 +121,24 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     target_sources(legodimensions PRIVATE "${LEGO_NATIVE_SHADER_CACHE}")
     set_source_files_properties("${LEGO_NATIVE_SHADER_CACHE}"
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    set(LEGO_NATIVE_MICROCODE_INDEX
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/lego-microcode-index.cpp")
+    if(NOT EXISTS "${LEGO_NATIVE_MICROCODE_INDEX}")
+        message(FATAL_ERROR
+            "Native GPU needs ${LEGO_NATIVE_MICROCODE_INDEX}; run lego_gpu_microcode_index first")
+    endif()
+    target_sources(legodimensions PRIVATE "${LEGO_NATIVE_MICROCODE_INDEX}")
+    set_source_files_properties("${LEGO_NATIVE_MICROCODE_INDEX}"
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    set(LEGO_NATIVE_RUNTIME_SHADER_CACHE
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/runtime-cache.cpp")
+    if(NOT EXISTS "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}")
+        message(FATAL_ERROR
+            "Native GPU needs ${LEGO_NATIVE_RUNTIME_SHADER_CACHE}; capture and compile runtime shaders first")
+    endif()
+    target_sources(legodimensions PRIVATE
+        src/gpu_native/runtime_shader_cache.cpp
+        src/gpu_native/runtime_linked_shader_cache.cpp)
 
     # XenosRecomp emits a DXIL library whenever a shader reads one of its two
     # specialization bits. Link every used value at build time; gameplay then
@@ -135,7 +159,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_BINARY_DIR}/generated/gpu_native/shaders")
     set(LEGO_NATIVE_DXC
         "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxc.exe")
-    foreach(LEGO_HOST_SHADER IN ITEMS copy_vs copy_color_ps)
+    foreach(LEGO_HOST_SHADER IN ITEMS copy_vs copy_color_ps resolve_color_ps depth_pack_ps depth_restore_ps)
         if(LEGO_HOST_SHADER STREQUAL "copy_vs")
             set(LEGO_HOST_SHADER_PROFILE vs_6_6)
         else()
@@ -164,6 +188,10 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     target_include_directories(legodimensions PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
+    add_executable(lego_gpu_microcode_index EXCLUDE_FROM_ALL
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/generate_microcode_index.cpp")
+    target_link_libraries(lego_gpu_microcode_index PRIVATE rex::xxhash)
+
     add_executable(lego_gpu_prelink EXCLUDE_FROM_ALL
         "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prelink_shader_cache.cpp"
         src/gpu_native/dxc_link.cpp
@@ -184,6 +212,26 @@ if(LEGODIMENSIONS_NATIVE_GPU)
             "$<TARGET_FILE_DIR:lego_gpu_prelink>"
         VERBATIM)
 
+    add_executable(lego_gpu_prelink_runtime EXCLUDE_FROM_ALL
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prelink_shader_cache.cpp"
+        src/gpu_native/dxc_link.cpp
+        "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz/miniz.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd/zstddeclib.c")
+    target_include_directories(lego_gpu_prelink_runtime PRIVATE
+        src
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd"
+        "${LEGO_DXC_ROOT}/inc")
+    target_link_libraries(lego_gpu_prelink_runtime PRIVATE
+        "${LEGO_DXC_ROOT}/lib/${LEGO_DXC_ARCH}/dxcompiler.lib")
+    add_custom_command(TARGET lego_gpu_prelink_runtime POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxcompiler.dll"
+            "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxil.dll"
+            "$<TARGET_FILE_DIR:lego_gpu_prelink_runtime>"
+        VERBATIM)
+
     add_custom_command(
         OUTPUT "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
         COMMAND "$<TARGET_FILE:lego_gpu_prelink>"
@@ -194,19 +242,63 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     target_sources(legodimensions PRIVATE "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
     set_source_files_properties("${LEGO_NATIVE_LINKED_SHADER_CACHE}"
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    set(LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/runtime-linked-dxil-cache.cpp")
+    add_custom_command(
+        OUTPUT "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}"
+        COMMAND "$<TARGET_FILE:lego_gpu_prelink_runtime>"
+                "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}"
+        DEPENDS lego_gpu_prelink_runtime
+        COMMENT "Pre-linking LEGO runtime shader variants"
+        VERBATIM)
+    add_custom_target(lego_runtime_linked_cache
+        DEPENDS "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
+    add_dependencies(legodimensions lego_runtime_linked_cache)
+    set_source_files_properties(
+        src/gpu_native/runtime_linked_shader_cache.cpp
+        PROPERTIES OBJECT_DEPENDS "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
 
     # Fingerprint the exact native renderer inputs. CMAKE_CONFIGURE_DEPENDS
     # makes a header-only edit trigger reconfigure as well as recompilation,
     # and the fingerprint printed at startup proves which executable is live.
     set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume/plume_d3d12.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_route.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_mode.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_mode.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderdoc_probe.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/legodimensions_app.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/long_probe.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/memory_watch.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/memory_watch.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/descriptor_retirement.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/resolve_region.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/pixel_shader_filter.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/pool_copy.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/sampler_state.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/cheat_menu.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/draw.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/draw.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/alpha_test.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/tonemap_dof.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_common.hlsli"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_vs.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_color_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/resolve_color_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_pack_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_restore_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/depth_alias.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/d3d.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/depth_state.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/blend_state.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/texture_number.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/texture_volume_upload.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/tile_extent.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shader_texture_usage.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/texture_upload_cache.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/vertex_byte_order.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/format.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/format.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/textures.cpp"
@@ -219,6 +311,9 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/vertex_declarations.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffers.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffers.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/queries.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/queries.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffer_header.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_buffer.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_shader.cpp"
@@ -226,8 +321,11 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shader_archive.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shader_archive.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/runtime_shader_cache.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/runtime_linked_shader_cache.cpp"
         "${LEGO_NATIVE_SHADER_CACHE}"
-        "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
+        "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+        "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${LEGO_NATIVE_GPU_FINGERPRINT_INPUTS})
     set(LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "")

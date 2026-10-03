@@ -8,7 +8,9 @@
 
 namespace legodimensions::gpu_native {
 
-constexpr u32 kNativeTextureSlots = 16;
+// TU23 samplers map directly to Xenos tfetch indices. Captured VS code uses
+// slot 16, above the sixteen pixel slots; slots 26..31 are vertex fetches.
+constexpr u32 kNativeTextureSlots = 26;
 constexpr u32 kNativeVertexStreams = 16;
 constexpr u32 kNativeRenderTargets = 4;
 
@@ -25,6 +27,9 @@ struct DrawBindings {
   u32 depth_stencil = 0;
   u32 index_buffer = 0;
   u32 vertex_declaration = 0;
+  u32 export_resource = 0;
+  u32 export_index = 0;
+  u32 export_format = 0;
 };
 
 void ResetDrawBindings();
@@ -34,6 +39,8 @@ void BindIndexBuffer(u32 buffer);
 void BindVertexDeclaration(u32 declaration);
 void BindRenderTarget(u32 index, u32 surface);
 void BindDepthStencil(u32 surface);
+void BeginExportBinding(u32 index, u32 resource, u32 format);
+void EndExportBinding(u32 index, u32 resource, u32 format);
 u32 BoundRenderTarget(u32 index);
 u32 BoundDepthStencil();
 DrawBindings SnapshotDrawBindings();

@@ -1,4 +1,4 @@
-#include <rex/hook.h>
+#include "gpu_native/renderer_route.h"
 #include <rex/ppc/context.h>
 #include <rex/types.h>
 

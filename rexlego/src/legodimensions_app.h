@@ -33,6 +33,7 @@
 #include "updates.h"
 #ifdef LEGODIMENSIONS_NATIVE_GPU
 #include "gpu_native/device.h"
+#include "gpu_native/renderer_mode.h"
 #endif
 
 class LegodimensionsApp : public rex::ReXApp {
@@ -70,11 +71,16 @@ class LegodimensionsApp : public rex::ReXApp {
   // Detached renderer mode: the SDK still owns the window/input/audio, while
   // the title's D3D calls are handled by gpu_native instead of rexgpu-xenos.
   void OnPreSetup(rex::RuntimeConfig& config) override {
+    if (legodimensions::gpu_native::UsePm4Reference()) {
+      if (config.gpu_plugin.empty()) config.gpu_plugin = "xenos";
+      return;
+    }
     config.graphics.reset();
     config.gpu_plugin.clear();
   }
 
   void OnPreLaunchModule() override {
+    if (legodimensions::gpu_native::UsePm4Reference()) return;
     if (!legodimensions::gpu_native::HostDevice::Create(window())) {
       REXLOG_ERROR("Native GPU initialization failed; stopping before guest launch");
       app_context().QuitFromUIThread();
@@ -99,7 +105,8 @@ class LegodimensionsApp : public rex::ReXApp {
   // Dropping the pipe is what clears the presence; Discord does the rest.
   void OnShutdown() override {
 #ifdef LEGODIMENSIONS_NATIVE_GPU
-    legodimensions::gpu_native::HostDevice::Shutdown();
+    if (!legodimensions::gpu_native::UsePm4Reference())
+      legodimensions::gpu_native::HostDevice::Shutdown();
 #endif
     legodimensions::discord::Stop();
     legodimensions::toypad_app::StopIfStarted();

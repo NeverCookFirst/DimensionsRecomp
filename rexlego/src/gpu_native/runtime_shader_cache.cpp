@@ -1,0 +1,9 @@
+#define g_shaderCacheEntries g_runtimeShaderCacheEntries
+#define g_shaderCacheEntryCount g_runtimeShaderCacheEntryCount
+#define g_compressedDxilCache g_runtimeCompressedDxilCache
+#define g_dxilCacheCompressedSize g_runtimeDxilCacheCompressedSize
+#define g_dxilCacheDecompressedSize g_runtimeDxilCacheDecompressedSize
+#define g_compressedSpirvCache g_runtimeCompressedSpirvCache
+#define g_spirvCacheCompressedSize g_runtimeSpirvCacheCompressedSize
+#define g_spirvCacheDecompressedSize g_runtimeSpirvCacheDecompressedSize
+#include "../../out/native-gpu/runtime-cache.cpp"

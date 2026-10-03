@@ -29,3 +29,9 @@ extern const size_t g_linkedShaderCacheEntryCount;
 extern const uint8_t g_compressedLinkedDxilCache[];
 extern const size_t g_linkedDxilCacheCompressedSize;
 extern const size_t g_linkedDxilCacheDecompressedSize;
+
+extern LinkedShaderCacheEntry g_runtimeLinkedShaderCacheEntries[];
+extern const size_t g_runtimeLinkedShaderCacheEntryCount;
+extern const uint8_t g_runtimeCompressedLinkedDxilCache[];
+extern const size_t g_runtimeLinkedDxilCacheCompressedSize;
+extern const size_t g_runtimeLinkedDxilCacheDecompressedSize;

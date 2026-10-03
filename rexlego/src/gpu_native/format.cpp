@@ -14,10 +14,12 @@ enum class D3DFormat : u32 {
   kA16B16G16R16FAlt = 0x1A2201BF,
   kA8B8G8R8 = 0x1A200186,
   kA8R8G8B8 = 0x18280186,
+  kA8R8G8B8Alt = 0x18280106,
   kX8R8G8B8 = 0x28280086,
   kTT8888 = 0x28280106,
   kTT8888Alt = 0x28280186,
   kTT2101010As16161616 = 0x182801B6,
+  kTT16161616 = 0x1A20AB55,
   kD24FS8 = 0x1A220197,
   kD24S8 = 0x2D200196,
   kR32F = 0x2DA2ABA4,
@@ -49,10 +51,13 @@ plume::RenderFormat ConvertGuestTextureFormat(u32 guest_format) {
       return RF::R16G16B16A16_FLOAT;
     case D3DFormat::kA8B8G8R8:
     case D3DFormat::kA8R8G8B8:
+    case D3DFormat::kA8R8G8B8Alt:
     case D3DFormat::kX8R8G8B8:
     case D3DFormat::kTT8888:
     case D3DFormat::kTT8888Alt:
       return RF::R8G8B8A8_UNORM;
+    case D3DFormat::kTT16161616:
+      return RF::R16G16B16A16_SNORM;
     case D3DFormat::kD24FS8:
     case D3DFormat::kD24S8:
       // LEGO uses stencil shadows, so retaining the stencil plane is required.
@@ -110,6 +115,14 @@ plume::RenderFormat ConvertXenosTextureFormat(u32 xenos_format) {
       return RF::R16G16_FLOAT;
     case TF::k_16_16_16_16_FLOAT:
       return RF::R16G16B16A16_FLOAT;
+    case TF::k_16_16_16_16:
+      return RF::R16G16B16A16_UNORM;
+    case TF::k_16_16:
+      return RF::R16G16_UNORM;
+    case TF::k_16_16_EDRAM:
+      return RF::R16G16_SNORM;
+    case TF::k_16_16_16_16_EDRAM:
+      return RF::R16G16B16A16_SNORM;
     case TF::k_32_FLOAT:
       return RF::R32_FLOAT;
     case TF::k_32_32_FLOAT:
@@ -141,8 +154,11 @@ bool IsRenderTargetFormat(plume::RenderFormat format) {
     case RF::B8G8R8A8_UNORM:
     case RF::R16_FLOAT:
     case RF::R16G16_FLOAT:
+    case RF::R16G16_UNORM:
     case RF::R16G16B16A16_FLOAT:
     case RF::R16G16B16A16_UNORM:
+    case RF::R16G16B16A16_SNORM:
+    case RF::R16G16_SNORM:
     case RF::R32_FLOAT:
     case RF::R32G32_FLOAT:
     case RF::R32G32B32A32_FLOAT:

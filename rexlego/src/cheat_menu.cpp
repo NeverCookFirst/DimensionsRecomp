@@ -273,8 +273,6 @@ void Shutdown() {
 // menu gets a plain on/off instead of a hex string.
 namespace {
 
-constexpr std::string_view kDofPixelShaderHash = "CFEAC7ADB912F8A9";
-
 void ApplyDepthOfField(bool enabled) {
   const std::string current = rex::cvar::GetFlagByName("skip_pixel_shaders");
   std::string next;
