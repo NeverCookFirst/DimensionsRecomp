@@ -190,6 +190,11 @@ struct State {
   u32 timing_log_count = 0;
   u64 sync_calls = 0, cpu_resource_wait_skips = 0;
   double sync_ms = 0;
+  u64 frame_slot_wait_calls = 0;
+  double frame_slot_wait_ms = 0;
+  double acquire_cpu_ms = 0;
+  double present_submit_cpu_ms = 0;
+  double swap_present_cpu_ms = 0;
   std::array<u64, static_cast<u32>(SyncReason::kCount)> sync_reason_calls{};
   std::array<double, static_cast<u32>(SyncReason::kCount)> sync_reason_ms{};
   std::chrono::steady_clock::time_point probe_next_snapshot{};
@@ -548,6 +553,10 @@ plume::RenderCommandList* BeginFrameCommandsLocked(State& state) {
     const auto wait_ms = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - wait_start)
                              .count();
+    if (NativeTextureTimingEnabled()) {
+      ++state.frame_slot_wait_calls;
+      state.frame_slot_wait_ms += wait_ms;
+    }
     if (wait_ms > 20.0 && state.long_wait_log_count++ < 20) {
       REXLOG_WARN("Native GPU: frame-slot {} GPU wait took {:.2f} ms", slot,
                   wait_ms);
@@ -1147,9 +1156,14 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
   const u32 slot = state.frame_slot;
 
   u32 image_index = 0;
-  if (!state.swap_chain->acquireTexture(
-          state.acquire_semaphores[slot].get(), &image_index) ||
-      image_index >= state.framebuffers.size()) {
+  const bool timing_enabled = NativeTextureTimingEnabled();
+  const auto acquire_start = timing_enabled ? std::chrono::steady_clock::now()
+      : std::chrono::steady_clock::time_point{};
+  const bool acquired = state.swap_chain->acquireTexture(
+      state.acquire_semaphores[slot].get(), &image_index);
+  if (timing_enabled) state.acquire_cpu_ms += std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - acquire_start).count();
+  if (!acquired || image_index >= state.framebuffers.size()) {
     // Close and submit any recorded uploads/draws so the allocator remains in
     // a valid state while the window is minimized or the swap chain changes.
     commands->end();
@@ -1207,10 +1221,18 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
       state.acquire_semaphores[slot].get()};
   plume::RenderCommandSemaphore* signals[] = {
       state.render_semaphores[image_index].get()};
+  const auto submit_start = timing_enabled ? std::chrono::steady_clock::now()
+      : std::chrono::steady_clock::time_point{};
   state.queue->executeCommandLists(lists, 1, waits, 1, signals, 1,
                                    state.frame_fences[slot].get());
+  if (timing_enabled) state.present_submit_cpu_ms += std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - submit_start).count();
   MarkSubmissionLocked(state, slot);
+  const auto swap_start = timing_enabled ? std::chrono::steady_clock::now()
+      : std::chrono::steady_clock::time_point{};
   const bool presented = state.swap_chain->present(image_index, signals, 1);
+  if (timing_enabled) state.swap_present_cpu_ms += std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - swap_start).count();
   ReportLogoCapture();
   ++state.present_number;
   g_probe_frame.store(state.present_number);
@@ -1231,7 +1253,9 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
           for (const char* name : {"other", "idle", "fence", "resource", "callback", "query_begin", "query_release"})
             stream << ",sync_" << name << "_calls,sync_" << name << "_ms";
           stream << ",callbacks_enqueued,callbacks_executed,callbacks_pending"
-                 << ",bindings_ms,begin_ms,pipeline_ms,issue_ms,tail_ms,buffer_converted_bytes\n";
+                 << ",bindings_ms,begin_ms,pipeline_ms,issue_ms,tail_ms,buffer_converted_bytes"
+                 << ",frame_slot_wait_calls,frame_slot_wait_ms,acquire_cpu_ms,present_submit_cpu_ms,swap_present_cpu_ms"
+                 << ",buffer_watch_hits,buffer_watch_audits,buffer_watch_mismatches\n";
         }
         return stream;
       }();
@@ -1247,7 +1271,12 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
                       << ',' << state.completion_callbacks.size()
                       << ',' << draws.stages_ms[0] << ',' << draws.stages_ms[1]
                       << ',' << draws.stages_ms[2] << ',' << draws.stages_ms[5]
-                      << ',' << draws.stages_ms[6] << ',' << buffers.converted_bytes << '\n';
+                      << ',' << draws.stages_ms[6] << ',' << buffers.converted_bytes
+                      << ',' << state.frame_slot_wait_calls << ',' << state.frame_slot_wait_ms
+                      << ',' << state.acquire_cpu_ms << ',' << state.present_submit_cpu_ms
+                      << ',' << state.swap_present_cpu_ms
+                      << ',' << buffers.watch_hits << ',' << buffers.watch_audits
+                      << ',' << buffers.watch_mismatches << '\n';
         if (state.present_number % 120 == 0) frame_metrics.flush();
       }
       if (LongProbeEnabled()) LongProbeEvent("frame", interval_ms > 2000.0,
@@ -1286,6 +1315,9 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
     state.sync_calls = 0;
     state.cpu_resource_wait_skips = 0;
     state.sync_ms = 0;
+    state.frame_slot_wait_calls = 0;
+    state.frame_slot_wait_ms = state.acquire_cpu_ms = 0;
+    state.present_submit_cpu_ms = state.swap_present_cpu_ms = 0;
     state.sync_reason_calls.fill(0);
     state.sync_reason_ms.fill(0);
     state.callbacks_enqueued = state.callbacks_executed = 0;

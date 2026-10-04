@@ -66,6 +66,7 @@ struct State {
  std::array<std::vector<std::unique_ptr<DrawUploadPage>>,3> draw_uploads;
  u32 frame_slot=0,draw_upload_page=0,long_wait_log_count=0;
  u64 draw_upload_offset=0;bool command_list_open=false;
+ u64 frame_slot_wait_calls=0;double frame_slot_wait_ms=0;
  DescriptorRetirement retired_descriptors;std::array<bool,2> texture_slots{};
  State(){for(u32 s=0;s<3;++s){command_lists[s]=std::make_unique<plume::RenderCommandList>();frame_fences[s]=std::make_unique<plume::Fence>();}}
 };
@@ -73,6 +74,8 @@ void SaveSnapshots(std::vector<int>&){}
 void RefreshCompletedSubmissionsLocked(State&){}
 void InitializeNullTextures(State&,plume::RenderCommandList*){}
 bool RebuildSwapChain(State&){return true;}
+bool timing_enabled=true;
+bool NativeTextureTimingEnabled(){return timing_enabled;}
 std::unique_ptr<State> g_state=std::make_unique<State>();std::mutex g_mutex;
 struct HostDevice {
  static auto LockRecording(){static std::recursive_mutex m;return std::unique_lock<std::recursive_mutex>(m);}
@@ -95,6 +98,11 @@ int main() {
  g_state->command_list_open=false;g_state->frame_submitted[1]=true;g_state->frame_slot=0;
  auto reuse=HostDevice::AllocateDrawUpload(8816);assert(reuse.buffer==first.buffer&&reuse.offset==0);
  assert(g_state->queue->waits==1); // Reset only after old fence wait.
+ assert(g_state->frame_slot_wait_calls==1 && g_state->frame_slot_wait_ms>=0);
+ timing_enabled=false;
+ g_state->command_list_open=false;g_state->frame_submitted[0]=true;
+ auto untimed=HostDevice::AllocateDrawUpload(8816);assert(untimed);
+ assert(g_state->queue->waits==2 && g_state->frame_slot_wait_calls==1);
  std::memset(reuse.mapped,0xDD,8816);assert(static_cast<u8*>(other.mapped)[0]==0xCC);
  auto large=HostDevice::AllocateDrawUpload(5*1024*1024);assert(large&&large.offset==0);
  assert(g_state->device->allocations==4);
