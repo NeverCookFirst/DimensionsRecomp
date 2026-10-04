@@ -64,6 +64,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         src/gpu_native/format.cpp
         src/gpu_native/hooks_buffer.cpp
         src/gpu_native/hooks_device.cpp
+        src/gpu_native/hooks_portrait.cpp
         src/gpu_native/hooks_shader.cpp
         src/gpu_native/hooks_state.cpp
         src/gpu_native/hooks_texture.cpp
@@ -316,6 +317,8 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/buffer_header.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_buffer.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_device.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_portrait.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/portrait_probe.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_shader.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders.h"

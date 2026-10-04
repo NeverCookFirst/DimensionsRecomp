@@ -37,6 +37,7 @@
 #include "gpu_native/textures.h"
 #include "gpu_native/tile_extent.h"
 #include "gpu_native/tonemap_dof.h"
+#include "gpu_native/portrait_probe.h"
 #include "gpu_native/long_probe.h"
 #include "gpu_native/renderdoc_probe.h"
 #include "gpu_native/vertex_declarations.h"
@@ -292,6 +293,9 @@ bool BindConstants(
     // in invalidation, verify their contents at every use, even with watches.
     UploadTextureResource(bindings.textures[i], commands,
         (BoundShaderTextureMask(ShaderStage::kVertex) & (1u << i)) != 0);
+    if (PortraitProbeEnabled())
+      TracePortraitDraw(bindings.textures[i], i, BoundShaderHash(ShaderStage::kVertex),
+                        BoundShaderHash(ShaderStage::kPixel));
     TextureFetchWords fetch;
     for (u32 word = 0; word < fetch.size(); ++word) fetch[word] = device->fetch_constants[i].dword[word];
     if (LongProbeEnabled()) {
