@@ -1,5 +1,5 @@
 // Read-only TU23 portrait identity. Offsets come from 833738B8, 82CC4E50
-// and the texture leaf 82B6FC70; they are not guessed from a HUD draw.
+// and the texture leaf 82B6FC70 / binding function 82BCE7F8.
 #pragma once
 #include <cstdint>
 #include <limits>
@@ -10,6 +10,8 @@ struct PortraitIdentity {
   uint32_t scene = 0;
   uint32_t material = 0;
   uint32_t texture_object = 0;
+  uint32_t texture_backend = 0;
+  uint32_t active_texture_index = 0;
   uint32_t texture = 0;
   uint32_t material_flags = 0;
   uint32_t texture_flags = 0;
@@ -32,7 +34,15 @@ PortraitIdentity ReadPortraitIdentity(uint32_t owner, ReadWord&& read) {
   field(result.material, 948, result.material_flags, 4);
   field(result.material, 952, result.texture_flags, 8);
   if (!field(result.material, 956, result.texture_object, 16)) return result;
-  field(result.texture_object, 4, result.texture, 32);
+  if (!field(result.texture_object, 4, result.texture_backend, 32) ||
+      !field(result.texture_backend, 116, result.active_texture_index, 64)) return result;
+  // 82BCE7F8 passes the selected inline D3D header, NOT the backend pointer,
+  // to SetTexture: backend + 120 + index * 52. Reject wrap/unreadable headers.
+  const uint64_t header = uint64_t(result.texture_backend) + 120 +
+      uint64_t(result.active_texture_index) * 52;
+  uint32_t ignored = 0;
+  if (header + 4 <= (uint64_t{1} << 32) &&
+      field(uint32_t(header), 0, ignored, 128)) result.texture = uint32_t(header);
   return result;
 }
 

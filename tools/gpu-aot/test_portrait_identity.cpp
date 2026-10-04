@@ -8,7 +8,9 @@ int main() {
   std::unordered_map<uint32_t,uint32_t> words{
       {0x1000+84,0x2000},{0x1000+200,0x3000},
       {0x3000+948,0x12345678},{0x3000+952,0x87654321},
-      {0x3000+956,0x4000},{0x4000+4,0x5000}};
+      {0x3000+956,0x4000},{0x4000+4,0x5000},
+      {0x5000+116,1},{0x5000+120+52,0x10001},
+      {0x6000+116,0},{0x6000+120,0x10001}};
   const auto original=words;
   std::vector<uint32_t> reads;
   auto read=[&](uint32_t address,uint32_t& out) {
@@ -17,12 +19,15 @@ int main() {
     out=it->second;return true;
   };
   auto identity=ReadPortraitIdentity(0x1000,read);
-  assert(identity.readable_fields==63 && identity.texture==0x5000);
+  assert(identity.readable_fields==255 && identity.texture==0x5000+120+52);
   assert(identity.scene==0x2000 && identity.material==0x3000 &&
          identity.texture_object==0x4000 && identity.material_flags==0x12345678);
   assert(words==original);
   words[0x4000+4]=0x6000;
-  assert(ReadPortraitIdentity(0x1000,read).texture==0x6000);
+  assert(ReadPortraitIdentity(0x1000,read).texture==0x6000+120);
+  words[0x6000+116]=0xFFFFFFFF;
+  assert(ReadPortraitIdentity(0x1000,read).texture==0);
+  words[0x6000+116]=0;
   words.erase(0x4000+4);
   assert(!(ReadPortraitIdentity(0x1000,read).readable_fields&32));
   words[0x3000+956]=0;

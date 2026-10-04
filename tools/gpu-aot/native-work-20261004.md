@@ -19,8 +19,11 @@ material override. Further inspection of the actual TU23 generated bodies:
 - 82CC4E50 copies the wrapper's pointee into material+956 and retains/releases
   through the object's vtable. Material+956 is therefore a NuTexture pointer,
   not directly a D3D texture header.
-- 82B6FC70 is exactly a load from texture object+4. This gives the D3D resource
-  identity to compare with native texture bindings.
+- 82B6FC70 is exactly a load from texture object+4, giving the backend object.
+  Further inspection of binding function 82BCE7F8 shows that this is **not** the
+  D3D header: SetTexture receives backend+120+52*index, with index at backend+116.
+  The diagnostic checks the active inline header's readability and arithmetic
+  bounds before comparing that address with native draw bindings.
 - 83373850 destroys this owner. The diagnostic removes it before destruction.
 
 New C++ hooks retain the original setup/destructor behavior. With

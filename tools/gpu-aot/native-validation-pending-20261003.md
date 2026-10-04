@@ -18,7 +18,7 @@ Once launches are authorized:
    Check head, body, hands, HUD icons, portrait, effects, shadows and portals.
    Preserve the override material/texture identity if the portrait remains blank.
    October4: use -LongProbe -PortraitTrace to correlate the actual mask's
-   NuTexture+4 D3D resource with draw shader/texture/constant captures. See
+   NuTexture/backend/active D3D header with draw shader/texture/constant captures. See
    native-work-20261004.md. Keep this separate from clean FPS measurements.
 3. Audit buffer watches in hub and three story levels, loading/cutscenes and
    mesh-pool relocations. Require zero stale-clean errors. Until then buffer

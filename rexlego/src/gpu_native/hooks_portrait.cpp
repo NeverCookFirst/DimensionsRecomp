@@ -41,6 +41,7 @@ void TracePortraitSetup(u32 owner) {
   }
   LongProbeEvent("portrait_setup", false, "owner=", owner, "scene=", identity.scene,
       "material=", identity.material, "texture_object=", identity.texture_object,
+      "texture_backend=", identity.texture_backend, "active_index=", identity.active_texture_index,
       "texture=", identity.texture, "material_flags=", identity.material_flags,
       "texture_flags=", identity.texture_flags, "readable_fields=", identity.readable_fields);
 }
@@ -73,10 +74,11 @@ void TracePortraitDraw(u32 texture, u32 slot, u64 vertex_shader, u64 pixel_shade
     // Read current identity: setup pointers or the NuTexture's D3D resource
     // may have changed since loading. Never retain a host resource here.
     const auto identity = ReadPortraitIdentity(owner, ReadPortraitWord);
-    if (identity.texture != texture || !(identity.readable_fields & 32)) continue;
+    if (identity.texture != texture || !(identity.readable_fields & 128)) continue;
     ++reports;
     LongProbeEvent("portrait_texture_draw", false, "owner=", owner,
         "material=", identity.material, "texture_object=", identity.texture_object,
+        "texture_backend=", identity.texture_backend, "active_index=", identity.active_texture_index,
         "texture=", texture, "slot=", slot, "VS=", vertex_shader, "PS=", pixel_shader,
         "material_flags=", identity.material_flags, "texture_flags=", identity.texture_flags);
     break;
