@@ -22,7 +22,7 @@ param(
     [switch]$Pm4Reference,
     [switch]$ConfiguredRenderer,
     [string]$LogoCaptureRenderDocDll,
-    [ValidateRange(1,8)][int]$Monitor = 2,
+    [ValidateRange(1,8)][int]$Monitor = 3,
     [switch]$Close
 )
 $ErrorActionPreference = 'Stop'

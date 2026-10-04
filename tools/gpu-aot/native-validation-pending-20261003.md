@@ -1,7 +1,9 @@
 # Required runtime validation after October 3 offline fixes
 
-Do not launch the game until the user authorizes it. All subsequent tests use
-monitor2, no window activation or injected input. Keep the exact executable,
+October4: the owner authorized resuming game tests and requested monitor3 for
+all current probes, superseding the earlier no-launch/monitor2 instruction.
+Use questions for user-assisted hub readiness; no activation or injected input.
+Keep the exact executable,
 SDK/runtime/plugin hashes and configuration with every probe; close the exact
 owned process afterward. See `session-20261003/build-proof.json` for the build.
 

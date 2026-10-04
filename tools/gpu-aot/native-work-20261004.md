@@ -3,8 +3,9 @@
 The owner changed the target to **stable 60 FPS at actual 1920x1080 internal
 rendering**, retaining C++. Another agent is working on ReXGlue Vulkan fixes.
 This work modifies the game-side D3D12 renderer only; it does not rebuild,
-deploy or modify the SDK or Plume. Game launches remain pending explicit
-authorization, and future probes default to monitor 2.
+deploy or modify the SDK or Plume. The owner subsequently authorized game tests
+on monitor 3. Probes now default to monitor 3, superseding the initial monitor 2
+and no-launch instructions. Ask through the question UI for hub readiness.
 
 The owner confirms the Enter yellow transition glitch no longer appears.
 This is user-confirmed visual evidence, not a new assistant capture.
