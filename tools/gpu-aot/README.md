@@ -550,3 +550,7 @@ or failed resize is retried even when native framebuffers are empty.
 `test_resize_fences.py` executes the actual wait/resize bodies with deterministic
 fences/events and checks all slots, removal, partial retries and backbuffer
 restoration. These offline checks do not confirm real window-mode recovery.
+
+## Offline format and scene capture verification (October4)
+
+See native-texture-format-20261004.md. Adopted scalar/RG views now compose Xenos channel replication; DXT3A expands its four-bit alpha blocks to R8. Tests include102400 swizzle cases,6144 alpha cases and48 comparisons against actual SDK D3D12 loader bytecode without launching a game. TextureForensics prepares bounded, late-triggered full-mip/raw-backing captures for a future authorized scene. These checks do not establish a repair for LOTR stripes or blank icons. Production remains624-byte ABI; the rejected LOD candidate stays rolled back.

@@ -32,8 +32,10 @@
 #include "gpu_native/shaders.h"
 #include "gpu_native/format.h"
 #include "gpu_native/texture_number.h"
+#include "gpu_native/texture_swizzle.h"
 #include "gpu_native/texture_upload_cache.h"
 #include "gpu_native/texture_volume_upload.h"
+#include "gpu_native/texture_alpha4_upload.h"
 #include "gpu_native/long_probe.h"
 #include "gpu_native/memory_watch.h"
 #include "gpu_native/depth_alias.h"
@@ -282,9 +284,10 @@ std::shared_ptr<TextureResource> AdoptTexture(u32 guest_address) {
         plume::RenderSwizzle::ZERO, plume::RenderSwizzle::ONE,
         plume::RenderSwizzle::ZERO, plume::RenderSwizzle::ZERO};
     const u32 swizzle = resource->guest_fetch.swizzle;
+    const u32 host_swizzle = NativeTextureSwizzle(resource->guest_format, swizzle);
     view_desc.componentMapping = plume::RenderComponentMapping(
-        swizzles[swizzle & 7], swizzles[(swizzle >> 3) & 7],
-        swizzles[(swizzle >> 6) & 7], swizzles[(swizzle >> 9) & 7]);
+        swizzles[host_swizzle & 7], swizzles[(host_swizzle >> 3) & 7],
+        swizzles[(host_swizzle >> 6) & 7], swizzles[(host_swizzle >> 9) & 7]);
     view_desc.format = resource->format;
     view_desc.mipLevels = resource->levels;
     view_desc.dimension =
@@ -467,35 +470,81 @@ u32 LevelOffset(const TextureResource& resource, u32 level) {
 
 // Opt-in diagnostic: inspect the actual base-level bytes uploaded to D3D12,
 // independently of draw geometry, shaders, swizzle and sampler state.
-void DumpTextureUpload(const TextureResource& resource, const u8* data) {
-  static const std::filesystem::path root = [] {
+struct TextureCaptureState {
+  std::filesystem::path root, trigger;
+  bool all_levels = false, armed = false;
+  u32 checked_frame = ~u32{0};
+  u64 written_bytes = 0;
+  std::unordered_set<u32> dumped;
+};
+
+TextureCaptureState& TextureCapture() {
+  static TextureCaptureState state = [] {
+    TextureCaptureState result;
     char* value = nullptr;
     size_t length = 0;
     _dupenv_s(&value, &length, "LEGO_DUMP_TEXTURE_UPLOADS");
-    std::filesystem::path result(value ? value : "");
+    result.root = value ? value : "";
     std::free(value);
+    value = nullptr;
+    _dupenv_s(&value, &length, "LEGO_DUMP_TEXTURE_UPLOADS_TRIGGER");
+    result.trigger = value ? value : "";
+    std::free(value);
+    result.all_levels = std::getenv("LEGO_DUMP_TEXTURE_UPLOADS_ALL_LEVELS") != nullptr;
     return result;
   }();
-  if (root.empty()) return;
+  return state;
+}
+
+// The renderer recording lock serializes capture state, just like CPU upload.
+// Disabled captures do no filesystem work. The trigger is checked once/frame.
+bool TextureUploadCapturePending(const TextureResource& resource) {
+  auto& state = TextureCapture();
+  if (state.root.empty() || state.dumped.size() >= (state.all_levels ? 32u : 8u) ||
+      state.written_bytes >= 128ull * 1024 * 1024 || state.dumped.contains(resource.guest_address)) return false;
+  if (!state.trigger.empty() && state.checked_frame != g_probe_frame.load()) {
+    state.checked_frame = g_probe_frame.load();
+    std::error_code error;
+    state.armed = std::filesystem::is_regular_file(state.trigger, error) && !error;
+  }
+  if (!state.trigger.empty() && !state.armed) return false;
+  if (state.all_levels && (u32(resource.guest_fetch.dimension) != 1 || resource.levels > 16)) return false;
+  if (resource.format != plume::RenderFormat::BC1_UNORM &&
+      resource.format != plume::RenderFormat::BC3_UNORM &&
+      resource.format != plume::RenderFormat::R8G8B8A8_UNORM) return false;
   static const bool logos_only = std::getenv("LEGO_DUMP_TEXTURE_UPLOADS_LOGOS_ONLY") != nullptr;
   if (logos_only) {
     const u64 vs = BoundShaderHash(ShaderStage::kVertex);
     const u64 ps = BoundShaderHash(ShaderStage::kPixel);
     if (!((vs == 0x91007ACB3E640E3Dull && ps == 0xEEE573BE160E037Dull) ||
-          (vs == 0xC3958E2D1B795ED9ull && ps == 0x0C1840BF35E84F2Full))) return;
+          (vs == 0xC3958E2D1B795ED9ull && ps == 0x0C1840BF35E84F2Full))) return false;
   }
+  return true;
+}
+
+void DumpTextureUpload(const TextureResource& resource, const u8* data,
+                       std::span<const u8> base = {}, std::span<const u8> mips = {}) {
+  if (!TextureUploadCapturePending(resource)) return;
+  auto& state = TextureCapture();
+  const auto& root = state.root;
   const bool bc1 = resource.format == plume::RenderFormat::BC1_UNORM;
   const bool bc3 = resource.format == plume::RenderFormat::BC3_UNORM;
   const bool compressed = bc1 || bc3;
   if (!compressed && resource.format != plume::RenderFormat::R8G8B8A8_UNORM) return;
-  static std::mutex dump_mutex;
-  static std::unordered_set<u32> dumped;
-  std::lock_guard lock(dump_mutex);
-  if (dumped.size() >= 8 || !dumped.insert(resource.guest_address).second) return;
+  state.dumped.insert(resource.guest_address);
+  const u32 levels = state.all_levels ? resource.levels : 1;
+  u64 payload_size = 128;
+  for (u32 level = 0; level < levels; ++level) {
+    const u32 w = std::max(1u, resource.width >> level), h = std::max(1u, resource.height >> level);
+    payload_size += u64(compressed ? ((w + 3) / 4) * (bc1 ? 8 : 16) : w * 4) * RowCount(resource.format, h);
+  }
+  if (state.all_levels) payload_size += base.size() + mips.size();
+  if (payload_size > 128ull * 1024 * 1024 - state.written_bytes) return;
+  state.written_bytes += payload_size;
   std::error_code error;
   std::filesystem::create_directories(root, error);
   if (error) return;
-  // Legacy DDS, one mip, little-endian host. Strip D3D12 row padding.
+  // Legacy DDS, little-endian host. Strip row padding and 512-byte mip gaps.
   u32 header[32]{};
   header[0] = 0x20534444; header[1] = 124;
   header[2] = 0x1007 | (compressed ? 0x80000 : 0x8);
@@ -510,18 +559,43 @@ void DumpTextureUpload(const TextureResource& resource, const u8* data) {
     header[25] = 0xFF0000; header[26] = 0xFF000000;
   }
   header[27] = 0x1000;
+  if (levels > 1) { header[2] |= 0x20000; header[7] = levels; header[27] |= 0x400008; }
   const std::string name = std::to_string(resource.guest_address);
   std::ofstream file(root / (name + ".dds"), std::ios::binary);
   file.write(reinterpret_cast<const char*>(header), sizeof(header));
-  for (u32 row = 0; row < rows; ++row)
-    file.write(reinterpret_cast<const char*>(data + row * RowPitch(resource.format, resource.width)), row_bytes);
+  u64 offset = 0;
+  for (u32 level = 0; level < levels; ++level) {
+    offset = (offset + 511) & ~u64{511};
+    const u32 w = std::max(1u, resource.width >> level), h = std::max(1u, resource.height >> level);
+    const u32 bytes = compressed ? ((w + 3) / 4) * (bc1 ? 8 : 16) : w * 4;
+    const u32 level_rows = RowCount(resource.format, h), pitch = RowPitch(resource.format, w);
+    for (u32 row = 0; row < level_rows; ++row)
+      file.write(reinterpret_cast<const char*>(data + offset + u64(row) * pitch), bytes);
+    offset += u64(pitch) * level_rows;
+  }
+  if (state.all_levels) {
+    for (const auto& item : {std::pair{".guest-base.bin", base}, std::pair{".guest-mips.bin", mips}}) {
+      if (item.second.empty()) continue;
+      std::ofstream raw(root / (name + item.first), std::ios::binary);
+      raw.write(reinterpret_cast<const char*>(item.second.data()), item.second.size());
+    }
+  }
   std::ofstream metadata(root / (name + ".txt"));
   const auto& fetch = resource.guest_fetch;
   metadata << "guest=" << std::hex << resource.guest_address
            << " base=" << (fetch.base_address << 12) << " mip=" << (fetch.mip_address << 12)
            << " swizzle=" << fetch.swizzle << std::dec << " endian=" << u32(fetch.endianness)
            << " pitch=" << (fetch.pitch << 5) << " tiled=" << fetch.tiled
-           << " packed=" << fetch.packed_mips << '\n';
+           << " packed=" << fetch.packed_mips << " levels=" << levels
+           << " width=" << resource.width << " height=" << resource.height
+           << " frame=" << g_probe_frame.load() << std::hex
+           << " VS=" << BoundShaderHash(ShaderStage::kVertex)
+           << " PS=" << BoundShaderHash(ShaderStage::kPixel) << '\n';
+  std::array<u32, 6> words{};
+  std::memcpy(words.data(), &fetch, sizeof(words));
+  metadata << "fetch=";
+  for (const auto word : words) metadata << word << ',';
+  metadata << '\n';
   REXLOG_INFO("Native GPU: captured texture upload {} ({}x{}, format={})",
               name, resource.width, resource.height, resource.guest_format);
 }
@@ -985,7 +1059,8 @@ bool UploadTextureResource(u32 guest_address,
     std::lock_guard lock(resource->mutex);
     if (resource->resolved_on_host) return true;
     static const bool audit_texture_watch = std::getenv("LEGO_NATIVE_AUDIT_TEXTURE_WATCH") != nullptr;
-    const bool watch_hit = !require_content_hash && resource->guest_uploaded &&
+    const bool capture_pending = TextureUploadCapturePending(*resource);
+    const bool watch_hit = !capture_pending && !require_content_hash && resource->guest_uploaded &&
         CpuMemoryUnchanged(resource->cpu_stamp);
     if (watch_hit && !audit_texture_watch) {
       if (timer.enabled) ++g_upload_timing.source_hits;
@@ -1000,9 +1075,10 @@ bool UploadTextureResource(u32 guest_address,
         fetch.stacked || !fetch.base_address)
       return false;
     const u32 faces = cube ? 6 : 1;
-    const u32 block_bytes = plume::RenderFormatSize(resource->format);
-    const u32 block_width = plume::RenderFormatBlockWidth(resource->format);
     const auto* format_info = rex::graphics::FormatInfo::Get(fetch.format);
+    const bool alpha4 = fetch.format == rex::graphics::xenos::TextureFormat::k_DXT3A;
+    const u32 block_bytes = alpha4 ? 8 : plume::RenderFormatSize(resource->format);
+    const u32 block_width = alpha4 ? 4 : plume::RenderFormatBlockWidth(resource->format);
     if (!block_bytes || !block_width ||
         format_info->bits_per_pixel * format_info->block_width * format_info->block_height != block_bytes * 8)
       return false;
@@ -1032,7 +1108,7 @@ bool UploadTextureResource(u32 guest_address,
           "base=", u32(fetch.base_address<<12), "mip=", u32(fetch.mip_address<<12));
     // Never read an unvalidated volume extent. Volumes may have padding
     // between Z slices, so validating just width*height*depth isn't enough.
-    if (volume && !source_key_valid) return false;
+    if ((volume || alpha4 || capture_pending) && !source_key_valid) return false;
     if (source_key_valid) {
       const auto hash_start = timer.enabled ? std::chrono::steady_clock::now()
                                             : std::chrono::steady_clock::time_point{};
@@ -1058,7 +1134,7 @@ bool UploadTextureResource(u32 guest_address,
         g_upload_timing.source_ms += std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - source_start).count();
       }
-      if (resource->guest_uploaded && resource->upload_source_key_valid &&
+      if (!capture_pending && resource->guest_uploaded && resource->upload_source_key_valid &&
           resource->upload_source_key == source_key) {
         if (timer.enabled) ++g_upload_timing.source_hits;
         resource->cpu_stamp = std::move(cpu_stamp);
@@ -1107,6 +1183,25 @@ bool UploadTextureResource(u32 guest_address,
       const u32 width = MipDimension(resource->width, level);
       const u32 height = MipDimension(resource->height, level);
       const u32 pitch = RowPitch(resource->format, width);
+      if (alpha4) {
+        const bool copied = CopyTextureAlpha4Blocks(
+            {source, guest_level.array_slice_data_extent_bytes},
+            {mapped + destination_offset, LevelSize(*resource, level)},
+            width, height, volume ? MipDimension(resource->depth, level) : 1,
+            pitch, endian_xor, [&](u32 x, u32 y, u32 z) -> int64_t {
+              if (fetch.tiled) {
+                if (volume) return tu::GetTiledOffset3D(x + offset_x, y + offset_y, z + offset_z,
+                    guest_level.row_pitch_bytes / 8, guest_level.z_slice_stride_block_rows, 3);
+                return tu::GetTiledOffset2D(x + offset_x, y + offset_y,
+                    guest_level.row_pitch_bytes / 8, 3);
+              }
+              return (u64(z + offset_z) * guest_level.z_slice_stride_block_rows + y + offset_y) *
+                  guest_level.row_pitch_bytes + u64(x + offset_x) * 8;
+            });
+        if (!copied) return false;
+        destination_offset += LevelSize(*resource, level);
+        continue;
+      }
       if (volume) {
         const u32 block_height = format_info->block_height;
         const bool copied = CopyTextureVolumeBlocks(
@@ -1141,7 +1236,9 @@ bool UploadTextureResource(u32 guest_address,
       }
       destination_offset += LevelSize(*resource, level);
     }
-    DumpTextureUpload(*resource, mapped);
+    DumpTextureUpload(*resource, mapped,
+        source_key_valid ? std::span<const u8>(base_bytes, layout.base.level_data_extent_bytes) : std::span<const u8>{},
+        source_key_valid ? std::span<const u8>(mip_bytes, mip_size) : std::span<const u8>{});
     if (timer.enabled) g_upload_timing.converted_bytes += upload_size;
     const u64 content_hash = XXH3_64bits(mapped, upload_size);
     if (LongProbeEnabled() && (!resource->guest_uploaded || resource->guest_content_hash != content_hash))
@@ -1166,6 +1263,10 @@ bool UploadTextureResource(u32 guest_address,
     commands->barriers(plume::RenderBarrierStage::COPY,
         plume::RenderTextureBarrier(resource->texture.get(), plume::RenderTextureLayout::COPY_DEST));
     destination_offset = 0;
+    // Copy footprints describe decoded host storage, not the guest blocks
+    // (DXT3A expands eight-byte blocks into individual R8 pixels).
+    const u32 host_block_bytes = plume::RenderFormatSize(resource->format);
+    const u32 host_block_width = plume::RenderFormatBlockWidth(resource->format);
     for (u32 subresource = 0; subresource < faces * resource->levels; ++subresource) {
       const u32 face = subresource / resource->levels;
       const u32 level = subresource % resource->levels;
@@ -1176,7 +1277,7 @@ bool UploadTextureResource(u32 guest_address,
           plume::RenderTextureCopyLocation::Subresource(resource->texture.get(), level, face),
           plume::RenderTextureCopyLocation::PlacedFootprint(upload.get(), resource->format,
               width, height, volume ? MipDimension(resource->depth, level) : 1,
-              RowPitch(resource->format, width) / block_bytes * block_width,
+              RowPitch(resource->format, width) / host_block_bytes * host_block_width,
               destination_offset));
       destination_offset += LevelSize(*resource, level);
     }

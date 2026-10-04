@@ -15,6 +15,7 @@ param(
     [switch]$Stencil,
     [switch]$MeshTrace,
     [switch]$LogoUploads,
+    [switch]$TextureForensics,
     [switch]$Viewport,
     [switch]$BufferWindows,
     [switch]$DepthAlias,
@@ -27,9 +28,11 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if ($PortraitTrace -and !$LongProbe) { throw 'PortraitTrace requires LongProbe for correlated draw/constants capture' }
+if ($TextureForensics -and !$LongProbe) { throw 'TextureForensics requires LongProbe for correlated shader/draw evidence' }
+if ($TextureForensics -and $LogoUploads) { throw 'TextureForensics and LogoUploads use separate capture filters' }
 if ($ConfiguredRenderer -and $Pm4Reference) { throw 'Select configured renderer or explicit PM4 reference, not both' }
 if ($DepthAlias -and $DisableDepthAlias) { throw 'DepthAlias and DisableDepthAlias are mutually exclusive' }
-if (($Pm4Reference -or $ConfiguredRenderer) -and ($Stencil -or $MeshTrace -or $LogoUploads -or $Viewport -or $BufferWindows -or $BufferWatch -or $AuditBufferWatch -or $DepthAlias -or $DisableDepthAlias -or $LongProbe -or $LogoCaptureRenderDocDll)) {
+if (($Pm4Reference -or $ConfiguredRenderer) -and ($Stencil -or $MeshTrace -or $LogoUploads -or $TextureForensics -or $Viewport -or $BufferWindows -or $BufferWatch -or $AuditBufferWatch -or $DepthAlias -or $DisableDepthAlias -or $LongProbe -or $LogoCaptureRenderDocDll)) {
     throw 'PM4 reference mode uses original XDK/SDK objects; native-only diagnostic/candidate switches must be disabled'
 }
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -57,7 +60,8 @@ $keys = @('SDL_WINDOW_ACTIVATE_WHEN_SHOWN','LEGO_NATIVE_TIMING','LEGO_NATIVE_ALL
     'LEGO_NATIVE_NO_MEMORY_WATCH','LEGO_NATIVE_STATIC_TEXTURE_WATCH','LEGO_NATIVE_AUDIT_TEXTURE_WATCH','LEGO_NATIVE_BUFFER_WATCH','LEGO_NATIVE_AUDIT_BUFFER_WATCH','LEGO_NATIVE_NO_DRAW_ARENA',
     'LEGO_NATIVE_FRAME_METRICS','LEGO_NATIVE_ASYNC_CPU_RESOURCES','LEGO_NATIVE_STENCIL','LEGO_NATIVE_MESH_TRACE',
     'LEGO_NATIVE_VIEWPORT','LEGO_DUMP_TEXTURE_UPLOADS_LOGOS_ONLY','LEGO_NATIVE_BUFFER_WINDOWS','LEGO_NATIVE_PM4_REFERENCE',
-    'LEGO_NATIVE_RENDERDOC_DLL','LEGO_NATIVE_RENDERDOC_CAPTURE','LEGO_NATIVE_DEPTH_ALIAS','LEGO_NATIVE_PORTRAIT_TRACE')
+    'LEGO_NATIVE_RENDERDOC_DLL','LEGO_NATIVE_RENDERDOC_CAPTURE','LEGO_NATIVE_DEPTH_ALIAS','LEGO_NATIVE_PORTRAIT_TRACE',
+    'LEGO_DUMP_TEXTURE_UPLOADS_ALL_LEVELS','LEGO_DUMP_TEXTURE_UPLOADS_TRIGGER')
 $saved = @{}
 foreach ($key in $keys) {
     $saved[$key] = [Environment]::GetEnvironmentVariable($key,'Process')
@@ -96,6 +100,12 @@ try {
     if ($LogoUploads) {
         $env:LEGO_DUMP_TEXTURE_UPLOADS = Join-Path $runRoot "logo-uploads-$Label"
         $env:LEGO_DUMP_TEXTURE_UPLOADS_LOGOS_ONLY = '1'
+    }
+    if ($TextureForensics) {
+        $env:LEGO_DUMP_TEXTURE_UPLOADS = Join-Path $runRoot "texture-forensics-$Label"
+        New-Item -ItemType Directory -Path $env:LEGO_DUMP_TEXTURE_UPLOADS | Out-Null
+        $env:LEGO_DUMP_TEXTURE_UPLOADS_ALL_LEVELS = '1'
+        $env:LEGO_DUMP_TEXTURE_UPLOADS_TRIGGER = Join-Path $env:LEGO_DUMP_TEXTURE_UPLOADS 'capture.trigger'
     }
     if ($Mode -eq 'timing') { $env:LEGO_NATIVE_FRAME_METRICS = Join-Path $runRoot "$Label-frames.csv" }
     if ($LongProbe) {
@@ -140,6 +150,8 @@ try {
         stencil=[bool]$Stencil;meshTrace=[bool]$MeshTrace;
         logoUploads=[bool]$LogoUploads;viewport=[bool]$Viewport;bufferWindows=[bool]$BufferWindows;
         nativeDepthAliasEnabled=![bool]$DisableDepthAlias;
+        textureForensics=[bool]$TextureForensics;
+        textureCaptureTrigger=$env:LEGO_DUMP_TEXTURE_UPLOADS_TRIGGER;
         pm4Reference=[bool]$Pm4Reference;
         configuredRenderer=[bool]$ConfiguredRenderer;
         configSnapshot=$configSnapshot;environmentOverrides=$nativeEnvironment;

@@ -1,7 +1,10 @@
 # Required runtime validation after October 3 offline fixes
 
-October4: the owner authorized resuming game tests and requested monitor3 for
-all current probes, superseding the earlier no-launch/monitor2 instruction.
+Latest October4 instruction: **keep working offline; no launch yet**. Earlier
+launch authorization has been revoked. Monitor3 applies to future authorized
+probes. The owner rejected the combined explicit-LOD candidate; production
+has returned to the coupled624-byte host/shader ABI. Texture format fixes and
+late-trigger mip forensics have passed offline checks, but are visually untested.
 Use questions for user-assisted hub readiness; no activation or injected input.
 Keep the exact executable,
 SDK/runtime/plugin hashes and configuration with every probe; close the exact
@@ -19,9 +22,10 @@ Once launches are authorized:
 2. Slot2 controllable Vorton, matching native/emulated character and camera.
    Check head, body, hands, HUD icons, portrait, effects, shadows and portals.
    Preserve the override material/texture identity if the portrait remains blank.
-   October4: use -LongProbe -PortraitTrace to correlate the actual mask's
+   October4: use -LongProbe -PortraitTrace -TextureForensics -CaptureMissing to correlate the actual mask's
    NuTexture/backend/active D3D header with draw shader/texture/constant captures. See
-   native-work-20261004.md. Keep this separate from clean FPS measurements.
+   native-work-20261004.md. Arm the fresh process record's textureCaptureTrigger
+   only after the owner reaches the affected scene. Keep this separate from clean FPS measurements.
 3. Audit buffer watches in hub and three story levels, loading/cutscenes and
    mesh-pool relocations. Require zero stale-clean errors. Until then buffer
    watches stay OFF by default, independent of the existing texture watch.

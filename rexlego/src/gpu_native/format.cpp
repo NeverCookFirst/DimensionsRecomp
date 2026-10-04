@@ -107,6 +107,7 @@ plume::RenderFormat ConvertXenosTextureFormat(u32 xenos_format) {
     case TF::k_DXN:
       return RF::BC5_UNORM;
     case TF::k_DXT3A:
+      return RF::R8_UNORM;
     case TF::k_DXT5A:
       return RF::BC4_UNORM;
     case TF::k_16_FLOAT:

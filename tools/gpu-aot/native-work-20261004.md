@@ -200,3 +200,7 @@ conversion or UVs. Existing texture-upload dumps contain only the first eight
 base textures, so they cannot establish the affected LOTR mip contents. Do not
 claim portraits, prompts or LOTR are repaired. No launch, FPS measurement,
 SDK/Plume change or hotfix change is authorized/implied by this rollback.
+
+## Offline texture format and scene capture follow-up
+
+See native-texture-format-20261004.md for tested format replication/DXT3A fixes, actual SDK GPU oracle results, instruction audit and late-trigger mip capture. Owner explicitly reaffirmed no launch. Visual failures and native1080p/60FPS remain unresolved.

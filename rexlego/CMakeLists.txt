@@ -280,6 +280,8 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/pixel_shader_filter.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/pool_copy.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/sampler_state.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/texture_swizzle.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/texture_alpha4_upload.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/cheat_menu.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/draw.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/draw.h"
