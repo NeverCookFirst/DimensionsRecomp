@@ -31,6 +31,7 @@
 #include "toypad_app.h"
 #include "ui_theme.h"
 #include "updates.h"
+#include "window_mode.h"
 #ifdef LEGODIMENSIONS_NATIVE_GPU
 #include "gpu_native/device.h"
 #include "gpu_native/renderer_mode.h"
@@ -178,7 +179,23 @@ class LegodimensionsApp : public rex::ReXApp {
     main_menu_ = legodimensions::main_menu::CreateOverlay(drawer, std::move(host));
   }
 
+  // Handle the convention in the title even with an older deployed SDK bind.
+  // Consume repeats so holding the chord cannot resize every keyboard repeat.
+  void OnKeyDown(rex::ui::KeyEvent& e) override {
+    if (e.virtual_key() == rex::ui::VirtualKey::kReturn && e.is_alt_pressed() &&
+        !e.is_ctrl_pressed() && !e.is_shift_pressed() && !e.is_super_pressed()) {
+      if (!e.prev_state() && window()) {
+        const bool fullscreen = legodimensions::ToggleBorderless(*window(), windowed_size_);
+        rex::cvar::SetFlagByName("fullscreen", fullscreen ? "true" : "false");
+      }
+      e.set_handled(true);
+      return;
+    }
+    rex::ui::ProcessKeyEvent(e);
+  }
+
  private:
+  legodimensions::WindowedSize windowed_size_;
   // Last-resort exit if the close path wedges. Detached on purpose: if the
   // process gets where it is going first, _Exit takes this thread with it.
   static void StartShutdownWatchdog() {

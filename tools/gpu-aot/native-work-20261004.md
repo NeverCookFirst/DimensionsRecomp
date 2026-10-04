@@ -124,3 +124,30 @@ GPU plugin and saved configuration hashes match the prior verified build.
 Proof: session-20261004/world-bank-candidate/installed-build-proof.json.
 The build has not been launched. Current internal targets are still 1280x720;
 native 1920x1080 and stable 60 FPS remain unfulfilled gates.
+
+## Owner test after bank250 and offline follow-up
+
+Owner confirms the world-transition tube and upper Vorton are fixed; LOTR is
+partly improved. Character/vehicle portraits remain blank, gamepad button
+prompts are missing, black objects remain, and textures show repeated lines.
+A computer-use window capture saved as lotr-owner-test-window.png shows the
+lines and black gaps. The title process29716 was closed and subsequent process
+inspection found no game. No new launch is authorized.
+
+The Oct4 12:3x slice of the manual log still has one unknown pixel resource,
+A863A580 with backing ED5CA160 and zero prefix C77B3ABB6F87ACD9. This run was
+manual without missing-shader capture, so the shader's full bytes are unavailable.
+A zero prefix does not establish shader identity. Do not substitute a similar
+shader or attribute every missing UI element to this one without evidence.
+The existing native 2D untile path uses the SDK GetTiledOffset2D; the repeated
+lines are not yet localized to data conversion, UV decoding, or mip sampling.
+
+Game-side Alt+Enter now explicitly handles the chord before SDK binds, consumes
+key repeats, toggles SDL borderless on the current monitor, restores the actual
+windowed logical dimensions, and synchronizes the fullscreen setting. Other
+keys use the SDK's ProcessKeyEvent. It does not modify/rebuild the SDK. Offline
+helper checks cover repeated toggles, window size changes, monitor retention,
+startup fullscreen and zero-size handling; full native build passes. Actual
+window behavior awaits an authorized launch.
+
+Final window-mode build fingerprint b2aae4e91c598df6; proof session-20261004/build-proof-window-mode.json. Actual OnKeyDown handler fixture also passes repeat/modifier/null-window/SDK-bind checks. No game launch; visual renderer failures remain unresolved.

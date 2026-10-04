@@ -271,6 +271,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_mode.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderdoc_probe.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/legodimensions_app.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/window_mode.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/long_probe.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/memory_watch.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/memory_watch.cpp"
