@@ -4,25 +4,35 @@ This directory keeps the reproducible, project-owned part of the native D3D12
 shader pipeline. Generated archives, HLSL, DXIL, and build trees stay under
 `rexlego/out/native-gpu` and are intentionally not committed.
 
-## Current compiler and constants ABI (October 4)
+## Current compiler and constants ABI (October 4, after owner visual test)
 
-The current production compiler is the combined alpha/viewport/explicit-LOD
+The owner rejected the combined explicit-LOD build: LOTR looked worse, with
+vertical artifacts, while texture stripes and blank portraits remained. It has
+been rolled back as a coupled host/constants/shader-bank change. Production
+again uses the October1 alpha/viewport compiler in
+`session-20261001/viewport-candidate/build/alpha_compiler.exe`, its matching
+`source/shader_common.h`, and **624 shared bytes**. Main9290/runtime250 shader
+coverage, the Enter transition correction and Alt+Enter handling are retained.
+The rollback is an offline build verification, not a new visual success claim.
+
+The rejected candidate compiler is the combined alpha/viewport/explicit-LOD
 source in `session-20261004/lod-combined/source`, prepared reproducibly with:
 
 ```powershell
 python tools/gpu-aot/prepare_lod_candidate.py rexlego/out/native-gpu/session-20261004/lod-combined --base-source rexlego/out/native-gpu/session-20261001/viewport-candidate/source
 ```
 
-It requires `XENOS_RECOMP_LEGO_NATIVE_SCALE=1` and **752 shared bytes**: the
+That candidate requires `XENOS_RECOMP_LEGO_NATIVE_SCALE=1` and **752 shared bytes**: the
 existing 624-byte layout plus 32 fetch LOD biases at offset624. Regenerate both
 main and runtime archives and their linked variants together with the matching
-host upload. Older 624-byte compiler commands below are historical examples.
+host upload. Do not reinstall this candidate without isolating its regression.
 The original isolated September30 LOD candidate lacks the later alpha/viewport
 fixes and must not replace this combined compiler.
 
 Main coverage remains9290 (known A58 memexport exclusion), runtime250; all prior
-hashes and specialization masks are preserved. This corrects ignored explicit
-mip-level instructions; it does not establish repaired game pixels or FPS.
+hashes and specialization masks are preserved. The candidate implements ignored
+explicit mip-level instructions but failed the owner's image check. Synthetic
+fixture success did not establish the game's complete sampling correctness.
 No game launch was authorized for this integration. See `native-work-20261004.md`.
 
 ## Inputs

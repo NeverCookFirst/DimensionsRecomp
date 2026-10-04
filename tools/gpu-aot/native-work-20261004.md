@@ -178,3 +178,25 @@ manual-run shader miss needs a complete captured container; pixel validation
 and clean FPS remain pending. Game stays closed, SDK/Vulkan/Plume/config untouched.
 
 Verified installed combined build: fingerprint 7ccb1c0c3f20bbde, executable SHA256 d31c258f8f798ed4fb8293f789870d854e9879389e11a3683187e4e8f7af0a05. Main9290/18444 and runtime250/448 all prelinked specialization subsets present. DLL pair/config unchanged. No launch. Proof lod-combined/installed-build-proof.json.
+
+## Owner rejects explicit-LOD candidate; coupled rollback
+
+The owner subsequently manually tested the candidate and reports no repairs,
+with worse LOTR rendering. The supplied screenshot shows stripes on Sonic and
+terrain, a blank blue portrait and tall vertical artifacts. Preserve it and
+the manual-run log in lod-combined/owner-regression.png and
+owner-regression-game.log. No game process was running at rollback time.
+
+Restore draw.cpp and both raw/prelinked banks from lod-combined/before as one
+change: production returns to624 shared bytes and the Oct1 alpha/viewport
+compiler, retaining250 runtime shaders/18983 index records and Alt+Enter.
+Copied backup timestamps must be advanced before building: otherwise Ninja
+can relink old752-byte objects alongside copied624-byte sources. Force the
+affected inputs newer and verify actual recompilation in rollback-build.log.
+
+Offline alpha, viewport and actual Alt+Enter handler checks pass. The screenshot
+does not localize the pre-existing texture stripes to LOD, tiling, endian
+conversion or UVs. Existing texture-upload dumps contain only the first eight
+base textures, so they cannot establish the affected LOTR mip contents. Do not
+claim portraits, prompts or LOTR are repaired. No launch, FPS measurement,
+SDK/Plume change or hotfix change is authorized/implied by this rollback.
