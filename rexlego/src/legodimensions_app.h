@@ -189,9 +189,9 @@ class LegodimensionsApp : public rex::ReXApp {
     // wrote since (exploded geometry on Endless Sea of Possibilities). Locked
     // off, whatever an older install wrote into the config.
     rex::cvar::SetFlagByName("readback_memexport_batched", "false");
-    // On-demand readback (0.1.26) tears the Simpsons world geometry on AMD
-    // RX 9060 XT; off = the synchronous path. Same lock as above.
-    rex::cvar::SetFlagByName("readback_memexport_on_demand", "false");
+    // On-demand readback (0.1.26) tore the Simpsons world geometry; it stays
+    // off by default (SDK default + installer), but is no longer locked here so
+    // the pre-draw sync fix (2026-10-04) can be tested from the config.
   }
   // void OnPreSetup(rex::RuntimeConfig& config) override {}
   // void OnLoadXexImage(std::string& xex_image) override {}

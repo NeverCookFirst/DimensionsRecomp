@@ -143,8 +143,9 @@ public static class TomlConfig
         // Batched readback let late GPU data overwrite what the game wrote since
         // (exploded geometry on Endless Sea of Possibilities, 0.1.20-0.1.23).
         Add(compat, "readback_memexport_batched", "false", forced: true);
-        // On-demand readback tore the Simpsons world geometry on AMD (0.1.26).
-        Add(compat, "readback_memexport_on_demand", "false", forced: true);
+        // On-demand readback: off by default but not forced - F4 "Less stutters
+        // (unstable)" turns it on, and that choice must survive updates.
+        Add(compat, "readback_memexport_on_demand", "false");
         Add(compat, "readback_resolve_max_kb", "256", forced: true);
         Add(compat, "d3d12_readback_memexport", "true", forced: true);
         Add(compat, "d3d12_readback_resolve", "true", forced: true);

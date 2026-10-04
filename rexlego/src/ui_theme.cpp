@@ -156,9 +156,8 @@ void ConfigureSettings() {
           {"present_dither", "Dithering",
            "Hides colour banding in gradients such as skies."},
           {"gpu_backend", "Graphics API",
-           "Which API the renderer uses. Direct3D 12 is the tested default on Windows; "
-           "Vulkan is unstable (known colour issues) and only a fallback. Needs a restart.",
-           Choices{{"any", "Automatic"}, {"d3d12", "Direct3D 12"}, {"vulkan", "Vulkan (unstable)"}}},
+           "Which API the renderer uses: Direct3D 12 or Vulkan. Needs a restart.",
+           Choices{{"any", "Automatic"}, {"d3d12", "Direct3D 12"}, {"vulkan", "Vulkan"}}},
           {"d3d12_adapter", "Graphics card",
            "Index of the graphics adapter to use. -1 picks the first real GPU; on a laptop "
            "with two, 0 and 1 choose between them."},
@@ -276,6 +275,9 @@ void ConfigureSettings() {
           {"fix_hub_portrait", "3D character portrait everywhere (experimental)",
            "Shows the animated portrait in the hub and open worlds, not only inside "
            "levels."},
+          {"readback_memexport_on_demand", "Less stutters (unstable, Direct3D 12 only)",
+           "Much less stutter. Breaks Endless Sea and glitches some views in Springfield "
+           "and other worlds. Needs a restart."},
       }});
 
   pres.pages.push_back(SettingsPage{
@@ -300,7 +302,7 @@ void ConfigureSettings() {
 
   // Locked to off, and its description says it is not what people think it
   // is; showing it only invites the question.
-  pres.hidden = {"vsync", "readback_memexport_batched", "readback_memexport_on_demand"};
+  pres.hidden = {"vsync", "readback_memexport_batched"};
 
   rex::ui::SettingsDialog::SetPresentation(std::move(pres));
 }

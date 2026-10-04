@@ -765,16 +765,52 @@ copy, and turning them off restores the vanilla bytes.";
         ct.ThrowIfCancellationRequested();
         Report($"{status}: {Path.GetFileName(src)}");
         Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-        using var input = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
         using var output = new FileStream(dst, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20);
         byte[] buf = new byte[1 << 20];
-        int n;
-        while ((n = input.Read(buf, 0, buf.Length)) > 0)
+        long pos = 0;
+        int failures = 0;
+        // Wine/Proton (Lutris, Steam Deck) report a drive that drops out for a
+        // moment - USB, network share, a mount waking up - as ERROR_NOT_READY
+        // ("Not ready.", issue #16). Reopen and resume from the same offset a
+        // few times before giving up, then say what to do instead.
+        while (true)
         {
-            ct.ThrowIfCancellationRequested();
-            output.Write(buf, 0, n);
-            Advance(n);
+            try
+            {
+                using var input = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
+                input.Seek(pos, SeekOrigin.Begin);
+                int n;
+                while ((n = input.Read(buf, 0, buf.Length)) > 0)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    output.Write(buf, 0, n);
+                    pos += n;
+                    Advance(n);
+                    failures = 0;
+                }
+                return;
+            }
+            catch (IOException e) when (IsTransientReadError(e) && ++failures <= 5)
+            {
+                SetupLog.Write($"read error on {src} at {pos}: {e.Message} - retry {failures}/5");
+                Thread.Sleep(1000 * failures);
+            }
+            catch (IOException e) when (IsTransientReadError(e))
+            {
+                throw new IOException(
+                    $"The drive holding the game files stopped responding while reading {Path.GetFileName(src)}. " +
+                    "Copy the dump to a local drive (on Linux: a folder in your home directory, not a mounted USB or network drive) and point the installer there.",
+                    e);
+            }
         }
+    }
+
+    static bool IsTransientReadError(IOException e)
+    {
+        // ERROR_NOT_READY 21, ERROR_GEN_FAILURE 31, ERROR_NETNAME_DELETED 64,
+        // ERROR_SEM_TIMEOUT 121, ERROR_DEVICE_NOT_CONNECTED 1167.
+        int code = e.HResult & 0xFFFF;
+        return code is 21 or 31 or 64 or 121 or 1167;
     }
 
     void ExtractPackage(string file, string destDir, string status)

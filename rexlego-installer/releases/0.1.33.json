@@ -1,8 +1,8 @@
 ﻿{
     "product":  "DimensionsRecompiled",
-    "version":  "0.1.32",
-    "releasedUtc":  "2026-10-03T11:35:17.5064936Z",
-    "notes":  "Vulkan starts again; a broken Graphics API value no longer stops the game from starting.",
+    "version":  "0.1.33",
+    "releasedUtc":  "2026-10-04T17:55:34.5372547Z",
+    "notes":  "Vulkan colours fixed, Vulkan pipeline cache, optional Less stutters mode (Direct3D 12)",
     "minVersion":  "",
     "full":  true,
     "files":  [
@@ -28,22 +28,22 @@
                   },
                   {
                       "p":  "game/legodimensions.exe",
-                      "sha":  "c1329584edfb8861d8cdfa16e26c56f3e8319fc84f5ab996fcc1d64cfadffc48",
-                      "len":  171001856
+                      "sha":  "521ab955bba7128090d2fc4446ce6f9c93e3f979cc348430886021b06d4f463b",
+                      "len":  171002880
                   },
                   {
                       "p":  "game/rexgpu-xenos.dll",
-                      "sha":  "fe0a3f3018aa4274c01a168c26a3c8430621516e7aae6a76a4464376ee32bd4e",
-                      "len":  7020544
+                      "sha":  "14793e0e00a00f009985ab5f79a5d655f7c5fa6e133ab3648e99c5cacb70a6fc",
+                      "len":  7076864
                   },
                   {
                       "p":  "game/rexruntime.dll",
-                      "sha":  "f616f952214e7a8cb0e5c19fdb8907235722ece7fd80b7ec128332bfaf79fddc",
-                      "len":  11552256
+                      "sha":  "615a0a133dd9801c286641daf4e7d5b831af4c1c714cbeadccdd2c5bba3805e3",
+                      "len":  11552768
                   },
                   {
                       "p":  "modcli/modcli.exe",
-                      "sha":  "6f048b7232192582ea195a23f372775e7ce28630108eb584449d63eb39445854",
+                      "sha":  "7f50578b9246ec78831e7aa30300b5911c7ed3ae763e9042ce70d20a015b2dc8",
                       "len":  67605662
                   },
                   {
@@ -788,8 +788,8 @@
                   },
                   {
                       "p":  "toypad/LegoToypad.exe",
-                      "sha":  "4249a5b699319a0e3283fb32cce5859c7f8d87c80bb97b7fc6f43a1376e92ab8",
-                      "len":  78986240
+                      "sha":  "b9d408ee912bbaed69226cce7cdd9d07ebaad4006cefa40df72f8416c62a9763",
+                      "len":  79001088
                   },
                   {
                       "p":  "update/PATCH3.DAT",
@@ -813,8 +813,8 @@
                   },
                   {
                       "p":  "updater/rexupdate.exe",
-                      "sha":  "98cb3f3653f3024cf01caafe67738dea5ba0b516ff32f9cf61e109d4310c2a67",
-                      "len":  66650966
+                      "sha":  "49b66f37b204c4439ac77d7d6d786239dd9759f350d584a14c7f34d6441db899",
+                      "len":  66651990
                   }
               ],
     "removed":  [
