@@ -30,8 +30,13 @@ Local evidence under session-20261004/format-forensics1:
   PNGs are diagnostic-reader artifacts, not evidence of renderer corruption.
   The manifest explicitly marks these limitations. Object headers at A/B
   addresses are unaffected. Do not infer intact whole mips from partial spans.
-- Missing-shader capture contains only the already known A58 memexport
-  container. This run does not support guessing additional shader substitutes.
+- Recursive missing-shader review found five new complete containers under
+  placement-containers, in addition to the known A58 memexport container. The
+  original top-level-only count missed these nested files. The captured PS
+  identities are35F76DC3372D5773/DBFA1692650B44C6; VS identities
+  1AFAC761791379C0/43DF3B3B6D90016E/45C2959A30C6DCAE. All five compile,
+  with exact captured identities added to the runtime archive/index. Incomplete
+  placement-raw spans are excluded; no shader substitutes are guessed.
 
 The SDK's actual mapping code confirmed the reader offset issue. The reader now
 matches Windows E/F translation, supports explicitly bounded spans up to8MiB,
@@ -52,7 +57,7 @@ The other two have no recorded reference. Rows are preserved in
 active-gradient-events.tsv. The isolated GetTextureGradients correction is
 therefore relevant to active LOTR materials; it is not a proven fix for the
 entire screenshot. It preserves the624-byte ABI and does not include rejected
-explicit-LOD changes. Full archive preparation proceeds offline; image
+explicit-LOD changes. Matching main archives are now installed in the offline build; image
 validation remains pending.
 
 ## Offline capture rearming repair

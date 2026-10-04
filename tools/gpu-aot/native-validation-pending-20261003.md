@@ -26,8 +26,8 @@ Once launches are authorized:
    Preserve the override material/texture identity if the portrait remains blank.
    October4: use -LongProbe -PortraitTrace -TextureForensics -CaptureMissing to correlate the actual mask's
    NuTexture/backend/active D3D header with draw shader/texture/constant captures. See
-   native-work-20261004.md. Arm the fresh process record's textureCaptureTrigger
-   only after the owner reaches the affected scene. Keep this separate from clean FPS measurements.
+   native-work-20261004.md. Use -CaptureStage hub only after owner readiness, then -CaptureStage lotr
+   for a fresh scene; never reuse a stage name. Each stage retains earlier data. Keep this separate from clean FPS measurements.
 3. Audit buffer watches in hub and three story levels, loading/cutscenes and
    mesh-pool relocations. Require zero stale-clean errors. Until then buffer
    watches stay OFF by default, independent of the existing texture watch.

@@ -204,3 +204,29 @@ SDK/Plume change or hotfix change is authorized/implied by this rollback.
 ## Offline texture format and scene capture follow-up
 
 See native-texture-format-20261004.md for tested format replication/DXT3A fixes, actual SDK GPU oracle results, instruction audit and late-trigger mip capture. Owner explicitly reaffirmed no launch. Visual failures and native1080p/60FPS remain unresolved.
+
+## Installed gradient-query and captured-shader build
+
+Final offline build fingerprint60c62465f26a1152, exe SHA256
+19b93e7c54978cee515f8b0ad8417088a4c7d925e2089fb6d641cf4198ef61c3.
+Matching main9290/18444 and runtime255/458 archives are installed; every
+specialization subset is present. Exact main DXIL comparison changes89/9290
+payloads, matching all89 gradient-query containers; other9201 unchanged.
+All old250 runtime identities/masks,448 linked keys and HLSL bytes preserved.
+Five nested placement containers from the closed diagnostic add ten index
+records:18983->18993 with every old record retained. Corrects the earlier
+nonrecursive missing-container count. No reference-game payloads embedded.
+
+Native build passes with624 shared bytes. Runtime DLL pair and configuration
+match the before-installed SHA256 records, DoF stays OFF, SDK/Vulkan/Plume are
+untouched. Tests include50 gradient translation/DXIL fixtures plus3 refusals,
+100 actual gradient instructions, captured-shader compilation and complete
+prelinked variant coverage. Proofs are under
+session-20261004/gradients-candidate:payload-differential-proof.json,
+runtime255-coverage-proof.json,index-proof.json,installed-build-proof.json.
+Coupled rollback files remain in before-installed.
+
+Game remains closed, no new launch. The captured hub/LOTR images still fail
+portrait/texture checks; this build has not been visually validated. Actual
+1080p rendering, stable60FPS, AMD and three story-level/cutscene checks remain
+pending. Do not count diagnostic traces as clean performance benchmarks.

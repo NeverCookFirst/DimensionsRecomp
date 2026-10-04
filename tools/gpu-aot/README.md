@@ -9,11 +9,19 @@ shader pipeline. Generated archives, HLSL, DXIL, and build trees stay under
 The owner rejected the combined explicit-LOD build: LOTR looked worse, with
 vertical artifacts, while texture stripes and blank portraits remained. It has
 been rolled back as a coupled host/constants/shader-bank change. Production
-again uses the October1 alpha/viewport compiler in
-`session-20261001/viewport-candidate/build/alpha_compiler.exe`, its matching
-`source/shader_common.h`, and **624 shared bytes**. Main9290/runtime250 shader
-coverage, the Enter transition correction and Alt+Enter handling are retained.
-The rollback is an offline build verification, not a new visual success claim.
+uses the gradient compiler in
+`session-20261004/gradients-candidate/build/gradient_compiler.exe`, prepared from
+the exact October1 alpha/viewport source with `prepare_gradients_candidate.py`.
+The matching `source/shader_common.h` retains **624 shared bytes**. Main9290
+shaders/18444 linked variants and runtime255/458 are installed; placement index
+18993 preserves every previous record. The runtime additions are five complete
+containers captured in the October4 diagnostic, not reference-game content.
+Only89 main DXIL payloads change, exactly the89 gradient-query shaders; all
+other9201 payloads and old250 runtime HLSL files are byte-identical.
+The Enter transition correction and Alt+Enter handling are retained.
+Build proof: `session-20261004/gradients-candidate/installed-build-proof.json`.
+This is offline verification; portraits, prompts, texture stripes and gameplay
+performance remain unverified. DoF remains OFF; no additional game launch.
 
 The rejected candidate compiler is the combined alpha/viewport/explicit-LOD
 source in `session-20261004/lod-combined/source`, prepared reproducibly with:
@@ -29,7 +37,7 @@ host upload. Do not reinstall this candidate without isolating its regression.
 The original isolated September30 LOD candidate lacks the later alpha/viewport
 fixes and must not replace this combined compiler.
 
-Main coverage remains9290 (known A58 memexport exclusion), runtime250; all prior
+Main coverage remains9290 (known A58 memexport exclusion), runtime255; all prior
 hashes and specialization masks are preserved. The candidate implements ignored
 explicit mip-level instructions but failed the owner's image check. Synthetic
 fixture success did not establish the game's complete sampling correctness.
