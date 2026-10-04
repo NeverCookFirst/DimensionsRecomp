@@ -100,6 +100,7 @@ def main():
             op = record['opcode']
             counts[f'opcode_{op}'] += 1
             if op != 1:
+                interesting.append(record)
                 continue
             for field in ['denormalized', 'register_gradients']:
                 if record[field]:

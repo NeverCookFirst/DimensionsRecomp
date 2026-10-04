@@ -63,3 +63,27 @@ row/mip padding, exact guest backing, legacy logo filtering and capture limits.
 Portraits, vehicle icons, button prompts, LOTR artifacts, missing shaders and
 three-level/cutscene correctness remain open. Internal rendering remains720p;
 actual1080p and stable60FPS are not achieved or measured by these tests.
+
+## Isolated gradient instruction correction
+
+The audit now records non-sampling texture operations with their asset paths.
+The production compiler silently skips GetTextureGradients (opcode18). The
+read-only SDK D3D12 translator computes coarse derivatives in the order
+dx(source.x),dy(source.x),dx(source.y),dy(source.y), independent of a texture.
+An isolated compiler prepared by `prepare_gradients_candidate.py` adds this
+operation with source/destination swizzles, destination0/1/keep and instruction
+predication. It refuses vertex and relative-address forms rather than silently
+emitting an incorrect result. Shared ABI remains624; no LOD change is included.
+
+`test_texture_gradients.py COMPILER COMMON OUTPUT` passes50 actual synthetic
+microcode/HLSL/validated-DXIL fixtures and three unsupported-mode refusals.
+Source r7 is initialized from SV_Position so XY derivatives vary. All89
+affected actual asset containers compile, with all100 gradient assignments
+present in emitted HLSL. Four belong to hub_lotr_05; this does not prove these
+are the draws in the owner's failed screenshot. Avengers avgref has no PC
+signature twin for the queried LOTR representative157; no substitute shader
+was copied or treated as ground truth. Candidate outputs remain ignored under
+session-20261004/gradients-candidate and are **not installed** into production.
+All250 captured runtime shaders also compile with byte-identical emitted HLSL
+against the prior production compiler. None uses GetTextureGradients, so this
+is a useful check that the isolated change leaves those existing draws alone.
