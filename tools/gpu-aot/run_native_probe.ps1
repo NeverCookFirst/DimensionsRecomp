@@ -4,6 +4,7 @@ param(
     [switch]$AllTextures,
     [switch]$CaptureMissing,
     [switch]$LongProbe,
+    [switch]$PortraitTrace,
     [switch]$NoMemoryWatch,
     [switch]$StaticTextureWatch,
     [switch]$AuditTextureWatch,
@@ -21,10 +22,11 @@ param(
     [switch]$Pm4Reference,
     [switch]$ConfiguredRenderer,
     [string]$LogoCaptureRenderDocDll,
-    [ValidateRange(1,8)][int]$Monitor = 1,
+    [ValidateRange(1,8)][int]$Monitor = 2,
     [switch]$Close
 )
 $ErrorActionPreference = 'Stop'
+if ($PortraitTrace -and !$LongProbe) { throw 'PortraitTrace requires LongProbe for correlated draw/constants capture' }
 if ($ConfiguredRenderer -and $Pm4Reference) { throw 'Select configured renderer or explicit PM4 reference, not both' }
 if ($DepthAlias -and $DisableDepthAlias) { throw 'DepthAlias and DisableDepthAlias are mutually exclusive' }
 if (($Pm4Reference -or $ConfiguredRenderer) -and ($Stencil -or $MeshTrace -or $LogoUploads -or $Viewport -or $BufferWindows -or $BufferWatch -or $AuditBufferWatch -or $DepthAlias -or $DisableDepthAlias -or $LongProbe -or $LogoCaptureRenderDocDll)) {
@@ -55,7 +57,7 @@ $keys = @('SDL_WINDOW_ACTIVATE_WHEN_SHOWN','LEGO_NATIVE_TIMING','LEGO_NATIVE_ALL
     'LEGO_NATIVE_NO_MEMORY_WATCH','LEGO_NATIVE_STATIC_TEXTURE_WATCH','LEGO_NATIVE_AUDIT_TEXTURE_WATCH','LEGO_NATIVE_BUFFER_WATCH','LEGO_NATIVE_AUDIT_BUFFER_WATCH','LEGO_NATIVE_NO_DRAW_ARENA',
     'LEGO_NATIVE_FRAME_METRICS','LEGO_NATIVE_ASYNC_CPU_RESOURCES','LEGO_NATIVE_STENCIL','LEGO_NATIVE_MESH_TRACE',
     'LEGO_NATIVE_VIEWPORT','LEGO_DUMP_TEXTURE_UPLOADS_LOGOS_ONLY','LEGO_NATIVE_BUFFER_WINDOWS','LEGO_NATIVE_PM4_REFERENCE',
-    'LEGO_NATIVE_RENDERDOC_DLL','LEGO_NATIVE_RENDERDOC_CAPTURE','LEGO_NATIVE_DEPTH_ALIAS')
+    'LEGO_NATIVE_RENDERDOC_DLL','LEGO_NATIVE_RENDERDOC_CAPTURE','LEGO_NATIVE_DEPTH_ALIAS','LEGO_NATIVE_PORTRAIT_TRACE')
 $saved = @{}
 foreach ($key in $keys) {
     $saved[$key] = [Environment]::GetEnvironmentVariable($key,'Process')
@@ -104,6 +106,7 @@ try {
         $env:LEGO_GPU_SNAPSHOT_START_AT_TILING = '1'
     }
     if ($AllTextures) { $env:LEGO_NATIVE_ALL_TEXTURES = '1' }
+    if ($PortraitTrace) { $env:LEGO_NATIVE_PORTRAIT_TRACE = '1' }
     if ($CaptureMissing) {
         $env:LEGO_DUMP_MISSING_SHADERS = Join-Path $runRoot "missing-$Label"
     }
@@ -130,6 +133,7 @@ try {
     $record = [ordered]@{id=$game.Id;path=$exePath;startedAt=$game.StartTime.ToString('o');
         mode=$Mode;allTextures=[bool]$AllTextures;captureMissing=[bool]$CaptureMissing;monitor=$Monitor;
         longProbe=[bool]$LongProbe;noMemoryWatch=[bool]$NoMemoryWatch;staticTextureWatch=[bool]$StaticTextureWatch;
+        portraitTrace=[bool]$PortraitTrace;
         auditTextureWatch=[bool]$AuditTextureWatch;
         bufferWatch=[bool]$BufferWatch; auditBufferWatch=[bool]$AuditBufferWatch;
         noDrawArena=[bool]$NoDrawArena;asyncCpuResources=[bool]$AsyncCpuResources;

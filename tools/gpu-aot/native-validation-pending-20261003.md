@@ -6,22 +6,30 @@ SDK/runtime/plugin hashes and configuration with every probe; close the exact
 owned process afterward. See `session-20261003/build-proof.json` for the build.
 
 Current output1920x1080, actual game render targets1280x720. This is not a
-1440p native-rendering benchmark. The60FPS1440p target is still unverified.
+1080p native-rendering benchmark. The owner changed the target to stable60FPS
+at actual1920x1080 internal rendering on October4; this is still unverified.
 
 Once launches are authorized:
 
-1. Verify Enter transition against the saved blue/yellow corruption and normal
-   cyan/red frame. The swizzle core passes tests; no post-fix pixels yet.
+1. The owner confirmed on October4 that Enter no longer causes the yellow
+   glitch. Preserve that user-confirmed result; an assistant post-fix capture
+   comparison has not yet been made.
 2. Slot2 controllable Vorton, matching native/emulated character and camera.
    Check head, body, hands, HUD icons, portrait, effects, shadows and portals.
    Preserve the override material/texture identity if the portrait remains blank.
+   October4: use -LongProbe -PortraitTrace to correlate the actual mask's
+   NuTexture+4 D3D resource with draw shader/texture/constant captures. See
+   native-work-20261004.md. Keep this separate from clean FPS measurements.
 3. Audit buffer watches in hub and three story levels, loading/cutscenes and
    mesh-pool relocations. Require zero stale-clean errors. Until then buffer
    watches stay OFF by default, independent of the existing texture watch.
 4. Measure clean comparable runs without snapshots, missing-shader dumps,
    RenderDoc or long traces: warmed hub plus the same level/cutscene sections.
-   Record FPS, median/p95 intervals, draws, texture/constants/vertices/hash and
-   synchronization breakdowns. Confirm which output and actual RT dimensions
+   Record FPS, median/p95/p99/max intervals, draws, texture/constants/vertices/
+   hash and synchronization breakdowns, 60/30FPS-budget misses,
+   frame-slot/acquire/submit/present CPU times and buffer watch hits/audits/
+   mismatches. The new columns are CPU wall times, not GPU timestamps.
+   Confirm which output and actual RT dimensions
    were measured. Compare fused upload and watch candidates individually.
 5. Level completion and return to hub: record spikes, frame-slot/resource waits
    and callback latency; check recovery without Alt+Tab. Resize/minimize/restore
