@@ -151,3 +151,30 @@ startup fullscreen and zero-size handling; full native build passes. Actual
 window behavior awaits an authorized launch.
 
 Final window-mode build fingerprint b2aae4e91c598df6; proof session-20261004/build-proof-window-mode.json. Actual OnKeyDown handler fixture also passes repeat/modifier/null-window/SDK-bind checks. No game launch; visual renderer failures remain unresolved.
+
+## Combined explicit mip-level correction (offline)
+
+Static audit of250 captured runtime containers found70 explicit fetches in46
+shaders and41 SetTextureLod instructions. The installed624-byte compiler ignored
+SetTextureLod and sampled pixel textures with computed derivatives instead.
+Prepared a combined compiler from the exact October1 alpha/viewport source,
+then added the previously tested explicit-LOD translation. This preserves the
+later alpha gate, eight comparisons, fixed16 output scales and viewport code.
+The host upload now appends32 signed fetch biases at offset624, total752 bytes.
+
+Tests pass: seven actual synthetic microcode->HLSL->DXIL cases, predication,
+positive/negative bias, vertex/computed behavior and relative-source refusal;
+32768 actual host bias/slot cases; existing968 alpha compares/five shader cases;
+900 viewport pixel mappings; all actual runtime SetLOD sources and explicit
+fetch bias slots found in generated HLSL. Runtime250/250 and main9290/9291
+compile, with only the already excluded A58 memexport shader failing. All prior
+shader identities/masks retained, no shader coverage removed. Both archives
+and prelinked variants are rebuilt together. Rollbackexe/banks/drawsource in
+session-20261004/lod-combined/before.
+
+This is a concrete missing instruction implementation, not a proven fix for
+the owner's texture lines or missing portraits/button prompts. The remaining
+manual-run shader miss needs a complete captured container; pixel validation
+and clean FPS remain pending. Game stays closed, SDK/Vulkan/Plume/config untouched.
+
+Verified installed combined build: fingerprint 7ccb1c0c3f20bbde, executable SHA256 d31c258f8f798ed4fb8293f789870d854e9879389e11a3683187e4e8f7af0a05. Main9290/18444 and runtime250/448 all prelinked specialization subsets present. DLL pair/config unchanged. No launch. Proof lod-combined/installed-build-proof.json.

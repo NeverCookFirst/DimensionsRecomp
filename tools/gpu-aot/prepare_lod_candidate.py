@@ -20,10 +20,11 @@ def replace_once(source, old, new):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('scratch', type=Path)
+    parser.add_argument('--base-source', type=Path, help='Preserve an already validated alpha/viewport compiler source')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     checkout = root / 'research/reblue/thirdparty/XenosRecomp'
-    module = checkout / 'XenosRecomp'
+    module = args.base_source.resolve() if args.base_source else checkout / 'XenosRecomp'
     source_dir = args.scratch.resolve() / 'source'
     source_dir.mkdir(parents=True, exist_ok=True)
     manifest = {}
@@ -83,9 +84,11 @@ def main():
         '#define g_ColorOutputScale        vk::RawBufferLoad<float4>(g_PushConstants.SharedConstants + 608)',
         '#define g_ColorOutputScale        vk::RawBufferLoad<float4>(g_PushConstants.SharedConstants + 608)\n'
         '#define g_FetchLodBias(i)          vk::RawBufferLoad<float>(g_PushConstants.SharedConstants + 624 + (i)*4)')
+    color_anchor = ('#define LEGO_SHARED_CONSTANTS() float4 g_ColorOutputScale : packoffset(c38);'
+                    if not args.base_source else '    float4 g_ColorOutputScale : packoffset(c38);')
     common = replace_once(common,
-        '#define LEGO_SHARED_CONSTANTS() float4 g_ColorOutputScale : packoffset(c38);',
-        '#define LEGO_SHARED_CONSTANTS() float4 g_ColorOutputScale : packoffset(c38); \\\n'
+        color_anchor,
+        color_anchor + ' \\\n'
         '    float4 g_FetchLodBiasArr[8] : packoffset(c39);\n'
         '#define g_FetchLodBias(i) (g_FetchLodBiasArr[(i) / 4][(i) % 4])')
     common = replace_once(common, 'float4 tfetchVertex2D(', '''float4 tfetchLevel2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float2 texCoord, float2 offset, float lod)
@@ -112,15 +115,20 @@ float4 tfetchVertexCube(''')
     # This ABI change must accompany the candidate shaders at eventual runtime.
     # Keep it as an isolated source copy until the sampler-only A/B is observed.
     draw = (root / 'rexlego/src/gpu_native/draw.cpp').read_text()
-    draw = replace_once(draw, '  float color_output_scale[4]{1, 1, 1, 1};\n',
-                        '  float color_output_scale[4]{1, 1, 1, 1};\n  float fetch_lod_bias[32]{};\n')
-    draw = replace_once(draw, 'static_assert(sizeof(SharedConstants) == 624);',
-                        'static_assert(sizeof(SharedConstants) == 752);\n'
-                        'static_assert(offsetof(SharedConstants, fetch_lod_bias) == 624);')
-    draw = replace_once(draw, '    shared.samplers[i] = HostDevice::RegisterSampler(fetch);',
-                        '    shared.samplers[i] = HostDevice::RegisterSampler(fetch);\n'
-                        '    const int32_t lod_bias = int32_t((fetch[4] >> 12) & 1023);\n'
-                        '    shared.fetch_lod_bias[i] = float(lod_bias >= 512 ? lod_bias - 1024 : lod_bias) / 32.0f;')
+    if 'float fetch_lod_bias[32]' not in draw:
+        draw = replace_once(draw, '  float color_output_scale[4]{1, 1, 1, 1};\n',
+                            '  float color_output_scale[4]{1, 1, 1, 1};\n  float fetch_lod_bias[32]{};\n')
+        draw = replace_once(draw, 'static_assert(sizeof(SharedConstants) == 624);',
+                            'static_assert(sizeof(SharedConstants) == 752);\n'
+                            'static_assert(offsetof(SharedConstants, fetch_lod_bias) == 624);')
+        draw = replace_once(draw, '    shared.samplers[i] = HostDevice::RegisterSampler(fetch);',
+                            '    shared.samplers[i] = HostDevice::RegisterSampler(fetch);\n'
+                            '    const int32_t lod_bias = int32_t((fetch[4] >> 12) & 1023);\n'
+                            '    shared.fetch_lod_bias[i] = float(lod_bias >= 512 ? lod_bias - 1024 : lod_bias) / 32.0f;')
+    else:
+        assert 'sizeof(SharedConstants) == 752' in draw
+        assert 'offsetof(SharedConstants, fetch_lod_bias) == 624' in draw
+    draw = draw.replace('shared_bytes=624', 'shared_bytes=752')
     (source_dir / 'draw-candidate.cpp').write_text(draw)
 
     dep = checkout / 'thirdparty'

@@ -4,6 +4,27 @@ This directory keeps the reproducible, project-owned part of the native D3D12
 shader pipeline. Generated archives, HLSL, DXIL, and build trees stay under
 `rexlego/out/native-gpu` and are intentionally not committed.
 
+## Current compiler and constants ABI (October 4)
+
+The current production compiler is the combined alpha/viewport/explicit-LOD
+source in `session-20261004/lod-combined/source`, prepared reproducibly with:
+
+```powershell
+python tools/gpu-aot/prepare_lod_candidate.py rexlego/out/native-gpu/session-20261004/lod-combined --base-source rexlego/out/native-gpu/session-20261001/viewport-candidate/source
+```
+
+It requires `XENOS_RECOMP_LEGO_NATIVE_SCALE=1` and **752 shared bytes**: the
+existing 624-byte layout plus 32 fetch LOD biases at offset624. Regenerate both
+main and runtime archives and their linked variants together with the matching
+host upload. Older 624-byte compiler commands below are historical examples.
+The original isolated September30 LOD candidate lacks the later alpha/viewport
+fixes and must not replace this combined compiler.
+
+Main coverage remains9290 (known A58 memexport exclusion), runtime250; all prior
+hashes and specialization masks are preserved. This corrects ignored explicit
+mip-level instructions; it does not establish repaired game pixels or FPS.
+No game launch was authorized for this integration. See `native-work-20261004.md`.
+
 ## Inputs
 
 - Read-only game archives from the complete Xbox 360 disc set.

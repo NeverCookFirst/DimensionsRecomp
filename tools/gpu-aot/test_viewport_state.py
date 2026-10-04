@@ -89,7 +89,7 @@ exe = a.output/'test.exe'
 subprocess.run(['clang++','-std=c++20','-O2',str(cpp),'-o',str(exe)],check=True)
 subprocess.run([str(exe)],check=True)
 proof = {'passed': True, 'original_setter_cases': 16, 'pixel_mapping_cases': 900,
-         'modes': ['TU23 0x43F', 'TU23 0x400'], 'shared_bytes': 624,
+         'modes': ['TU23 0x43F', 'TU23 0x400'], 'shared_bytes': 752 if 'fetch_lod_bias[32]' in draw else 624,
          'depth_clip_pipeline_cache': True, 'game_launched': False,
          'scope': 'CPU setter, exact emitted HLSL arithmetic, host viewport mapping and PSO identity; no pixel/character repair claim'}
 (a.output/'verification.json').write_text(json.dumps(proof,indent=2)+'\n')

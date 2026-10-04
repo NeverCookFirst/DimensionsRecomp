@@ -72,8 +72,10 @@ struct SharedConstants {
   u32 alpha_function = 7;
   u32 viewport_mode = 0;
   float color_output_scale[4]{1, 1, 1, 1};
+  float fetch_lod_bias[32]{};
 };
-static_assert(sizeof(SharedConstants) == 624);
+static_assert(sizeof(SharedConstants) == 752);
+static_assert(offsetof(SharedConstants, fetch_lod_bias) == 624);
 static_assert(offsetof(SharedConstants, booleans) == 512);
 static_assert(offsetof(SharedConstants, color_output_scale) == 608);
 static_assert(offsetof(SharedConstants, alpha_function) == 600);
@@ -308,6 +310,8 @@ bool BindConstants(
       }
     }
     shared.samplers[i] = HostDevice::RegisterSampler(fetch);
+    const int32_t lod_bias = int32_t((fetch[4] >> 12) & 1023);
+    shared.fetch_lod_bias[i] = float(lod_bias >= 512 ? lod_bias - 1024 : lod_bias) / 32.0f;
     if (trace_constants && i >= 16) {
       struct VertexTextureTrace {
         u32 guest = 0;
@@ -345,7 +349,7 @@ bool BindConstants(
     if (!name.empty()) LongProbeEvent("draw_constants", false, "file=", name,
         "VS=", BoundShaderHash(ShaderStage::kVertex),
         "PS=", BoundShaderHash(ShaderStage::kPixel), "texture_mask=", texture_mask,
-        "VS_offset=0 PS_offset=4096 shared_offset=8192 shared_bytes=624");
+        "VS_offset=0 PS_offset=4096 shared_offset=8192 shared_bytes=752");
   }
   std::memcpy(upload.mapped, data.data(), data.size());
   commands->setGraphicsRootDescriptor(upload.buffer->at(upload.offset), 0);

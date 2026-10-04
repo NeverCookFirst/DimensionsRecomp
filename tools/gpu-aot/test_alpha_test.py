@@ -59,6 +59,7 @@ initializer = body((root / 'rexlego/src/gpu_native/hooks_device.cpp').read_text(
                    'bool InitializeRenderDefaults(')
 shared = body((root / 'rexlego/src/gpu_native/draw.cpp').read_text(), 'struct SharedConstants') + ';'
 h = a.output / 'alpha-test.cpp'
+shared_bytes = 752 if 'fetch_lod_bias[32]' in shared else 624
 h.write_text(r'''
 #include <array>
 #include <bit>
@@ -140,12 +141,12 @@ int main(){
   auto d=DecodeNativeAlphaState(Load(device+10556),std::bit_cast<float>(Load(device+10620)));
   assert(d.enabled&&d.function==f&&d.reference==0.37f);
  }
- static_assert(sizeof(SharedConstants)==624);
+ static_assert(sizeof(SharedConstants)==EXPECTED_SHARED_BYTES);
  static_assert(offsetof(SharedConstants,alpha_function)==600);
  static_assert(offsetof(SharedConstants,alpha_threshold)==556);
  static_assert(offsetof(SharedConstants,color_output_scale)==608);
 }
-''')
+'''.replace('EXPECTED_SHARED_BYTES', str(shared_bytes)))
 exe = a.output / 'alpha-test.exe'
 subprocess.run(['clang++', '-std=c++20', '-DNOMINMAX', '-I'+str(root/'rexlego/src'),
                 '-I'+str(root/'tools/gpu-aot'), str(h), '-o', str(exe)], check=True)
@@ -172,7 +173,7 @@ for name, opts in cases.items():
     assert ('oDepth : SV_Depth' in s) == opts.get('depth',False)
 (a.output/'verification.json').write_text(json.dumps({
     'passed': True, 'actual_tu23_setters': [f'{t[1]:08X}' for t in table],
-    'table_defaults': [f'{t[2]:08X}' for t in table], 'shared_bytes': 624,
+    'table_defaults': [f'{t[2]:08X}' for t in table], 'shared_bytes': shared_bytes,
     'checks': ['original leaf setters and native initializer', 'table validation before mutation',
                '968 comparisons incl NaN/inf', 'raw float reference', 'no cull/fill writes',
                '5 actual microcode/HLSL/DXIL fixtures', 'depth-only gate', 'compare before EDRAM scale'],
