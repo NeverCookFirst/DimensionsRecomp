@@ -1,5 +1,5 @@
 // Read-only TU23 portrait identity. Offsets come from 833738B8, 82CC4E50
-// and the texture leaf 82B6FC70 / binding function 82BCE7F8.
+// and binding functions 82BCBB78 / 82BCE7F8. Object+4 is a reference count.
 #pragma once
 #include <cstdint>
 #include <limits>
@@ -34,7 +34,9 @@ PortraitIdentity ReadPortraitIdentity(uint32_t owner, ReadWord&& read) {
   field(result.material, 948, result.material_flags, 4);
   field(result.material, 952, result.texture_flags, 8);
   if (!field(result.material, 956, result.texture_object, 16)) return result;
-  if (!field(result.texture_object, 4, result.texture_backend, 32) ||
+  // 82BCBB78 loads asset+44 into r30, then passes r30 as r6 to
+  // 82BCE7F8. The asset+40 member instead supplies sampler parameters.
+  if (!field(result.texture_object, 44, result.texture_backend, 32) ||
       !field(result.texture_backend, 116, result.active_texture_index, 64)) return result;
   // 82BCE7F8 passes the selected inline D3D header, NOT the backend pointer,
   // to SetTexture: backend + 120 + index * 52. Reject wrap/unreadable headers.

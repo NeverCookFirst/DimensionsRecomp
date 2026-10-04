@@ -59,7 +59,7 @@ int main(int argc,char**){
  const bool enabled=argc>1;
  store(0x1000+84,0x2000);store(0x1000+200,0x3000);
  store(0x3000+948,0x1234);store(0x3000+952,0x5678);store(0x3000+956,0x4000);
- store(0x4000+4,0x5000);store(0x5000+116,1);store(0x5000+120+52,0x10001);
+ store(0x4000+4,3);store(0x4000+44,0x5000);store(0x5000+116,1);store(0x5000+120+52,0x10001);
  auto before=fixture_memory.bytes;PPCContext ctx;ctx.r3.u32=0x1000;
  sub_833738B8(ctx,fixture_memory.bytes.data());
  assert(setups==1 && ctx.r3.u32==0xCAFE && ctx.result==42 && ctx.canary==0x1122334455667788ull);

@@ -20,11 +20,14 @@ material override. Further inspection of the actual TU23 generated bodies:
 - 82CC4E50 copies the wrapper's pointee into material+956 and retains/releases
   through the object's vtable. Material+956 is therefore a NuTexture pointer,
   not directly a D3D texture header.
-- 82B6FC70 is exactly a load from texture object+4, giving the backend object.
-  Further inspection of binding function 82BCE7F8 shows that this is **not** the
-  D3D header: SetTexture receives backend+120+52*index, with index at backend+116.
-  The diagnostic checks the active inline header's readability and arithmetic
-  bounds before comparing that address with native draw bindings.
+- The first live Sonic trace disproved the earlier backend inference: asset+4
+  is the reference count (3), and 82B6FC70 is a generic reference-count getter.
+  Read-only memory identifies the asset as sonic_portraitalpha_nxg.tex:1.
+- Actual binder 82BCBB78 loads asset+44 into r30 and passes r30 as r6 to
+  82BCE7F8. Asset+40 supplies sampler parameters. 82BCE7F8 selects the inline
+  D3D header at backend+120+52*index, with index at backend+116. The corrected
+  probe follows this statically verified binder path; a live matching draw is
+  still required.
 - 83373850 destroys this owner. The diagnostic removes it before destruction.
 
 New C++ hooks retain the original setup/destructor behavior. With
@@ -77,3 +80,13 @@ override was enabled.
 Next authorized runs: a matching Vorton portrait capture, clean warmed baseline,
 buffer-watch audit, then controlled OFF/ON comparisons. Actual 1080p, three story
 levels, level-completion spikes and AMD remain open validation gates.
+
+## First Sonic capture and added world coverage
+
+The October 4 Sonic capture shows the head and HUD icons present, with an empty
+portrait circle. It remains 1280x720 internally. This heavily instrumented run
+is not an FPS baseline. The probe was closed after the capture and read-only
+object inspection. The owner also reports mostly black surfaces in the upper
+Vorton portal layer and Lord of the Rings world, though some textures appear
+correct and the world loads. Include both in correctness coverage; diagnose
+shader/resource failures before applying texture color adjustments.
