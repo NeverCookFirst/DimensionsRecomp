@@ -24,6 +24,7 @@ param(
     [switch]$ConfiguredRenderer,
     [string]$LogoCaptureRenderDocDll,
     [ValidateRange(1,8)][int]$Monitor = 3,
+    [ValidatePattern('^[a-z0-9_-]{1,32}$')][string]$CaptureStage,
     [switch]$Close
 )
 $ErrorActionPreference = 'Stop'
@@ -39,6 +40,27 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $runRoot = Join-Path $projectRoot 'rexlego/out/native-gpu/session-20260930'
 $exePath = Join-Path $projectRoot 'rexlego/out/build/win-amd64-release/legodimensions.exe'
 $recordPath = Join-Path $runRoot "$Label-process.json"
+if ($CaptureStage) {
+    if ($Close) { throw 'Select capture stage or close, not both' }
+    $record = Get-Content -LiteralPath $recordPath | ConvertFrom-Json
+    $game = Get-Process -Id $record.id -ErrorAction Stop
+    if (!$record.textureForensics -or !$record.textureCaptureTrigger -or
+        $game.Path -ne $record.path -or
+        $game.StartTime.ToUniversalTime().Ticks -ne ([datetime]$record.startedAt).ToUniversalTime().Ticks) {
+        throw 'Capture probe identity/settings mismatch'
+    }
+    $stageRoot = Split-Path $record.textureCaptureTrigger
+    if (Test-Path -LiteralPath (Join-Path $stageRoot $CaptureStage)) { throw 'Use a fresh capture stage name' }
+    $temporaryTrigger = Join-Path $stageRoot (([guid]::NewGuid().ToString('N')) + '.trigger.tmp')
+    [IO.File]::WriteAllText($temporaryTrigger, $CaptureStage, [Text.Encoding]::ASCII)
+    if (Test-Path -LiteralPath $record.textureCaptureTrigger) {
+        [IO.File]::Replace($temporaryTrigger, $record.textureCaptureTrigger, $null)
+    } else {
+        [IO.File]::Move($temporaryTrigger, $record.textureCaptureTrigger)
+    }
+    Write-Output "Armed texture capture stage '$CaptureStage' for PID $($record.id)"
+    return
+}
 if ($Close) {
     $record = Get-Content -LiteralPath $recordPath | ConvertFrom-Json
     $game = Get-Process -Id $record.id -ErrorAction SilentlyContinue

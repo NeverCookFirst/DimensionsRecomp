@@ -471,7 +471,9 @@ u32 LevelOffset(const TextureResource& resource, u32 level) {
 // Opt-in diagnostic: inspect the actual base-level bytes uploaded to D3D12,
 // independently of draw geometry, shaders, swizzle and sampler state.
 struct TextureCaptureState {
-  std::filesystem::path root, trigger;
+  std::filesystem::path root, trigger, active_root;
+  std::string stage;
+  std::unordered_set<std::string> completed_stage_names;
   bool all_levels = false, armed = false;
   u32 checked_frame = ~u32{0};
   u64 written_bytes = 0;
@@ -500,14 +502,37 @@ TextureCaptureState& TextureCapture() {
 // Disabled captures do no filesystem work. The trigger is checked once/frame.
 bool TextureUploadCapturePending(const TextureResource& resource) {
   auto& state = TextureCapture();
-  if (state.root.empty() || state.dumped.size() >= (state.all_levels ? 32u : 8u) ||
-      state.written_bytes >= 128ull * 1024 * 1024 || state.dumped.contains(resource.guest_address)) return false;
+  if (state.root.empty() || state.written_bytes >= 128ull * 1024 * 1024) return false;
   if (!state.trigger.empty() && state.checked_frame != g_probe_frame.load()) {
     state.checked_frame = g_probe_frame.load();
     std::error_code error;
     state.armed = std::filesystem::is_regular_file(state.trigger, error) && !error;
+    if (state.armed && state.all_levels) {
+      // A fresh stage name rearms the per-scene quota. Never reset the global
+      // byte budget or overwrite an earlier scene. Read bounded trigger text.
+      char name[34]{};
+      std::ifstream input(state.trigger, std::ios::binary);
+      input.read(name, sizeof(name));
+      std::string stage(name, size_t(input.gcount()));
+      while (!stage.empty() && (stage.back() == '\n' || stage.back() == '\r')) stage.pop_back();
+      if (stage.empty()) stage = "capture";
+      const bool valid = stage.size() <= 32 && std::all_of(stage.begin(), stage.end(), [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+      });
+      if (!valid || (stage != state.stage &&
+          (state.completed_stage_names.size() >= 4 || state.completed_stage_names.contains(stage)))) {
+        state.armed = false;
+      } else if (stage != state.stage) {
+        state.completed_stage_names.insert(stage);
+        state.stage = std::move(stage);
+        state.active_root = state.root / state.stage;
+        state.dumped.clear();
+      }
+    }
   }
   if (!state.trigger.empty() && !state.armed) return false;
+  if (state.dumped.size() >= (state.all_levels ? 32u : 8u) ||
+      state.dumped.contains(resource.guest_address)) return false;
   if (state.all_levels && (u32(resource.guest_fetch.dimension) != 1 || resource.levels > 16)) return false;
   if (resource.format != plume::RenderFormat::BC1_UNORM &&
       resource.format != plume::RenderFormat::BC3_UNORM &&
@@ -526,7 +551,7 @@ void DumpTextureUpload(const TextureResource& resource, const u8* data,
                        std::span<const u8> base = {}, std::span<const u8> mips = {}) {
   if (!TextureUploadCapturePending(resource)) return;
   auto& state = TextureCapture();
-  const auto& root = state.root;
+  const auto& root = state.active_root.empty() ? state.root : state.active_root;
   const bool bc1 = resource.format == plume::RenderFormat::BC1_UNORM;
   const bool bc3 = resource.format == plume::RenderFormat::BC3_UNORM;
   const bool compressed = bc1 || bc3;

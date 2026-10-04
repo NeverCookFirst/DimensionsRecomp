@@ -1,8 +1,10 @@
 # Required runtime validation after October 3 offline fixes
 
-Latest October4 instruction: **keep working offline; no launch yet**. Earlier
-launch authorization has been revoked. Monitor3 applies to future authorized
-probes. The owner rejected the combined explicit-LOD candidate; production
+Latest October4 state: the owner assisted the single monitor3 diagnostic
+oct04-format-forensics1 in Vorton and LOTR; that instance has been closed.
+Continue offline; another launch requires owner authorization. See
+native-capture-20261004.md for the failed image checks and evidence limitations.
+The owner rejected the combined explicit-LOD candidate; production
 has returned to the coupled624-byte host/shader ABI. Texture format fixes and
 late-trigger mip forensics have passed offline checks, but are visually untested.
 Use questions for user-assisted hub readiness; no activation or injected input.

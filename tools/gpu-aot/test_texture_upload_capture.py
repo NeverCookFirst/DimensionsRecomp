@@ -17,6 +17,7 @@ function=s[start:end]
 cpp=a.output/'test.cpp'
 cpp.write_text(r'''
 #include <cstdint>
+#include <algorithm>
 #include <atomic>
 #include <array>
 #include <cstdlib>
@@ -65,6 +66,24 @@ int main(int argc,char**argv){
   r.guest_address=43;r.guest_fetch.dimension=2;
   if(TextureUploadCapturePending(r))return 5;
   r.guest_fetch.dimension=1;
+  r.guest_address=42;
+  for(u32 i=0;i<32;++i)TextureCapture().dumped.insert(i+100);
+  std::ofstream(argv[2])<<"lotr";++g_probe_frame;
+  if(!TextureUploadCapturePending(r))return 7;
+  const auto first_budget=TextureCapture().written_bytes;
+  DumpTextureUpload(r,data.data(),base,mips);
+  if(TextureCapture().written_bytes<=first_budget)return 8;
+  std::ofstream(argv[2])<<"../invalid";++g_probe_frame;
+  if(TextureUploadCapturePending(r))return 9;
+  std::ofstream(argv[2])<<"armed";++g_probe_frame;
+  if(TextureUploadCapturePending(r))return 10; // Refuse overwriting prior scene.
+  for(const char* stage:{"third","fourth"}){
+    std::ofstream(argv[2])<<stage;++g_probe_frame;
+    if(!TextureUploadCapturePending(r))return 11;
+    DumpTextureUpload(r,data.data(),base,mips);
+  }
+  std::ofstream(argv[2])<<"fifth";++g_probe_frame;
+  if(TextureUploadCapturePending(r))return 12;
   TextureCapture().written_bytes=128ull*1024*1024;
   if(TextureUploadCapturePending(r))return 6;
   return 0;
@@ -97,7 +116,7 @@ all_data=a.output/'all-mips'
 trigger=a.output/'arm-capture'
 trigger.unlink(missing_ok=True)
 subprocess.run([str(exe.resolve()),str(all_data.resolve()),str(trigger.resolve())],check=True)
-b=(all_data/'42.dds').read_bytes()
+b=(all_data/'armed/42.dds').read_bytes()
 assert struct.unpack_from('<I',b,28)[0]==7
 expected=bytearray()
 for level in range(7):
@@ -105,13 +124,18 @@ for level in range(7):
     for row in range((h+3)//4):
         expected.extend((level*23+row*7+column)&255 for column in range(((w+3)//4)*8))
 assert b[128:]==expected
-assert (all_data/'42.guest-base.bin').read_bytes()==bytes([0xAB])*4096
-assert (all_data/'42.guest-mips.bin').read_bytes()==bytes([0xEF])*2048
-assert 'levels=7' in (all_data/'42.txt').read_text()
-assert not (all_data/'43.dds').exists()
+assert (all_data/'armed/42.guest-base.bin').read_bytes()==bytes([0xAB])*4096
+assert (all_data/'armed/42.guest-mips.bin').read_bytes()==bytes([0xEF])*2048
+assert 'levels=7' in (all_data/'armed/42.txt').read_text()
+assert not (all_data/'armed/43.dds').exists()
+for stage in ('lotr','third','fourth'):
+    assert (all_data/stage/'42.dds').read_bytes()==b
+assert not (all_data/'fifth').exists()
 (a.output/'verification.json').write_text(json.dumps({'passed':True,'formats':['BC3/DXT5','BC1/DXT1','RGBA8'],
     'checks':['odd dimensions','256-byte row padding stripped','exact payload preserved','both TT shader variants','unrelated shader filtered',
               'late trigger','cached-upload capture request','all seven packed-tail mip sizes','512-byte mip gaps stripped',
-              'exact raw guest backing','volume refused','128MiB budget'],
+              'exact raw guest backing','volume refused','128MiB budget',
+              'rearm after full scene quota','scene files preserved','no reused scene overwrite',
+              'four scene limit','invalid scene path refused','global byte budget retained'],
     'game_launched':False},indent=2)+'\n')
 print('PASS: DXT5/DXT1/RGBA capture preserves exact rows and filters unrelated shaders')
