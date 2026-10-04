@@ -91,6 +91,6 @@ for name,trace,reference,enabled in [('disabled',None,'0',False),('zero','0','0'
  subprocess.run([str(exe.resolve())]+(['enabled'] if enabled else []),env=env,check=True)
  if enabled:
   text=events.read_text();assert text.count('\tportrait_setup\t')==1
-  assert text.count('\tportrait_texture_draw\t')==1 and text.count('\tportrait_destroy\t')==1
+  assert text.count('\tportrait_bound_draw\t')==1 and text.count('\tportrait_destroy\t')==1
  else:assert not events.exists()
 print('PASS: actual portrait hooks, original register/results preserved, no guest writes, exact header match, destructor removal, disabled reads=0')

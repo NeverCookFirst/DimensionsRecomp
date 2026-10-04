@@ -76,7 +76,7 @@ void TracePortraitDraw(u32 texture, u32 slot, u64 vertex_shader, u64 pixel_shade
     const auto identity = ReadPortraitIdentity(owner, ReadPortraitWord);
     if (identity.texture != texture || !(identity.readable_fields & 128)) continue;
     ++reports;
-    LongProbeEvent("portrait_texture_draw", false, "owner=", owner,
+    LongProbeEvent("portrait_bound_draw", false, "owner=", owner,
         "material=", identity.material, "texture_object=", identity.texture_object,
         "texture_backend=", identity.texture_backend, "active_index=", identity.active_texture_index,
         "texture=", texture, "slot=", slot, "VS=", vertex_shader, "PS=", pixel_shader,

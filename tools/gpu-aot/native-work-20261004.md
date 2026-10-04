@@ -32,8 +32,8 @@ material override. Further inspection of the actual TU23 generated bodies:
 
 New C++ hooks retain the original setup/destructor behavior. With
 LEGO_NATIVE_PORTRAIT_TRACE=1 and LEGO_NATIVE_TRACE_DIR set, they log
-portrait_setup / portrait_destroy. BindConstants reports portrait_texture_draw
-when the current owner/material/NuTexture chain matches a referenced texture
+portrait_setup / portrait_destroy. DispatchDraw reports portrait_bound_draw
+when the current owner/material/NuTexture chain matches an attempted texture
 slot, including VS/PS hashes. Re-reading the chain avoids keeping stale setup
 identities; reads check commitment and 32-bit bounds. At most 32 owners are
 tracked and 64 matched draws reported per frame. Disabled mode performs no
@@ -90,3 +90,37 @@ object inspection. The owner also reports mostly black surfaces in the upper
 Vorton portal layer and Lord of the Rings world, though some textures appear
 correct and the world loads. Include both in correctness coverage; diagnose
 shader/resource failures before applying texture color adjustments.
+
+## Upper hub / LOTR coverage candidate, and latest launch constraint
+
+The owner reports every character and vehicle portrait missing, plus world
+textures; diagnose a shared path. The second Sonic trace follows asset+44 to
+a readable backend and active inline header. No successful BindConstants draw
+matched its mask. This does not prove no attempted draw: the original trace ran
+after pipeline creation. The revised trace now observes attempted bindings
+before shader, declaration and pipeline rejection, including unused slots;
+portrait_bound_draw is explicitly not evidence of GPU submission.
+
+The owner moved to the upper Vorton portal layer and LOTR world in the same
+probe. Captures saved locally as upper-hub-before.png and the LOTR present DDS.
+Large black surfaces are visible in the upper-hub image. The run captured 75
+new valid containers, merged with all 175 existing runtime inputs. The current
+624-byte alpha/viewport compiler successfully compiled 250/250. The merged
+index preserves every previous record, 18836 -> 18983 (147 new signatures).
+All 250 inputs pass exact physical/instruction lookup with the main bank present.
+This addresses observed shader coverage failures; visual correction remains
+unverified. Original mask missingness can have another cause.
+
+The diagnostic process 12764 was closed. The owner subsequently prohibited new
+launches until explicitly requested; do not launch validation automatically.
+A separate user-owned hotfix/test process 8696 was observed and left untouched.
+The dev build can be prepared offline; SDK/Vulkan/Plume and hotfix stay untouched.
+
+Installed offline dev build: runtime 250 containers / 448 prelinked variants,
+index 18983, fingerprint 5a3f2a542b8519f7. All previous shader hashes and
+specialization masks preserved, all specialization subsets present. Executable
+contains the matching fingerprint and portrait_bound_draw marker; runtime DLL,
+GPU plugin and saved configuration hashes match the prior verified build.
+Proof: session-20261004/world-bank-candidate/installed-build-proof.json.
+The build has not been launched. Current internal targets are still 1280x720;
+native 1920x1080 and stable 60 FPS remain unfulfilled gates.

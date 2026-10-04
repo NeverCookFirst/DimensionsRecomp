@@ -293,9 +293,6 @@ bool BindConstants(
     // in invalidation, verify their contents at every use, even with watches.
     UploadTextureResource(bindings.textures[i], commands,
         (BoundShaderTextureMask(ShaderStage::kVertex) & (1u << i)) != 0);
-    if (PortraitProbeEnabled())
-      TracePortraitDraw(bindings.textures[i], i, BoundShaderHash(ShaderStage::kVertex),
-                        BoundShaderHash(ShaderStage::kPixel));
     TextureFetchWords fetch;
     for (u32 word = 0; word < fetch.size(); ++word) fetch[word] = device->fetch_constants[i].dword[word];
     if (LongProbeEnabled()) {
@@ -585,6 +582,14 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   } mesh_result{mesh_trace};
   if (!device || !count) {
     return false;
+  }
+  // Trace attempted bindings before shader/declaration/pipeline early exits.
+  // A mask on a rejected draw is diagnostic evidence, not a submitted draw.
+  if (PortraitProbeEnabled()) {
+    const auto portrait_bindings = SnapshotDrawBindings();
+    for (u32 i = 0; i < kNativeTextureSlots; ++i)
+      TracePortraitDraw(portrait_bindings.textures[i], i,
+          BoundShaderHash(ShaderStage::kVertex), BoundShaderHash(ShaderStage::kPixel));
   }
   if (g_logo_capture_api && indexed && count == 6 && start == 24 && base_vertex == 16 &&
       BoundShaderHash(ShaderStage::kVertex) == 0x91007ACB3E640E3Dull &&
