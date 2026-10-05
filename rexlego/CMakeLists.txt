@@ -30,6 +30,7 @@ set(LEGODIMENSIONS_SOURCES
     src/updates.cpp
     src/name_trace.cpp
     src/crash_guards.cpp
+    src/crash_popup.cpp
 )
 
 # Research probes: a guard-page watchpoint on the area flags and the failed

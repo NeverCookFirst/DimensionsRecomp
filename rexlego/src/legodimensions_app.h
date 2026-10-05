@@ -104,6 +104,7 @@ class LegodimensionsApp : public rex::ReXApp {
   // Runs before the runtime is built, which is the only point where the update
   // folder can still be swapped for the modded copy.
   void OnConfigurePaths(rex::PathConfig& paths) override {
+    legodimensions::updates::RelocateMovedInstall(paths);
     legodimensions::mods::ResolveUpdateRoot(paths);
   }
 

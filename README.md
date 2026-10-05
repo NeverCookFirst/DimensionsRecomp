@@ -394,6 +394,13 @@ As for now, game is playable on Steam Deck through Proton, native port is not co
 > Minimum: a 64-bit CPU with SSE4.2 (Intel Nehalem / AMD Bulldozer, roughly
 2009, and newer) and a Direct3D 12 GPU at feature level 11_0.
 
+> [!NOTE]
+> **Recommended** for a smooth 60 FPS at 1080p:
+> - **GPU:** NVIDIA RTX 3060 / AMD RX 6600 class or better (any RTX 30xx/40xx is fine)
+> - **CPU:** 6 cores or more, released 2018 or later (Ryzen 5 3600 / Intel Core i5-9600K or newer)
+> - **RAM:** 16 GB (DDR4 or newer)
+> - **OS:** Windows 10 or 11, 64-bit
+
 > [!WARNING]
 > **Low-end PCs and AMD graphics cards are a known problem right now.**
 > Meeting the minimum means the game starts, not that it runs well: on weaker
