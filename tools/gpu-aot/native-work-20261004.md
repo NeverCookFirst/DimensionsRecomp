@@ -230,3 +230,39 @@ Game remains closed, no new launch. The captured hub/LOTR images still fail
 portrait/texture checks; this build has not been visually validated. Actual
 1080p rendering, stable60FPS, AMD and three story-level/cutscene checks remain
 pending. Do not count diagnostic traces as clean performance benchmarks.
+
+## October 5: polygon offset (depth bias) was never applied (Claude)
+
+Native pipelines had no depth bias at all. TU23 render-state table 0x847F9B18:
+state 51 setter 83FB88A8 = D3DRS_SLOPESCALEDEPTHBIAS (value * subpixel factor
+-> device +10832 front scale, +10840 back scale); state 52 setter 83FB8970 =
+D3DRS_DEPTHBIAS (-> +10836 front offset, +10844 back offset). Both set
+PA_SU_SC_MODE_CNTL (+10568) bits 11/12 (poly_offset_front/back_enable).
+draw.cpp now reads these into PipelineKey (depth_bias, slope_scaled_depth_bias)
+using the SDK's GetPreferredFacePolygonOffset / GetD3D10IntegerPolygonOffset
+rules (offset * 2^24 ceil, slope * 1/16). Hypothesis: the contour/ripple
+"texture stripes" on terrain, snow and characters are shadow acne, not mip
+data. Also verified offline: MergeTextureFetch matches 83FB58A8 bit for bit,
+and DecodeTextureSampler matches the SDK fetch layout. A/B switch:
+LEGO_NATIVE_NO_DEPTH_BIAS=1. Built, NOT visually tested (owner tests).
+Tall coloured LOTR lines are absent in lotr-before.png and present after the
+gradient bank + five captured placement shaders were installed: bisect those
+two changes first. Use RenderDoc mesh viewer on the line draw.
+
+
+## October6 collaborative draft handoff
+
+Owner explicitly authorized publishing draft PRs, superseding the earlier
+local-only Git rule for this handoff. SDK committed dependency17e3675 is
+published without modifying or rebuilding the SDK worktree. Its draft is
+NeverCookFirst/rexglue-sdk#1. The game branch retains the exact SDK gitlink.
+
+Added asset-free CMake/CTest checks and Ubuntu CI; all19 checks pass locally
+on Windows/Clang20.1.8. Polygon offset is factored into a tested helper;
+visual effects remain untested. Native Windows target builds; no game launch.
+Compiler reconstruction from pinned339af41 plus the tracked patch and the
+alpha->viewport->gradient scripts matches all10 installed C++/header inputs
+(after newline normalization). No game-derived archives or captures published.
+COLLABORATION.md states the Windows-only native CMake restriction, Windows
+compiler dependency requirements, missing generated/game/captured inputs and
+public/private handoff split. No Linux game or native renderer validation.

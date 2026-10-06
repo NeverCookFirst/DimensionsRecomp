@@ -4,6 +4,9 @@ This directory keeps the reproducible, project-owned part of the native D3D12
 shader pipeline. Generated archives, HLSL, DXIL, and build trees stay under
 `rexlego/out/native-gpu` and are intentionally not committed.
 
+Start with [the contributor handoff](COLLABORATION.md) for clone instructions,
+the Linux restrictions, asset-free checks and current compiler reconstruction.
+
 ## Current compiler and constants ABI (October 4, after owner visual test)
 
 The owner rejected the combined explicit-LOD build: LOTR looked worse, with

@@ -10,9 +10,11 @@ import shutil
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('scratch', type=Path)
+p.add_argument('--checkout', type=Path,
+               default=Path(__file__).resolve().parents[2] / 'research/reblue/thirdparty/XenosRecomp')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
-checkout = root / 'research/reblue/thirdparty/XenosRecomp'
+checkout = a.checkout.resolve()
 module = checkout / 'XenosRecomp'
 source = a.scratch.resolve() / 'source'
 source.mkdir(parents=True, exist_ok=True)

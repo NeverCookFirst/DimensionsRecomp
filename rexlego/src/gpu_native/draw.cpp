@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -30,6 +31,7 @@
 #include "gpu_native/d3d.h"
 #include "gpu_native/draw.h"
 #include "gpu_native/depth_state.h"
+#include "gpu_native/polygon_offset.h"
 #include "gpu_native/stencil_state.h"
 #include "gpu_native/device.h"
 #include "gpu_native/shaders.h"
@@ -100,6 +102,10 @@ struct PipelineKey {
   std::array<u32, kNativeRenderTargets> blend_controls{0x10001, 0x10001, 0x10001, 0x10001};
   u32 topology = 0;
   u32 spec_constants = 0;
+  // Polygon offset in host units: D3D12 integer DepthBias and the bits of the
+  // float SlopeScaledDepthBias.
+  i32 depth_bias = 0;
+  u32 slope_scaled_depth_bias = 0;
   std::array<u32, kNativeVertexStreams> strides{};
   bool operator==(const PipelineKey&) const = default;
 };
@@ -115,6 +121,7 @@ struct PipelineKeyHash {
     mix(key.stencil_masks); mix(key.stencil_face);
     for (const auto blend : key.blend_controls) mix(blend);
     mix(key.topology); mix(key.spec_constants);
+    mix(u32(key.depth_bias)); mix(key.slope_scaled_depth_bias);
     for (const auto stride : key.strides) mix(stride);
     return hash;
   }
@@ -389,6 +396,10 @@ plume::RenderPipeline* GetPipeline(
   desc.depthEnabled = depth_state.enabled;
   desc.depthWriteEnabled = depth_state.write;
   desc.depthClipEnabled = !key.clip_disable;
+  if (depth_format != plume::RenderFormat::UNKNOWN) {
+    desc.depthBias = key.depth_bias;
+    desc.slopeScaledDepthBias = std::bit_cast<float>(key.slope_scaled_depth_bias);
+  }
   const auto stencil = DecodeStencilState(key.depth_control, key.stencil_masks,
       depth_format == plume::RenderFormat::D32_FLOAT_S8_UINT,
       topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
@@ -725,6 +736,28 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
       *reinterpret_cast<const be_u32*>(state_bytes + 10556),
       *reinterpret_cast<const be_f32*>(state_bytes + 10620));
   if (alpha.enabled) key.spec_constants |= 2u;
+  // Polygon offset. TU23 D3DRS_SLOPESCALEDEPTHBIAS (83FB88A8) stores the
+  // scale, already in 1/16 subpixel units, at +10832 (front) / +10840 (back);
+  // D3DRS_DEPTHBIAS (83FB8970) stores the offset at +10836 / +10844; both set
+  // PA_SU_SC_MODE_CNTL (+10568) poly_offset_front/back_enable (bits 11/12).
+  // Convert the stored offset for the host rasterizer. Face selection follows
+  // SDK's GetPreferredFacePolygonOffset/GetD3D10IntegerPolygonOffset: native
+  // never culls, so front wins, then back; non-triangles use para_enable.
+  // Unorm24 and float24 guests both come to ~offset * 2^24 host D32 units.
+  // LEGO_NATIVE_NO_DEPTH_BIAS=1 restores the old behaviour for A/B checks.
+  static const bool depth_bias_disabled = std::getenv("LEGO_NATIVE_NO_DEPTH_BIAS") != nullptr;
+  if (!depth_bias_disabled && depth.format != plume::RenderFormat::UNKNOWN) {
+    const u32 mode = *reinterpret_cast<const be_u32*>(state_bytes + 10568);
+    const auto poly = [&](u32 offset) {
+      return float(*reinterpret_cast<const be_f32*>(state_bytes + offset));
+    };
+    const bool polygonal = topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
+                           topology == plume::RenderPrimitiveTopology::TRIANGLE_STRIP;
+    const auto bias = DecodePolygonOffset(mode, polygonal,
+        poly(10832), poly(10836), poly(10840), poly(10844));
+    key.depth_bias = bias.depth_bias;
+    key.slope_scaled_depth_bias = bias.slope_bits;
+  }
   for (u32 i = 0; i < kNativeVertexStreams; ++i) {
     key.strides[i] = bindings.vertex_streams[i].stride;
   }

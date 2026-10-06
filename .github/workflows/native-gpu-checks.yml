@@ -1,0 +1,18 @@
+name: Native GPU portable checks
+on:
+  pull_request:
+  push:
+    branches: [codex/native-renderer]
+permissions:
+  contents: read
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure asset-free checks
+        run: cmake -S tools/gpu-aot -B native-checks -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build native-checks --parallel 2
+      - name: Test
+        run: ctest --test-dir native-checks --output-on-failure
