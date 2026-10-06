@@ -99,7 +99,9 @@ result. Do not report diagnostic tracing as a clean FPS benchmark.
 
 ## Verified state and remaining checks
 
-On October6, the 19 asset-free checks passed on Windows with Clang20.1.8.
+On October6, the 19 asset-free checks passed on Windows with Clang20.1.8
+and on Ubuntu CI with GCC13.3.0. The successful Linux run is
+https://github.com/NeverCookFirst/DimensionsRecomp/actions/runs/37485760314.
 The Windows native game target also built successfully; no game was launched
 for this publication. The depth-bias addition is included in pipeline identity
 and rasterizer configuration and has helper checks for face selection,

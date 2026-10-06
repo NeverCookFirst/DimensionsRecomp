@@ -266,3 +266,7 @@ alpha->viewport->gradient scripts matches all10 installed C++/header inputs
 COLLABORATION.md states the Windows-only native CMake restriction, Windows
 compiler dependency requirements, missing generated/game/captured inputs and
 public/private handoff split. No Linux game or native renderer validation.
+
+Main draft published:NeverCookFirst/DimensionsRecomp#25. Ubuntu CI
+run37485760314 passes19/19 asset-free checks with GCC13.3.0. This
+validates the portable helper target, not the Linux game renderer.
