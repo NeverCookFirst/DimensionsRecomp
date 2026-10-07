@@ -479,8 +479,9 @@ class PreparationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'environment value'):
             runner.environment(plan)
 
-    def live_fixture(self, name='sample', slots=3):
-        run = Path(m.prepare(self.args(name, cadence_only=True, command_slots=slots))['run_root'])
+    def live_fixture(self, name='sample', slots=3, **run_options):
+        run = Path(m.prepare(self.args(name, cadence_only=True, command_slots=slots,
+                                      **run_options))['run_root'])
         manifest = json.loads((run/'regression-manifest.json').read_text())
         execution = {'exit_code': None, 'launch_requested': True, 'route': '0',
                      'environment_overrides': manifest['launch_plan']['environment_overrides']}
@@ -499,17 +500,17 @@ class PreparationTest(unittest.TestCase):
         scene_file.write_text(json.dumps(scene))
         return run, scene_file
 
-    def sample_fixture(self, name='sample', slots=3, event=None):
-        run, scene = self.live_fixture(name, slots)
+    def sample_fixture(self, name='sample', slots=3, event=None, interval_ms=50, **run_options):
+        run, scene = self.live_fixture(name, slots, **run_options)
         ticks = [0.0]
         calls = [0]
-        points = (60, 120, 120, 720)
+        points = (60, 120, 120, 120+int(30000/interval_ms))
         def sleep(seconds): ticks[0] += seconds
         def endpoint(_):
             index = calls[0]; calls[0] += 1
             if index == 3 and event:
                 with (run/'logs/game.log').open('a') as target:target.write(event+'\n')
-            rows = [{'frame':float(i), 'interval_ms':50.0, 'draw_calls':500.0,
+            rows = [{'frame':float(i), 'interval_ms':float(interval_ms), 'draw_calls':500.0,
                      'detailed_timing_enabled':0.0, 'frame_slot_wait_calls':8.0,
                      'callbacks_enqueued':42.0,'callbacks_executed':42.0,'callbacks_pending':8.0}
                     for i in range(1, points[index]+1)]
@@ -664,6 +665,61 @@ class PreparationTest(unittest.TestCase):
         del report_b['flags']['LEGO_NATIVE_GPU_TIMESTAMPS']
         (b/'sample.json').write_text(json.dumps(report_b))
         self.assertFalse(comparer.compare([a,b])['comparable_identity'])
+
+    def test_gpu_timestamp_experiment_varies_probe_only_and_preserves_every_outcome(self):
+        off, off_report = self.sample_fixture('timestamp-off')
+        on, on_report = self.sample_fixture('timestamp-on', gpu_timestamps=True)
+        slow, slow_report = self.sample_fixture('timestamp-on-slower', interval_ms=75,
+                                                gpu_timestamps=True)
+        rejected, bad = self.sample_fixture('timestamp-streaming', gpu_timestamps=True,
+                                           event='Native GPU: adopted guest texture 0x1234')
+        self.assertNotIn('LEGO_NATIVE_GPU_TIMESTAMPS', off_report['flags'])
+        self.assertNotEqual(on_report['flags']['LEGO_NATIVE_GPU_TIMESTAMPS'],
+                            slow_report['flags']['LEGO_NATIVE_GPU_TIMESTAMPS'])
+        paths = [off, on, rejected, slow]
+        self.assertFalse(comparer.compare(paths)['comparable_identity'])
+        report = comparer.compare(paths, varying='gpu-timestamps')
+        self.assertTrue(report['comparable_identity'])
+        self.assertEqual(report['experimental_variable'], 'gpu-timestamps')
+        self.assertEqual([row['status'] for row in report['outcomes']],
+                         ['accepted', 'accepted', 'rejected', 'accepted'])
+        self.assertEqual([row['gpu_timestamps'] for row in report['outcomes']],
+                         ['off', 'on', 'on', 'on'])
+        self.assertEqual(report['outcomes'][2]['rejection_reasons'], bad['rejection_reasons'])
+        self.assertEqual(report['accepted_aggregate']['off']['windows'], 1)
+        aggregate = report['accepted_aggregate']['on']
+        self.assertEqual(aggregate['windows'], 2)
+        self.assertEqual(aggregate['frames'], on_report['metrics']['frames']+
+                         slow_report['metrics']['frames'])
+        self.assertAlmostEqual(aggregate['fps'], 1000/60)
+        self.assertLess(aggregate['fps'], on_report['metrics']['fps'])
+        self.assertAlmostEqual(report['candidate_vs_baseline_fps_percent'], -100/6)
+        self.assertFalse(report['source_default_changed'])
+        only_rejected = comparer.compare([rejected], varying='gpu-timestamps')
+        self.assertIsNone(only_rejected['comparable_identity'])
+        self.assertEqual(only_rejected['accepted_aggregate'], {})
+        self.assertEqual(len(only_rejected['outcomes']), 1)
+
+    def test_gpu_timestamp_comparison_rejects_every_other_changed_setting(self):
+        off, _ = self.sample_fixture('timestamp-strict-off')
+        on, original = self.sample_fixture('timestamp-strict-on', gpu_timestamps=True)
+        path = on/'sample.json'
+        for field, value in (('slots', 12), ('timer_wait', 'blocking')):
+            report = json.loads(json.dumps(original)); report[field] = value
+            path.write_text(json.dumps(report))
+            self.assertFalse(comparer.compare([off,on], varying='gpu-timestamps')['comparable_identity'])
+        for flag, value in (('LEGO_NATIVE_COMMAND_SLOTS', '12'), ('REX_TIMER_WAIT_BLOCKING', '1'),
+                            ('LEGO_NATIVE_TIMING', '0'), ('LEGO_NATIVE_BUFFER_WINDOWS', '0')):
+            report = json.loads(json.dumps(original)); report['flags'][flag] = value
+            path.write_text(json.dumps(report))
+            self.assertFalse(comparer.compare([off,on], varying='gpu-timestamps')['comparable_identity'])
+        report = json.loads(json.dumps(original)); report['scene']['camera_id'] = 'moved-camera'
+        path.write_text(json.dumps(report))
+        self.assertFalse(comparer.compare([off,on], varying='gpu-timestamps')['comparable_identity'])
+        path.write_text(json.dumps(original))
+        self.assertTrue(comparer.compare([off,on], varying='gpu-timestamps')['comparable_identity'])
+        with self.assertRaisesRegex(ValueError, 'Unknown experimental variable'):
+            comparer.compare([off,on], varying='all-settings')
 
     def test_inventory_limit_stops_iteration_before_materialization_and_refuses_aliases(self):
         directory=self.root/'bounded-tree';directory.mkdir()

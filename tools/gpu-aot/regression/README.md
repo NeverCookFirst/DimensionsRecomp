@@ -72,7 +72,12 @@ requires timer mode to match. Varying both settings rejects comparability.
 
 For a build supporting native GPU timestamps, add `--gpu-timestamps` to write
 `logs/gpu-timestamps.csv` separately from CPU cadence metrics. Query writes and
-readback add diagnostic overhead; comparisons require the same probe presence.
+readback add diagnostic overhead. Command-slot and timer comparisons require
+the same probe presence. To measure probe overhead explicitly, keep slots,
+timer mode and all other settings fixed and pass `--vary gpu-timestamps` to
+`compare_samples.py`; it groups every accepted window as `off` or `on`, retains
+rejected windows, and reports `on` relative to `off`. Only probe presence and
+its verified private output path may differ; this mode changes no defaults.
 The spans measure elapsed queue execution within individual command submissions,
 not GPU utilization, CPU command recording or DXGI presentation. A descriptor
 only requests the probe; startup evidence and actual completed rows must confirm
