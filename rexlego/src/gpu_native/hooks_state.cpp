@@ -1,5 +1,6 @@
 #include "gpu_native/renderer_route.h"
 #include <rex/system/kernel_state.h>
+#include <rex/system/xmemory.h>
 #include <rex/types.h>
 
 #include "gpu_native/d3d.h"
@@ -8,6 +9,7 @@
 #include "gpu_native/vertex_declarations.h"
 #include "gpu_native/sampler_state.h"
 #include "gpu_native/depth_state.h"
+#include "gpu_native/scissor_state.h"
 #include "gpu_native/device.h"
 #include <rex/logging.h>
 
@@ -100,15 +102,49 @@ u32 GetDepthStencilHook(D3DDevice* /*device*/) {
   return surface;
 }
 
-void SetViewportHook(D3DDevice* device, const D3DViewport9* viewport) {
-  if (device && viewport) {
-    device->viewport = *viewport;
+bool NativeViewportRange(u32 address, u32 length, bool write) {
+  auto* memory = REX_KERNEL_MEMORY();
+  if (!memory || !address || !length || u64(address) + length > 0x100000000ull)
+    return false;
+  auto* heap = memory->LookupHeap(address);
+  if (!heap || !heap->IsRangeCommittedReadable(address, length)) return false;
+  if (!write) return true;
+  const u32 page_size = heap->page_size();
+  if (!page_size) return false;
+  for (u64 at = address; at < u64(address) + length;) {
+    u32 protect = 0;
+    if (!heap->QueryProtect(u32(at), &protect) ||
+        !(protect & (rex::memory::kMemoryProtectWrite |
+                     rex::memory::kMemoryProtectWriteCombine))) return false;
+    const u64 next = (at / page_size + 1) * page_size;
+    if (next <= at) return false;
+    at = next;
   }
+  return true;
+}
+
+bool NativeViewportArguments(u32 device_address, u32 viewport_address, u32 stack) {
+  if (!NativeViewportRange(device_address, kGuestDeviceSize, true) ||
+      !NativeViewportRange(viewport_address, sizeof(D3DViewport9), false) ||
+      stack < 512 || !NativeViewportRange(stack - 512, 512, true)) return false;
+  const auto* device = REX_KERNEL_MEMORY()->TranslateVirtual<const D3DDevice*>(device_address);
+  const u32 surface = device->render_targets[0] ? u32(device->render_targets[0])
+                                              : u32(device->depth_stencil);
+  return !surface || NativeViewportRange(surface, sizeof(D3DSurface), false);
 }
 
 void SetScissorRectHook(D3DDevice* device, const D3DRect* rect) {
   if (device && rect) {
     device->scissor = *rect;
+  }
+}
+
+void SetScissorEnableHook(D3DDevice* device, u32 enabled) {
+  if (device) {
+    // Keep the requested rectangle intact across disable/re-enable. Native
+    // draws derive the effective intersection; no Xbox packet is emitted.
+    *reinterpret_cast<be_u32*>(reinterpret_cast<u8*>(device) +
+        kNativeScissorEnableOffset) = enabled;
   }
 }
 
@@ -151,7 +187,15 @@ REX_HOOK_RAW(sub_83FBB110) {
 }
 REX_HOOK(sub_83FBA398, legodimensions::gpu_native::GetRenderTargetHook);
 REX_HOOK(sub_83FBA3E0, legodimensions::gpu_native::GetDepthStencilHook);
-REX_HOOK(sub_83FBA978, legodimensions::gpu_native::SetViewportHook);
+REX_HOOK_RAW(sub_83FBA978) {
+  auto recording = legodimensions::gpu_native::HostDevice::LockRecording();
+  if (!legodimensions::gpu_native::NativeViewportArguments(
+          ctx.r3.u32, ctx.r4.u32, ctx.r1.u32)) return;
+  // Actual CPU-only TU23 conversion, surface/tile clipping and RB_VPORT
+  // shadows. Its scissor call takes the native hook, without Xbox packets.
+  __imp__sub_83FBA978(ctx, base);
+}
 REX_HOOK(sub_83FBA068, legodimensions::gpu_native::SetScissorRectHook);
+REX_HOOK(sub_83FBA968, legodimensions::gpu_native::SetScissorEnableHook);
 REX_HOOK(sub_83FBCBB8, legodimensions::gpu_native::SetPredicationHook);
 REX_HOOK(sub_83FAF5D8, legodimensions::gpu_native::SetupFormatHook);

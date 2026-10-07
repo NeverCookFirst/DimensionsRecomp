@@ -45,7 +45,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING
     AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     if(Python3_Interpreter_FOUND)
         set(PRODUCTION_CHECKS draw_device_view state_call_diagnostic buffer_alloc_diagnostic
-            command_slots completion_callbacks constant_timing cpu_resource_wait cull_state
+            command_slots completion_callbacks constant_timing cpu_resource_wait cull_state scissor_state viewport_shadow
             draw_diagnostic draw_index_bounds draw_upload frame_cadence frame_ring_transaction
             framebuffer_owners memory_watch nonindexed_buffer_windows quad_buffer_windows
             pipeline_failures shader_binding_failures prelink_emission prelink_workers
@@ -82,6 +82,13 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING
         endif()
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
             list(APPEND PRODUCTION_CHECKS plume_command_creation plume_state_bindings gpu_timestamps resize_fences)
+        endif()
+        # This fixture records the real Vulkan copy body without loading a
+        # driver. It needs the public Vulkan headers and POSIX process limits.
+        if(UNIX
+            AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_vulkan.cpp"
+            AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/contrib/Vulkan-Headers/include/vulkan/vulkan_core.h")
+            list(APPEND PRODUCTION_CHECKS vulkan_texture_copy)
         endif()
         if(UNIX)
             list(APPEND PRODUCTION_CHECKS prelink_publication)

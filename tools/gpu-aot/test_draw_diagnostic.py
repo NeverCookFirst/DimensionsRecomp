@@ -176,7 +176,7 @@ int main(int argc,char**argv){
  fixture_memory.Word(0x2000+offsetof(D3DDevice,vertex_declaration),0x10080);
  fixture_memory.Word(0x2000+10564,0x90000);fixture_memory.Word(0x2000+10572,0x400);
  fixture_memory.Word(0x2000+10500,0x3b808081);fixture_memory.Word(0x2000+10620,0x3f800000);
- fixture_memory.Word(0x2000+13032,1280);fixture_memory.Word(0x2000+13036,720);
+ fixture_memory.Word(0x2000+13032,0x44A00000);fixture_memory.Word(0x2000+13036,0x44340000);
  fixture_memory.Word(0x2000+0x780+48*16,0x3f800000);
  fixture_memory.Word(0x2000+0x1780+4*16+12,0x3f000000);
  fixture_memory.Word(0x2000+0x1780+45*16,0x3f800000);
@@ -197,7 +197,7 @@ int main(int argc,char**argv){
  auto text=Read(trace.output());
  for(std::string_view expected:{"attempted_ordinal=1","VS=1234 PS=abcd","raw_count=2",
   "raw_decl_bytes=000102030405060708090a0b0c0d0e0f1011121314151617",
-  "clip_control=90000 viewport_control=400", "viewport_width=500 viewport_height=2d0",
+  "clip_control=90000 viewport_control=400", "viewport_width_bits=44a00000 viewport_height_bits=44340000",
   "alpha_ref_bits=3b808081 legacy_float10620_bits=3f800000",
   "VS_C48=3f800000,00000000,00000000,00000000,",
   "PS_C4=00000000,00000000,00000000,3f000000,",

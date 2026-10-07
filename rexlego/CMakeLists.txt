@@ -367,6 +367,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume/plume_d3d12.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prepare_plume.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/patches/plume-state-cache.patch"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/patches/plume-vulkan-readback.patch"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_route.h"

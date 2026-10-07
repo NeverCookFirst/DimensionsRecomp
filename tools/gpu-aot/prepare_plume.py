@@ -70,6 +70,7 @@ def main():
     patches = (
         (root / "tools/gpu-aot/patches/plume-lego.patch", "Native Plume fixes"),
         (root / "tools/gpu-aot/patches/plume-state-cache.patch", "Native Plume state-cache fixes"),
+        (root / "tools/gpu-aot/patches/plume-vulkan-readback.patch", "Native Plume Vulkan readback fixes"),
     )
 
     def git(*arguments, check=False):
@@ -105,9 +106,9 @@ def main():
             parser.error(str(error))
         applied = True
     if applied:
-        print(f"Applied native fence/resize/command-allocation fixes and opt-in state cache to public Plume {PIN}")
+        print(f"Applied native fence/resize/command-allocation fixes, opt-in state cache and Vulkan readback to public Plume {PIN}")
     else:
-        print(f"PASS: public Plume {PIN} with native fence/resize/command-allocation fixes and opt-in state cache")
+        print(f"PASS: public Plume {PIN} with native fence/resize/command-allocation fixes, opt-in state cache and Vulkan readback")
 
 
 if __name__ == "__main__":

@@ -154,8 +154,8 @@ u32 Direct3DCreateDeviceHook(u32 /*adapter*/, u32 /*device_type*/, u32 /*focus_w
     memory->SystemHeapFree(guest_address);
     return 0x80004005u;
   }
-  device->viewport.width = 1280;
-  device->viewport.height = 720;
+  device->viewport.width = 1280.0f;
+  device->viewport.height = 720.0f;
   device->viewport.max_z = 1.0f;
   device->scissor.right = 1280;
   device->scissor.bottom = 720;

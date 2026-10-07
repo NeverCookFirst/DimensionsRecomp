@@ -38,6 +38,7 @@
 #include "gpu_native/depth_state.h"
 #include "gpu_native/polygon_offset.h"
 #include "gpu_native/stencil_state.h"
+#include "gpu_native/scissor_state.h"
 #include "gpu_native/device.h"
 #include "gpu_native/shaders.h"
 #include "gpu_native/state.h"
@@ -662,8 +663,8 @@ struct CpuDrawDiagnostic {
         {"stencil", 10496}, {"alpha", 10556}, {"alpha_ref_bits", 10500},
         {"legacy_float10620_bits", 10620},
         {"blend", 10552}, {"color_mask", 12292}, {"clip_control", 10564},
-        {"viewport_control", 10572}, {"viewport_x", 13024}, {"viewport_y", 13028},
-        {"viewport_width", 13032}, {"viewport_height", 13036},
+        {"viewport_control", 10572}, {"viewport_x_bits", 13024}, {"viewport_y_bits", 13028},
+        {"viewport_width_bits", 13032}, {"viewport_height_bits", 13036},
         {"viewport_min_z_bits", 13040}, {"viewport_max_z_bits", 13044},
         {"scissor_left", 13052}, {"scissor_top", 13056},
         {"scissor_right", 13060}, {"scissor_bottom", 13064}};
@@ -920,6 +921,11 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   if (!device || !count) {
     return false;
   }
+  if (!NativeViewportValid(device->viewport.x, device->viewport.y,
+      device->viewport.width, device->viewport.height,
+      device->viewport.min_z, device->viewport.max_z)) return false;
+  if (float(device->viewport.width) == 0.0f ||
+      float(device->viewport.height) == 0.0f) return true;
   // Trace attempted bindings before shader/declaration/pipeline early exits.
   // A mask on a rejected draw is diagnostic evidence, not a submitted draw.
   if (PortraitProbeEnabled()) {
@@ -1163,24 +1169,29 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
                                guest_blend_factor[2], guest_blend_factor[3]};
   static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetBlendFactor(blend_factor);
 
-  const float viewport_width = static_cast<u32>(device->viewport.width);
-  const float viewport_height = static_cast<u32>(device->viewport.height);
+  const float viewport_width = device->viewport.width;
+  const float viewport_height = device->viewport.height;
   const bool screen_space = viewport_candidate && u32(*reinterpret_cast<const be_u32*>(
       reinterpret_cast<const u8*>(device) + 10572)) == 0x400;
   commands->setViewports(plume::RenderViewport(
-      screen_space ? 0 : static_cast<u32>(device->viewport.x),
-      screen_space ? 0 : static_cast<u32>(device->viewport.y),
-      screen_space ? float(color.width) : viewport_width > 0 ? viewport_width : float(color.width),
-      screen_space ? float(color.height) : viewport_height > 0 ? viewport_height : float(color.height),
+      screen_space ? 0.0f : float(device->viewport.x),
+      screen_space ? 0.0f : float(device->viewport.y),
+      screen_space ? float(color.width) : viewport_width,
+      screen_space ? float(color.height) : viewport_height,
       screen_space ? 0.0f : static_cast<float>(device->viewport.min_z),
       screen_space ? 1.0f : static_cast<float>(device->viewport.max_z)));
-  const i32 scissor_right = static_cast<i32>(device->scissor.right);
-  const i32 scissor_bottom = static_cast<i32>(device->scissor.bottom);
+  const auto effective_scissor = DecodeNativeScissor(
+      float(device->viewport.x), float(device->viewport.y),
+      float(device->viewport.width), float(device->viewport.height),
+      {i32(device->scissor.left), i32(device->scissor.top),
+       i32(device->scissor.right), i32(device->scissor.bottom)},
+      u32(*reinterpret_cast<const be_u32*>(state_bytes +
+          kNativeScissorEnableOffset)) != 0, color.width, color.height);
+  const i32 scissor_right = effective_scissor.right;
+  const i32 scissor_bottom = effective_scissor.bottom;
   commands->setScissors(CullDrawScissor(plume::RenderRect(
-      static_cast<i32>(device->scissor.left),
-      static_cast<i32>(device->scissor.top),
-      scissor_right > 0 ? scissor_right : static_cast<i32>(color.width),
-      scissor_bottom > 0 ? scissor_bottom : static_cast<i32>(color.height)),
+      effective_scissor.left, effective_scissor.top,
+      scissor_right, scissor_bottom),
       key.raster_control, polygonal));
 
   std::array<plume::RenderVertexBufferView, kNativeVertexStreams> views;
@@ -1462,9 +1473,9 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
           "view={},{},{},{} scissor={},{},{},{} tex={:08X},{:08X},{:08X},{:08X} "
           "tex4-7={:08X},{:08X},{:08X},{:08X} mask={:X} blend={:08X}",
           key.vertex_shader, key.pixel_shader, bindings.render_targets[0], key.render_target_formats[0],
-          bindings.depth_stencil, key.depth_control, u32(device->viewport.x), u32(device->viewport.y),
-          u32(device->viewport.width), u32(device->viewport.height), i32(device->scissor.left),
-          i32(device->scissor.top), scissor_right, scissor_bottom,
+          bindings.depth_stencil, key.depth_control, float(device->viewport.x), float(device->viewport.y),
+          float(device->viewport.width), float(device->viewport.height), effective_scissor.left,
+          effective_scissor.top, scissor_right, scissor_bottom,
           bindings.textures[0], bindings.textures[1], bindings.textures[2], bindings.textures[3],
           bindings.textures[4], bindings.textures[5], bindings.textures[6], bindings.textures[7],
           key.color_write_mask, u32(*reinterpret_cast<const be_u32*>(
@@ -1721,8 +1732,8 @@ u32 BeginTilingHook(D3DDevice* device, u32 flags, u32 count,
   static std::atomic<u32> logs{0};
   if (logs.fetch_add(1) < 8)
     REXLOG_INFO("Native GPU: BeginTiling flags={:X} tiles={} host={}x{} viewport={}x{} guest_count={}",
-        flags, count, extent.width, extent.height, u32(device->viewport.width),
-        u32(device->viewport.height), u32(*reinterpret_cast<const be_u32*>(
+        flags, count, extent.width, extent.height, float(device->viewport.width),
+        float(device->viewport.height), u32(*reinterpret_cast<const be_u32*>(
             reinterpret_cast<const u8*>(device) + 13124)));
   // The TU23 implementation branches past its initial clear when bit 0 is set.
   if (flags & 1) return 0;

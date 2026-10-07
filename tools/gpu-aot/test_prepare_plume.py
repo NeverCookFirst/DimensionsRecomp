@@ -32,6 +32,7 @@ def main():
     preparer = args.preparer.resolve()
     patch = root / "tools/gpu-aot/patches/plume-lego.patch"
     cache_patch = root / "tools/gpu-aot/patches/plume-state-cache.patch"
+    readback_patch = root / "tools/gpu-aot/patches/plume-vulkan-readback.patch"
     git_executable = shutil.which("git")
     if git_executable is None:
         parser.error("Git is required for the offline public-source fixture")
@@ -53,6 +54,7 @@ def main():
         "status": git(source, "status", "--porcelain=v1", "--untracked-files=all").stdout,
         "source_sha256": digest(source / "plume_d3d12.cpp"),
         "header_sha256": digest(source / "plume_d3d12.h"),
+        "vulkan_sha256": digest(source / "plume_vulkan.cpp"),
     }
     git(source, "cat-file", "-e", f"{PIN}^{{commit}}")
     public_blob = subprocess.run([git_executable, "-C", str(source), "show", f"{PIN}:plume_d3d12.cpp"],
@@ -82,6 +84,9 @@ def main():
         git(expected, "apply", str(patch))
         git(expected, "apply", "--check", str(cache_patch))
         git(expected, "apply", str(cache_patch))
+        git(expected, "apply", "--check", str(readback_patch))
+        git(expected, "apply", str(readback_patch))
+        expected_vulkan_sha = digest(expected / "plume_vulkan.cpp")
         expected_sha = digest(expected / "plume_d3d12.cpp")
         expected_header_sha = digest(expected / "plume_d3d12.h")
         checks.append("actual pinned public source and independently Git-applied patch")
@@ -110,6 +115,8 @@ def main():
         prepare(checkout, oracle="PASS: public Plume")
         if digest(checkout / "plume_d3d12.cpp") != expected_sha:
             raise AssertionError("Repeated preparation changed the patched source")
+        if digest(checkout / "plume_vulkan.cpp") != expected_vulkan_sha:
+            raise AssertionError("Vulkan readback differs from independent real patch")
         checks.append("apply/check/repeat from unrelated cwd preserve exact patch result")
 
         old = clone("old-mandatory-prepared-checkout")
@@ -123,6 +130,29 @@ def main():
         if (digest(old / "plume_d3d12.cpp"), digest(old / "plume_d3d12.h")) != (expected_sha, expected_header_sha):
             raise AssertionError("Old prepared upgrade differs from fresh complete preparation")
         checks.append("old mandatory-prepared checkout upgrades without reverting existing fixes")
+
+        readback_old = clone("state-cache-prepared-missing-readback")
+        git(readback_old, "apply", str(patch))
+        git(readback_old, "apply", str(cache_patch))
+        readback_before = digest(readback_old / "plume_vulkan.cpp")
+        prepare(readback_old, "--check", expect=2, oracle="Native Plume Vulkan readback fixes are missing or incomplete")
+        if digest(readback_old / "plume_vulkan.cpp") != readback_before:
+            raise AssertionError("Missing readback --check modified source")
+        prepare(readback_old)
+        prepare(readback_old, "--check", oracle="PASS: public Plume")
+        if digest(readback_old / "plume_vulkan.cpp") != expected_vulkan_sha:
+            raise AssertionError("Readback upgrade differs from independent real patch")
+        checks.append("state-cache-prepared checkout upgrades with exact Vulkan readback patch")
+
+        partial_readback = clone("partial-vulkan-readback")
+        prepare(partial_readback)
+        text = (partial_readback / "plume_vulkan.cpp").read_text()
+        guard = 'assert(false && "Image-to-buffer copy requires a source texture and destination buffer.");'
+        if text.count(guard) != 1:
+            raise AssertionError("Readback guard was not found exactly once")
+        (partial_readback / "plume_vulkan.cpp").write_text(text.replace(guard, 'assert(false && "fixture partial readback");'))
+        prepare(partial_readback, "--check", expect=2, oracle="Native Plume Vulkan readback fixes are missing or incomplete")
+        checks.append("partial Vulkan readback patch rejected")
 
         cache_partial = clone("partial-state-cache-header")
         prepare(cache_partial)
@@ -200,11 +230,26 @@ runpy.run_path(preparer, run_name='__main__')
                 raise AssertionError("State-cache no-op fixture modified source")
         checks.append("state-cache false Git success rejected independently of mandatory stage")
 
+        readback_noop = clone("successful-no-op-readback-git")
+        git(readback_noop, "apply", str(patch))
+        git(readback_noop, "apply", str(cache_patch))
+        readback_before = digest(readback_noop / "plume_vulkan.cpp")
+        readback_wrapper = wrapper.replace("and 'apply' in argv:",
+            "and 'apply' in argv and any('plume-vulkan-readback.patch' in str(v) for v in argv):")
+        for mode in ("already", "apply"):
+            command([sys.executable, "-c", readback_wrapper, mode, str(preparer), str(readback_noop)], unrelated,
+                    expect=2, oracle="Native Plume source verification failed: missing patched hunk")
+            if digest(readback_noop / "plume_vulkan.cpp") != readback_before:
+                raise AssertionError("Readback no-op fixture modified source")
+        checks.append("readback false Git success rejected independently of both earlier stages")
+
+
     after = {
         "head": git(source, "rev-parse", "HEAD").stdout,
         "status": git(source, "status", "--porcelain=v1", "--untracked-files=all").stdout,
         "source_sha256": digest(source / "plume_d3d12.cpp"),
         "header_sha256": digest(source / "plume_d3d12.h"),
+        "vulkan_sha256": digest(source / "plume_vulkan.cpp"),
     }
     if original != after:
         raise AssertionError("Original Plume checkout changed during the offline fixture")
@@ -212,6 +257,8 @@ runpy.run_path(preparer, run_name='__main__')
     report = {"passed": True, "pin": PIN, "actual_public_source": True, "offline": True,
               "preparer_sha256": digest(preparer), "patch_sha256": digest(patch),
               "state_cache_patch_sha256": digest(cache_patch),
+              "vulkan_readback_patch_sha256": digest(readback_patch),
+              "patched_vulkan_sha256": expected_vulkan_sha,
               "public_source_sha256": hashlib.sha256(public_blob).hexdigest(),
               "patched_source_sha256": expected_sha,
               "patched_header_sha256": expected_header_sha, "checks": checks}
