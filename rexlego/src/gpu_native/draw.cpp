@@ -277,7 +277,7 @@ bool BindConstants(
   }
   const auto alpha = DecodeNativeAlphaState(
       *reinterpret_cast<const be_u32*>(bytes + 10556),
-      *reinterpret_cast<const be_f32*>(bytes + 10620));
+      *reinterpret_cast<const be_f32*>(bytes + 10500));
   shared.alpha_function = alpha.function;
   shared.alpha_threshold = alpha.reference;
   std::fill(std::begin(shared.texture_3d), std::end(shared.texture_3d), 1u);
@@ -594,7 +594,7 @@ u32 TraceMeshDraw(D3DDevice* device, u32 primitive, bool indexed,
       u32(device->vertex_declaration), bindings.index_buffer, bindings.render_targets[0],
       bindings.depth_stencil, read(10548), read(10496), read(10568), read(10460), read(10552), bindings.textures[5]);
   REXLOG_INFO("Native mesh: id={} alpha_control={:08X} alpha_ref={}", id,
-      read(10556), float(*reinterpret_cast<const be_f32*>(bytes + 10620)));
+      read(10556), float(*reinterpret_cast<const be_f32*>(bytes + 10500)));
   REXLOG_INFO("Native mesh: id={} frame={} brick_pair={}", id,
       g_probe_frame.load(), brick_trace);
   for (u32 i = 0; i < bindings.vertex_streams.size(); ++i) {
@@ -794,7 +794,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   const auto* state_bytes = reinterpret_cast<const u8*>(device);
   const auto alpha = DecodeNativeAlphaState(
       *reinterpret_cast<const be_u32*>(state_bytes + 10556),
-      *reinterpret_cast<const be_f32*>(state_bytes + 10620));
+      *reinterpret_cast<const be_f32*>(state_bytes + 10500));
   if (alpha.enabled) key.spec_constants |= 2u;
   // Polygon offset. TU23 D3DRS_SLOPESCALEDEPTHBIAS (83FB88A8) stores the
   // scale, already in 1/16 subpixel units, at +10832 (front) / +10840 (back);

@@ -2,6 +2,7 @@
 #include <array>
 #include <cstring>
 #include <cstdlib>
+#include <iterator>
 #include <unordered_set>
 
 #include "gpu_native/renderer_route.h"
@@ -37,24 +38,24 @@ void CopyStateDispatch(D3DDevice* device, u8* membase) {
 }
 
 bool InitializeRenderDefaults(u32 guest_address, u8* membase) {
-  // Only statically audited leaf alpha/blend/write-mask setters. Use the actual
+  // Only statically audited leaf alpha/blend/write-mask/float setters. Use the actual
   // TU23 descriptor defaults, not guessed reset values or full queue init.
-  constexpr u32 indices[] = {15,16,18,19,20,21,22,23,24,26,53,54,55,56,59};
+  constexpr u32 indices[] = {15,16,18,19,20,21,22,23,24,25,26,53,54,55,56,59};
   constexpr u32 setters[] = {0x83FB7E38,0x83FB81C8,0x83FB7F58,0x83FB7FE8,
-      0x83FB7EC8,0x83FB80E8,0x83FB8158,0x83FB8078,0x83FB7E00,0x83FB82C0,
+      0x83FB7EC8,0x83FB80E8,0x83FB8158,0x83FB8078,0x83FB7E00,0x83FB8260,0x83FB82C0,
       0x83FB8A68,0x83FB8AA8,0x83FB8AE8,0x83FB8B28,0x83FB92B8};
   const auto* table = reinterpret_cast<const be_u32*>(membase + kRenderStateTable);
   auto* kernel_state = REX_KERNEL_STATE();
   auto* dispatcher = kernel_state ? kernel_state->function_dispatcher() : nullptr;
   if (!dispatcher) return false;
-  for (u32 i = 0; i < 15; ++i) {
+  for (u32 i = 0; i < std::size(indices); ++i) {
     const u32 address = table[indices[i] * 3 + 1];
     if (address != setters[i] || !dispatcher->GetFunction(address)) {
       REXLOG_ERROR("Native GPU: unexpected render default setter {:08X}", address);
       return false;
     }
   }
-  for (u32 i = 0; i < 15; ++i) {
+  for (u32 i = 0; i < std::size(indices); ++i) {
     const u32 address = table[indices[i] * 3 + 1];
     const u32 value = table[indices[i] * 3 + 2];
     rex::ppc::GuestToHostFunction<void>(dispatcher->GetFunction(address), guest_address, value);
