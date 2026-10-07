@@ -5,9 +5,11 @@
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
+#include <iomanip>
 #include <memory>
 #include <mutex>
 #include <set>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -28,9 +30,11 @@
 #include "gpu_native/index_draw.h"
 #include "gpu_native/alpha_test.h"
 #include "gpu_native/blend_state.h"
+#include "gpu_native/cull_state.h"
 #include "gpu_native/queries.h"
 #include "gpu_native/d3d.h"
 #include "gpu_native/draw.h"
+#include "gpu_native/draw_diagnostic.h"
 #include "gpu_native/depth_state.h"
 #include "gpu_native/polygon_offset.h"
 #include "gpu_native/stencil_state.h"
@@ -97,6 +101,7 @@ struct PipelineKey {
   u32 depth_format = 0;
   u32 depth_control = 0;
   u32 clip_disable = 0;
+  u32 raster_control = 0;
   u32 stencil_masks = 0;
   u32 stencil_face = 0;
   u32 color_write_mask = 0;
@@ -120,6 +125,7 @@ struct PipelineKeyHash {
     for (const auto format : key.render_target_formats) mix(format);
     mix(key.depth_format); mix(key.depth_control); mix(key.color_write_mask); mix(key.clip_disable);
     mix(key.stencil_masks); mix(key.stencil_face);
+    mix(key.raster_control);
     for (const auto blend : key.blend_controls) mix(blend);
     mix(key.topology); mix(key.spec_constants);
     mix(u32(key.depth_bias)); mix(key.slope_scaled_depth_bias);
@@ -222,6 +228,27 @@ void CopyBigEndianDwords(void* destination, const void* source, u32 size) {
   for (u32 i = 0; i < size / sizeof(u32); ++i) {
     dst[i] = src[i];
   }
+}
+
+void ApplyCullPipeline(plume::RenderGraphicsPipelineDesc& desc,
+                       u32 control, bool polygonal) {
+  desc.cullMode = plume::RenderCullMode::NONE;
+  if (!(control & kNativeCullCandidate)) return;
+  const auto raster = DecodeNativeCullState(control, polygonal);
+  // Winding also controls SV_IsFrontFace when stencil is disabled.
+  desc.frontFace = raster.clockwise ? plume::RenderFrontFace::CLOCKWISE
+                                   : plume::RenderFrontFace::COUNTER_CLOCKWISE;
+  if (raster.faces == 1) desc.cullMode = plume::RenderCullMode::FRONT;
+  else if (raster.faces == 2) desc.cullMode = plume::RenderCullMode::BACK;
+}
+
+plume::RenderRect CullDrawScissor(plume::RenderRect scissor,
+                                 u32 control, bool polygonal) {
+  // D3D12 has no BOTH cull mode. Empty coverage preserves the draw and its
+  // vertex processing/query scope, while producing no pixel/depth/stencil work.
+  if ((control & kNativeCullCandidate) &&
+      DecodeNativeCullState(control, polygonal).discard) return {0, 0, 0, 0};
+  return scissor;
 }
 
 bool BindConstants(
@@ -465,7 +492,9 @@ plume::RenderPipeline* GetPipeline(
                                      : plume::RenderFrontFace::COUNTER_CLOCKWISE;
   }
   desc.primitiveTopology = topology;
-  desc.cullMode = plume::RenderCullMode::NONE;
+  ApplyCullPipeline(desc, key.raster_control,
+      topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
+      topology == plume::RenderPrimitiveTopology::TRIANGLE_STRIP);
   desc.fillMode = plume::RenderFillMode::SOLID;
   desc.renderTargetCount = 0;
   for (u32 i = 0; i < kNativeRenderTargets; ++i) {
@@ -525,6 +554,229 @@ plume::RenderPipeline* GetPipeline(
         key.blend_controls[0], key.blend_controls[1], key.blend_controls[2], key.blend_controls[3]);
   g_pipelines.emplace(key, std::move(pipeline));
   return result;
+}
+
+// Inspect only committed, readable guest spans. Diagnostic reads must not
+// introduce a fault for a bad declaration/index or walk an unbounded buffer.
+bool ReadDrawDiagnosticBytes(u32 address, void* output, u32 bytes) {
+  if (!address || !output || !bytes || bytes > 64 * 12 ||
+      u64(address) + bytes > 0x100000000ull) return false;
+  auto* memory = REX_KERNEL_MEMORY();
+  if (!memory) return false;
+  const u64 end = u64(address) + bytes;
+  for (u64 at = address; at < end;) {
+    auto* heap = memory->LookupHeap(u32(at));
+    if (!heap) return false;
+    const u32 size = heap->page_size(), base = heap->heap_base();
+    if (!size || (size & (size - 1)) || at < base) return false;
+    const u32 page = base + ((u32(at) - base) & ~(size - 1));
+    rex::memory::HeapAllocationInfo info{};
+    if (!heap->QueryRegionInfo(page, &info) ||
+        !(info.state & rex::memory::kMemoryAllocationCommit) ||
+        !(info.protect & rex::memory::kMemoryProtectRead)) return false;
+    const u64 region_end = std::min(u64(page) + info.region_size,
+        u64(info.allocation_base) + info.allocation_size);
+    if (region_end <= at) return false;
+    at = std::min(end, region_end);
+  }
+  std::memcpy(output, memory->TranslateVirtual<const u8*>(address), bytes);
+  return true;
+}
+
+std::optional<u32> ReadDrawDiagnosticDeviceWord(const D3DDevice* device, u32 offset) {
+  auto* memory = REX_KERNEL_MEMORY();
+  if (!device || !memory) return std::nullopt;
+  const uintptr_t pointer = reinterpret_cast<uintptr_t>(device);
+  const uintptr_t base = reinterpret_cast<uintptr_t>(memory->virtual_membase());
+  if (pointer < base || pointer - base > UINT32_MAX) return std::nullopt;
+  const u64 address = u64(pointer - base) + offset;
+  be_u32 word{};
+  if (address > UINT32_MAX || !ReadDrawDiagnosticBytes(u32(address), &word, sizeof(word)))
+    return std::nullopt;
+  return u32(word);
+}
+
+struct CpuDrawDiagnostic {
+  DrawDiagnosticSession& session;
+  std::ostringstream record;
+  DrawBindings bindings;
+  bool indexed = false, submitted = false;
+  u32 start = 0, count = 0;
+  i32 base_vertex = 0;
+
+  CpuDrawDiagnostic(DrawDiagnosticSession& selected, u32 id,
+      D3DDevice* device, u32 primitive, bool indexed_draw, u32 first,
+      u32 vertices, i32 base)
+      : session(selected), bindings(SnapshotDrawBindings()),
+        indexed(indexed_draw), start(first), count(vertices), base_vertex(base) {
+    record << "draw=" << id << " attempted_ordinal=" << session.attempted_ordinal()
+        << " frame=" << g_probe_frame.load()
+        << " primitive=" << primitive << " indexed=" << indexed
+        << " start=" << start << " count=" << count << " base=" << base_vertex
+        << std::hex << " VS=" << BoundShaderHash(ShaderStage::kVertex)
+        << " PS=" << BoundShaderHash(ShaderStage::kPixel)
+        << " IB=" << bindings.index_buffer << " RT=" << bindings.render_targets[0]
+        << " DS=" << bindings.depth_stencil;
+    if (!device) { record << " device=null\n"; return; }
+    const auto guest_declaration = ReadDrawDiagnosticDeviceWord(device,
+        offsetof(D3DDevice, vertex_declaration));
+    if (!guest_declaration) { record << " device_fields=unreadable\n"; return; }
+    bindings.vertex_declaration = *guest_declaration;
+    record << " decl=" << bindings.vertex_declaration;
+    constexpr std::pair<const char*, u32> fields[] = {{"raster", 10568}, {"depth", 10548},
+        {"stencil", 10496}, {"alpha", 10556}, {"alpha_ref_bits", 10500},
+        {"legacy_float10620_bits", 10620},
+        {"blend", 10552}, {"color_mask", 12292}, {"clip_control", 10564},
+        {"viewport_control", 10572}, {"viewport_x", 13024}, {"viewport_y", 13028},
+        {"viewport_width", 13032}, {"viewport_height", 13036},
+        {"viewport_min_z_bits", 13040}, {"viewport_max_z_bits", 13044},
+        {"scissor_left", 13052}, {"scissor_top", 13056},
+        {"scissor_right", 13060}, {"scissor_bottom", 13064}};
+    for (const auto& [name, offset] : fields) {
+      record << ' ' << name << '=';
+      if (const auto word = ReadDrawDiagnosticDeviceWord(device, offset)) record << *word;
+      else record << "unreadable";
+    }
+    record << '\n';
+    // Raw guest constants used by the captured UI/world transforms and alpha.
+    // Read individual words through the same protected guest reader; never
+    // inspect write-combined host constant uploads. Fixed 48+12-word budget.
+    constexpr u32 vertex_registers[] = {0, 1, 2, 3, 23, 24, 48, 49, 50, 51, 73, 74};
+    const auto constants = [&](const char* name, u32 bank, u32 index) {
+      record << name << std::dec << index << "=" << std::hex;
+      for (u32 component = 0; component < 4; ++component) {
+        if (const auto word = ReadDrawDiagnosticDeviceWord(device,
+            bank + index * 16 + component * 4))
+          record << std::setfill('0') << std::setw(8) << *word;
+        else record << "unreadable";
+        record << ',';
+      }
+      record << '\n';
+    };
+    for (const u32 index : vertex_registers) constants("VS_C", 0x780, index);
+    for (const u32 index : {4u, 32u, 45u}) constants("PS_C", 0x1780, index);
+    std::array<be_u32, 7> header{};
+    if (!ReadDrawDiagnosticBytes(bindings.vertex_declaration, header.data(), sizeof(header))) {
+      record << "raw_decl=unreadable\n";
+      return;
+    }
+    const u32 elements = header[6];
+    record << "raw_decl_header=" << LongProbeHex(header) << std::dec
+        << " raw_count=" << elements << '\n';
+    std::array<u8, 64 * 12> declaration{};
+    const u64 address = u64(bindings.vertex_declaration) + 52;
+    if (elements > 64 || address > UINT32_MAX ||
+        (elements && !ReadDrawDiagnosticBytes(u32(address), declaration.data(), elements * 12))) {
+      record << "raw_decl=invalid_or_unreadable\n";
+      return;
+    }
+    record << "raw_decl_bytes=" << std::hex << std::setfill('0');
+    for (u32 i = 0; i < elements * 12; ++i)
+      record << std::setw(2) << u32(declaration[i]);
+    record << '\n';
+  }
+
+  void Layout(const VertexDeclarationView& declaration) {
+    record << "host_supported=" << declaration.supported
+        << " swapped_position=" << declaration.swapped_positions
+        << " swapped_normal=" << declaration.swapped_normals
+        << " swapped_texcoord=" << declaration.swapped_texcoords
+        << " sint_texcoord=" << declaration.sint_texcoords
+        << " reversed_elements=" << declaration.reversed_byte_elements << '\n';
+    std::array<i64, 4> vertices{start, i64(start) + 1, i64(start) + 2, i64(start) + 3};
+    u32 vertex_count = std::min(count, 4u);
+    if (indexed) {
+      std::array<u8, sizeof(D3DBuffer)> header{};
+      const auto index = ReadDrawDiagnosticBytes(bindings.index_buffer, header.data(), header.size())
+          ? InspectBufferResource(bindings.index_buffer, BufferKind::kIndex) : BufferResourceView{};
+      const u32 width = index.guest_format == 1 ? 2 : 4;
+      record << "index_source=" << index.mirror_address << std::dec
+          << " length=" << index.length << " guest_format=" << index.guest_format
+          << " first_indices=";
+      vertex_count = 0;
+      for (u32 i = 0; i < std::min(count, 6u); ++i) {
+        const u64 offset = (u64(start) + i) * width;
+        const u64 address = u64(index.mirror_address) + offset;
+        std::array<be_u16, 2> raw{};
+        if (!index.mirror_address || offset > index.length || width > index.length - offset ||
+            address > UINT32_MAX || !ReadDrawDiagnosticBytes(u32(address), raw.data(), width)) {
+          record << "unreadable,";
+          continue;
+        }
+        const u32 value = width == 2 ? u32(raw[0]) :
+            (u32(raw[0]) << 16) | u32(raw[1]);
+        record << value << ',';
+        // Preserve actual corner order, including the fourth quad corner.
+        // All attribute reads still share the twelve-sample draw budget.
+        if (i < 4) vertices[vertex_count++] = i64(value) + base_vertex;
+      }
+      record << '\n' << std::hex;
+    }
+    std::array<BufferResourceView, kNativeVertexStreams> buffers{};
+    std::array<bool, kNativeVertexStreams> inspected{};
+    u32 samples_left = 12;
+    for (u32 i = 0; declaration.elements && i < std::min(declaration.element_count, 75u); ++i) {
+      const auto& element = declaration.elements[i];
+      record << "host_attr=" << element.semanticName << std::dec << element.semanticIndex
+          << " slot=" << element.slotIndex << " offset=" << element.alignedByteOffset
+          << " format=" << u32(element.format);
+      if (element.slotIndex >= kNativeVertexStreams) { record << '\n'; continue; }
+      const auto& binding = bindings.vertex_streams[element.slotIndex];
+      record << " stride=" << binding.stride << " stream_offset=" << binding.offset
+          << std::hex << " VB=" << binding.buffer << '\n';
+      if (!binding.buffer || (std::strcmp(element.semanticName, "POSITION") &&
+          std::strcmp(element.semanticName, "COLOR") &&
+          std::strcmp(element.semanticName, "NORMAL"))) continue;
+      if (!inspected[element.slotIndex]) {
+        std::array<u8, sizeof(D3DBuffer)> header{};
+        if (ReadDrawDiagnosticBytes(binding.buffer, header.data(), header.size()))
+          buffers[element.slotIndex] = InspectBufferResource(binding.buffer, BufferKind::kVertex);
+        inspected[element.slotIndex] = true;
+      }
+      const auto& buffer = buffers[element.slotIndex];
+      const u32 width = std::min(plume::RenderFormatSize(element.format), 16u);
+      for (u32 v = 0; v < vertex_count && samples_left; ++v, --samples_left) {
+        const auto offset = DrawDiagnosticVertexOffset(vertices[v], binding.stride,
+            binding.offset, element.alignedByteOffset, width, buffer.length);
+        const u64 address = offset ? u64(buffer.mirror_address) + *offset : UINT64_MAX;
+        std::array<u8, 16> sample{};
+        record << "sample_attr=" << element.semanticName << std::dec << element.semanticIndex
+            << " vertex=" << vertices[v] << std::hex << " source=" << address;
+        if (!buffer.mirror_address || !offset || address > UINT32_MAX ||
+            !ReadDrawDiagnosticBytes(u32(address), sample.data(), width)) {
+          record << " bytes=unreadable\n";
+          continue;
+        }
+        record << " bytes=" << std::setfill('0');
+        for (u32 b = 0; b < width; ++b) record << std::setw(2) << u32(sample[b]);
+        record << '\n';
+      }
+    }
+  }
+
+  ~CpuDrawDiagnostic() {
+    record << "submitted=" << submitted << '\n';
+    session.Write(record.str());
+  }
+};
+
+std::unique_ptr<CpuDrawDiagnostic> BeginCpuDrawDiagnostic(D3DDevice* device,
+    u32 primitive, bool indexed, u32 start, u32 count, i32 base_vertex) {
+  static DrawDiagnosticSession session([] {
+    char* value = nullptr; size_t length = 0;
+    _dupenv_s(&value, &length, "LEGO_NATIVE_DRAW_TRACE_TRIGGER");
+    std::filesystem::path result(value ? value : "");
+    std::free(value);
+    return result;
+  }());
+  static const bool enabled = !session.output().empty();
+  if (!enabled) return {};
+  const u32 id = session.Begin(g_probe_frame.load());
+  if (!id) return {};
+  if (id == 1) REXLOG_INFO("Native CPU draw trace: capturing one frame, up to 64 draws, output={}",
+                           session.output().string());
+  return std::make_unique<CpuDrawDiagnostic>(session, id, device, primitive,
+                                            indexed, start, count, base_vertex);
 }
 
 u32 TraceMeshDraw(D3DDevice* device, u32 primitive, bool indexed,
@@ -622,6 +874,7 @@ u32 TraceMeshDraw(D3DDevice* device, u32 primitive, bool indexed,
 bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
                   u32 start, u32 count, i32 base_vertex) {
   DrawTimer timing;
+  auto cpu_trace = BeginCpuDrawDiagnostic(device, primitive_type, indexed, start, count, base_vertex);
   const u32 mesh_trace = TraceMeshDraw(device, primitive_type, indexed, start, count, base_vertex);
   // Report early exits as well as successful submissions for each sample.
   struct MeshTraceResult {
@@ -655,6 +908,8 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     }
     return false;
   }
+  const bool polygonal = topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
+                         topology == plume::RenderPrimitiveTopology::TRIANGLE_STRIP;
   DrawBindings bindings = SnapshotDrawBindings();
   if (g_logo_capture_api) {
     static std::set<std::array<u64, 6>> traced;
@@ -670,6 +925,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   // the public SetVertexDeclaration hook.
   bindings.vertex_declaration = device->vertex_declaration;
   const auto declaration = ResolveVertexDeclaration(bindings.vertex_declaration);
+  if (cpu_trace) cpu_trace->Layout(declaration);
   std::array<TextureResourceView, kNativeRenderTargets> colors;
   for (u32 i = 0; i < colors.size(); ++i)
     colors[i] = ResolveTextureResource(bindings.render_targets[i]);
@@ -739,6 +995,11 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   key.pixel_shader_hash = BoundShaderHash(ShaderStage::kPixel);
   key.declaration_hash = declaration.content_hash;
   key.declaration = bindings.vertex_declaration;
+  const auto* state_bytes = reinterpret_cast<const u8*>(device);
+  const u32 guest_raster = *reinterpret_cast<const be_u32*>(state_bytes + 10568);
+  static const bool cull_candidate = std::getenv("LEGO_NATIVE_CULL") != nullptr;
+  if (cull_candidate)
+    key.raster_control = kNativeCullCandidate | (guest_raster & (polygonal ? 7u : 4u));
   for (u32 i = 0; i < colors.size(); ++i)
     key.render_target_formats[i] = static_cast<u32>(colors[i].format);
   key.depth_format = static_cast<u32>(depth.format);
@@ -758,17 +1019,18 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     key.depth_control = *reinterpret_cast<const be_u32*>(
         reinterpret_cast<const u8*>(device) + 10548);
     if ((key.depth_control & 1u) && depth.format == plume::RenderFormat::D32_FLOAT_S8_UINT) {
-      // D3D12 has one mask pair. With native culling disabled, follow Xenia's
-      // front-face mask choice. Per-face mask differences remain unsupported.
+      // Select back masks when the candidate culls only front faces; with
+      // both faces surviving, per-face mask differences remain unsupported.
+      const u32 word_offset = NativeStencilWordOffset(key.raster_control,
+          key.depth_control, polygonal);
       key.stencil_masks = *reinterpret_cast<const be_u32*>(
-          reinterpret_cast<const u8*>(device) + 10496) & 0x00FFFF00u;
-      key.stencil_face = (*reinterpret_cast<const be_u32*>(
-          reinterpret_cast<const u8*>(device) + 10568) >> 2) & 1u;
+          state_bytes + word_offset) & 0x00FFFF00u;
+      key.stencil_face = (guest_raster >> 2) & 1u;
       static std::unordered_set<u64> logged_stencil;
       const u64 identity = (u64(key.depth_control) << 32) | key.stencil_masks;
       if (logged_stencil.size() < 32 && logged_stencil.insert(identity).second)
         REXLOG_INFO("Native GPU: stencil candidate control={:08X} masks={:06X} ref={} VS={:016X} PS={:016X}",
-            key.depth_control, key.stencil_masks, reinterpret_cast<const u8*>(device)[10499],
+            key.depth_control, key.stencil_masks, state_bytes[word_offset + 3],
             key.vertex_shader_hash, key.pixel_shader_hash);
     }
   }
@@ -791,7 +1053,6 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
                 key.depth_control, bindings.depth_stencil);
   key.topology = static_cast<u32>(topology);
   key.spec_constants = declaration.has_r11g11b10_normal ? 1u : 0u;
-  const auto* state_bytes = reinterpret_cast<const u8*>(device);
   const auto alpha = DecodeNativeAlphaState(
       *reinterpret_cast<const be_u32*>(state_bytes + 10556),
       *reinterpret_cast<const be_f32*>(state_bytes + 10500));
@@ -801,18 +1062,16 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   // D3DRS_DEPTHBIAS (83FB8970) stores the offset at +10836 / +10844; both set
   // PA_SU_SC_MODE_CNTL (+10568) poly_offset_front/back_enable (bits 11/12).
   // Convert the stored offset for the host rasterizer. Face selection follows
-  // SDK's GetPreferredFacePolygonOffset/GetD3D10IntegerPolygonOffset: native
-  // never culls, so front wins, then back; non-triangles use para_enable.
+  // SDK's GetPreferredFacePolygonOffset/GetD3D10IntegerPolygonOffset: ignore
+  // culled faces in the candidate; non-triangles use para_enable.
   // Unorm24 and float24 guests both come to ~offset * 2^24 host D32 units.
   // LEGO_NATIVE_NO_DEPTH_BIAS=1 restores the old behaviour for A/B checks.
   static const bool depth_bias_disabled = std::getenv("LEGO_NATIVE_NO_DEPTH_BIAS") != nullptr;
   if (!depth_bias_disabled && depth.format != plume::RenderFormat::UNKNOWN) {
-    const u32 mode = *reinterpret_cast<const be_u32*>(state_bytes + 10568);
+    const u32 mode = CullPolygonOffsetMode(guest_raster, key.raster_control, polygonal);
     const auto poly = [&](u32 offset) {
       return float(*reinterpret_cast<const be_f32*>(state_bytes + offset));
     };
-    const bool polygonal = topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
-                           topology == plume::RenderPrimitiveTopology::TRIANGLE_STRIP;
     const auto bias = DecodePolygonOffset(mode, polygonal,
         poly(10832), poly(10836), poly(10840), poly(10844));
     key.depth_bias = bias.depth_bias;
@@ -839,7 +1098,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     commands->setGraphicsPipelineLayout(HostDevice::PipelineLayout());
     if (enable_stencil && (key.depth_control & 1u))
       static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetStencilRef(
-          reinterpret_cast<const u8*>(device)[10499]);
+          state_bytes[NativeStencilWordOffset(key.raster_control, key.depth_control, polygonal) + 3]);
     commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 0);
     commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 1);
     commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 2);
@@ -878,11 +1137,12 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
       screen_space ? 1.0f : static_cast<float>(device->viewport.max_z)));
   const i32 scissor_right = static_cast<i32>(device->scissor.right);
   const i32 scissor_bottom = static_cast<i32>(device->scissor.bottom);
-  commands->setScissors(plume::RenderRect(
+  commands->setScissors(CullDrawScissor(plume::RenderRect(
       static_cast<i32>(device->scissor.left),
       static_cast<i32>(device->scissor.top),
       scissor_right > 0 ? scissor_right : static_cast<i32>(color.width),
-      scissor_bottom > 0 ? scissor_bottom : static_cast<i32>(color.height)));
+      scissor_bottom > 0 ? scissor_bottom : static_cast<i32>(color.height)),
+      key.raster_control, polygonal));
 
   std::array<plume::RenderVertexBufferView, kNativeVertexStreams> views;
   std::array<plume::RenderInputSlot, kNativeVertexStreams> slots;
@@ -1181,6 +1441,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     REXLOG_INFO("Native GPU: issued draw primitive={} count={} indexed={} decl=0x{:08X}",
                  primitive_type, count, indexed, bindings.vertex_declaration);
   mesh_result.submitted = true;
+  if (cpu_trace) cpu_trace->submitted = true;
   for (u32 i = 0; i < kNativeRenderTargets; ++i)
     if ((key.color_write_mask >> (i * 4)) & 15u) MarkSurfaceWritten(bindings.render_targets[i]);
   if (DecodeDepthState(key.depth_control, depth.texture != nullptr).write)
