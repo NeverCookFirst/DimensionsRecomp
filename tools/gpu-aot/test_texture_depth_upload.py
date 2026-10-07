@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -20,6 +21,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', type=Path)
     parser.add_argument('--compiler', default='clang++')
+    parser.add_argument('--legacy-source', type=Path,
+                        help='Require the previous actual GPU-first branch to fail the parity oracle')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     source_path = root / 'rexlego/src/gpu_native/textures.cpp'
@@ -35,6 +38,16 @@ def main():
     cursor = 0
     for op in operations:
         cursor = sdk.index(op, cursor) + len(op)
+    sdk_table_path = root / 'rexglue-sdk/src/graphics/d3d12/texture_cache.cpp'
+    sdk_table = sdk_table_path.read_text()
+    depth_entry = sdk_table.split('// k_24_8\n', 1)[1].split('// k_24_8_FLOAT', 1)[0]
+    assert 'DXGI_FORMAT_R32_FLOAT' in depth_entry
+    assert 'xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR' in depth_entry
+    sdk_swizzle_path = root / 'rexglue-sdk/src/graphics/pipeline/texture/cache.cpp'
+    sdk_swizzle = function(sdk_swizzle_path.read_text(),
+                          'uint32_t TextureCache::GuestToHostSwizzle(')
+    sdk_swizzle = sdk_swizzle.replace('TextureCache::GuestToHostSwizzle', 'SdkDepthSwizzle')
+    sdk_swizzle = sdk_swizzle.replace('xenos::XE_GPU_TEXTURE_SWIZZLE_0', '4u')
     bodies = '\n'.join(function(text, sig) for sig in [
         'bool EnsureDepthSamplingMirror(', 'bool UploadGuestDepthTexture(',
         'TextureResourceView ResolveTextureResource('])
@@ -91,14 +104,17 @@ void GetPackedMipOffset(u32,u32,u32,u32,u32,u32& x,u32& y,u32& z) { x=y=z=0; }
 '''
     harness += tiled + r'''
 } } }
+'''
+    harness += sdk_swizzle + r'''
 namespace plume {
 enum class RenderFormat { UNKNOWN, R32_FLOAT, R32G32B32A32_FLOAT, D32_FLOAT_S8 };
 enum class RenderTextureDimension { TEXTURE_2D };
 enum class RenderTextureViewDimension { TEXTURE_2D };
 enum class RenderSampleCount { COUNT_1 };
 enum RenderTextureFlag { RENDER_TARGET=1 };
-enum class RenderSwizzle { R,G,B,A,ZERO,ONE };
-struct RenderComponentMapping { std::array<RenderSwizzle,4> lanes{};
+enum class RenderSwizzle { R,G,B,A,ZERO,ONE,IDENTITY };
+struct RenderComponentMapping { std::array<RenderSwizzle,4> lanes{
+ RenderSwizzle::IDENTITY,RenderSwizzle::IDENTITY,RenderSwizzle::IDENTITY,RenderSwizzle::IDENTITY};
  RenderComponentMapping()=default;
  RenderComponentMapping(RenderSwizzle r,RenderSwizzle g,RenderSwizzle b,RenderSwizzle a):lanes{r,g,b,a}{} };
 struct RenderTextureDesc { RenderTextureDimension dimension{};u32 width{},height{},depth{},mipLevels{},arraySize{},flags{};bool committed{};
@@ -248,6 +264,55 @@ void CheckPixels(const TextureResource& resource) {
  for(u32 y=0;y<resource.height;++y)for(u32 b=resource.width*4;b<pitch;++b)assert(bytes[y*pitch+b]==0);
 }
 int main(){
+ // Actual CPU-upload-first and GPU-resolve-first branches must agree with
+ // the pinned SDK's RRRR format expansion and GuestToHostSwizzle function.
+ for(u32 swizzle:{0xB48u,0x688u}){
+  std::array<plume::RenderSwizzle,4> expected{};
+  const auto sdk_swizzle=SdkDepthSwizzle(swizzle,0); // Actual table above proves RRRR.
+  for(u32 lane=0;lane<4;++lane)expected[lane]=plume::RenderSwizzle((sdk_swizzle>>(3*lane))&7);
+  for(bool gpu_first:{true,false}){
+   auto resource=std::make_shared<TextureResource>();textures[resource->guest_address]=resource;
+   resource->guest_fetch.swizzle=swizzle;Fill(*resource,2,true);
+   plume::RenderCommandList commands;
+   if(!gpu_first)assert(UploadTextureResource(resource->guest_address,&commands,false));
+   assert(ResolveDepth(resource));
+   assert(resource->sampled_view->desc.componentMapping.lanes==expected && "depth_mirror_swizzle_parity");
+   const auto descriptor=resource->sampled_descriptor_index;
+   const auto registrations=HostDevice::registrations;
+   auto view=ResolveTextureResource(resource->guest_address);
+   assert(view.view==resource->sampled_view.get() && view.descriptor_index==descriptor && !view.depth);
+   readable=false;++generation;assert(UploadTextureResource(resource->guest_address,&commands,true));readable=true;
+   assert(ResolveDepth(resource));
+   assert(resource->sampled_descriptor_index==descriptor && HostDevice::registrations==registrations);
+  }
+ }
+ // Native-created resources retain full D3DFORMAT flags; the atlas guard and
+ // SDK intrinsic expansion both use the low six-bit Xenos format ID.
+ for(u32 swizzle:{0xB48u,0x688u}){
+  auto resource=std::make_shared<TextureResource>();textures[resource->guest_address]=resource;
+  resource->guest_format=0x80000016u;resource->owns_guest_memory=true;resource->guest_fetch.swizzle=swizzle;
+  assert(ResolveDepth(resource));
+  const auto sdk_swizzle=SdkDepthSwizzle(swizzle,0);
+  for(u32 lane=0;lane<4;++lane)
+   assert(resource->sampled_view->desc.componentMapping.lanes[lane]==plume::RenderSwizzle((sdk_swizzle>>(3*lane))&7)
+          && "full_depth_format_swizzle_parity");
+ }
+ // GPU-first allocation must be atomic and retryable at every failure boundary.
+ // Failed conversion may retain a complete mirror but cannot grant authority.
+ for(int failure=0;failure<5;++failure){
+  auto resource=std::make_shared<TextureResource>();textures[resource->guest_address]=resource;
+  if(failure==0)device.fail_texture=true;
+  if(failure==1)device.fail_native=true;
+  if(failure==2)plume::fail_view=true;
+  if(failure==3)HostDevice::fail_descriptor=true;
+  if(failure==4)HostDevice::fail_resolve=true;
+  assert(!ResolveDepth(resource));assert(!resource->resolved_on_host && !resource->sampled_valid);
+  if(failure<4)assert(!resource->sampled_texture && !resource->sampled_view && resource->sampled_descriptor_index==~0u);
+  const auto descriptor=resource->sampled_descriptor_index;const auto registrations=HostDevice::registrations;
+  device.fail_texture=device.fail_native=plume::fail_view=HostDevice::fail_descriptor=HostDevice::fail_resolve=false;
+  assert(ResolveDepth(resource));assert(resource->resolved_on_host && resource->sampled_valid);
+  if(failure==4)assert(resource->sampled_descriptor_index==descriptor && HostDevice::registrations==registrations);
+ }
  // Actual non-square tiled rectangles, endian modes and stencil-independent normalized endpoints.
  for(bool tiled:{false,true})for(u32 endian=0;endian<4;++endian){
   auto resource=std::make_shared<TextureResource>();textures[resource->guest_address]=resource;Fill(*resource,endian,tiled);
@@ -339,9 +404,36 @@ int main(){
                     '-I', str(root / 'rexlego/src/gpu_native'), str(fixture), '-o', str(binary)],
                    check=True, timeout=45)
     subprocess.run([str(binary)], check=True, timeout=10)
+    legacy_result = None
+    if args.legacy_source:
+        legacy_text = args.legacy_source.read_text()
+        legacy_begin = legacy_text.index('  // Xenos k_24_8 sampling')
+        legacy_end = legacy_text.index('  // Preserve both host depth', legacy_begin)
+        legacy_fixture = args.output.resolve() / 'legacy-gpu-first.cpp'
+        legacy_binary = args.output.resolve() / 'legacy-gpu-first.exe'
+        assert harness.count(resolve_branch) == 1
+        legacy_fixture.write_text(harness.replace(resolve_branch, legacy_text[legacy_begin:legacy_end], 1))
+        subprocess.run([args.compiler, '-std=c++20', '-UNDEBUG',
+                        '-I', str(root / 'rexlego/src/gpu_native'), str(legacy_fixture), '-o', str(legacy_binary)],
+                       check=True, timeout=45)
+        def disable_core():
+            import resource
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        legacy = subprocess.run([str(legacy_binary)], capture_output=True, text=True, timeout=10,
+                                preexec_fn=disable_core if os.name == 'posix' else None)
+        assert legacy.returncode != 0 and 'depth_mirror_swizzle_parity' in legacy.stderr, legacy.stderr
+        legacy_result = {'source_sha256': hashlib.sha256(args.legacy_source.read_bytes()).hexdigest(),
+                         'returncode': legacy.returncode, 'expected_assertion': 'depth_mirror_swizzle_parity'}
     (args.output / 'verification.json').write_text(json.dumps({
         'production_source_sha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
         'sdk_depth_loader_sha256': hashlib.sha256(sdk_path.read_bytes()).hexdigest(),
+        'sdk_depth_table_sha256': hashlib.sha256(sdk_table_path.read_bytes()).hexdigest(),
+        'sdk_swizzle_source_sha256': hashlib.sha256(sdk_swizzle_path.read_bytes()).hexdigest(),
+        'depth_mirror_orders': ['CPU upload then GPU resolve', 'GPU resolve before CPU upload'],
+        'depth_mirror_swizzles': ['B48', '688'],
+        'depth_mirror_full_d3d_format_gpu_first': '80000016',
+        'gpu_first_failure_retry_cases': 5,
+        'legacy_negative': legacy_result,
         'decoder_sha256': hashlib.sha256((root / 'rexlego/src/gpu_native/texture_depth_upload.h').read_bytes()).hexdigest(),
         'actual_bodies': ['UploadGuestDepthTexture', 'EnsureDepthSamplingMirror',
                          'ResolveTextureResource', 'UploadTextureResource entry guards',

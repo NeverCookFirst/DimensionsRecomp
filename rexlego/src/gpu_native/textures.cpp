@@ -756,7 +756,7 @@ bool EnsureDepthSamplingMirror(TextureResource& resource) {
       plume::RenderSwizzle::R, plume::RenderSwizzle::G,
       plume::RenderSwizzle::B, plume::RenderSwizzle::A,
       plume::RenderSwizzle::ZERO, plume::RenderSwizzle::ONE};
-  const u32 swizzle = NativeTextureSwizzle(resource.guest_format,
+  const u32 swizzle = NativeTextureSwizzle(resource.guest_format & 0x3Fu,
                                          resource.guest_fetch.swizzle);
   view_desc.componentMapping = plume::RenderComponentMapping(
       swizzles[swizzle & 7], swizzles[(swizzle >> 3) & 7],
@@ -1676,31 +1676,10 @@ bool ResolveTextureFromSurface(u32 destination_texture, u32 source_surface,
       (adopted_destination->guest_fetch.swizzle == 0xB48 ||
        adopted_destination->guest_fetch.swizzle == 0x688)) {
     auto& dst = *adopted_destination;
-    if (!dst.sampled_texture) {
-      auto* device = HostDevice::Device();
-      plume::RenderTextureDesc desc;
-      desc.dimension = plume::RenderTextureDimension::TEXTURE_2D;
-      desc.width = dst.width; desc.height = dst.height;
-      desc.depth = 1; desc.mipLevels = 1; desc.arraySize = 1;
-      desc.multisampling.sampleCount = plume::RenderSampleCount::COUNT_1;
-      desc.format = plume::RenderFormat::R32_FLOAT;
-      desc.flags |= plume::RenderTextureFlag::RENDER_TARGET;
-      desc.committed = true;
-      dst.sampled_texture = device->createTexture(desc);
-      if (!dst.sampled_texture ||
-          !static_cast<plume::D3D12Texture*>(dst.sampled_texture.get())->d3d) return false;
-      plume::RenderTextureViewDesc view;
-      view.dimension = plume::RenderTextureViewDimension::TEXTURE_2D;
-      view.format = plume::RenderFormat::R32_FLOAT;
-      view.mipLevels = 1;
-      if (dst.guest_fetch.swizzle == 0xB48)
-        view.componentMapping = plume::RenderComponentMapping(plume::RenderSwizzle::R,
-            plume::RenderSwizzle::G, plume::RenderSwizzle::ONE, plume::RenderSwizzle::ONE);
-      dst.sampled_view = dst.sampled_texture->createTextureView(view);
-      if (!dst.sampled_view) return false;
-      dst.sampled_descriptor_index = HostDevice::RegisterTexture(
-          dst.sampled_texture.get(), dst.sampled_view.get());
-    }
+    // CPU-first and GPU-first sampling must compose the same Xenos depth
+    // channel expansion with the guest swizzle. Publish storage/view/descriptor
+    // together so an allocation failure can be retried safely.
+    if (!EnsureDepthSamplingMirror(dst)) return false;
     if (!HostDevice::ResolveHdrColor(source->texture.get(), source->descriptor_index,
         dst.sampled_texture.get(), dst.width, dst.height, 1.0f,
         ColorResolveDestination::kDepthFloat32, true, &*region)) return false;

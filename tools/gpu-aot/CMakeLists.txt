@@ -70,6 +70,16 @@ if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
                     --compiler ${CMAKE_CXX_COMPILER})
             set_tests_properties(${check} PROPERTIES TIMEOUT 60)
         endforeach()
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/shaders/bytecode/d3d12_5_1/texture_load_depth_unorm_cs.h"
+            AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/d3d12/texture_cache.cpp"
+            AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/pipeline/texture/util.cpp"
+            AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/pipeline/texture/cache.cpp")
+            add_test(NAME texture_depth_upload
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_texture_depth_upload.py
+                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/texture_depth_upload
+                    --compiler ${CMAKE_CXX_COMPILER})
+            set_tests_properties(texture_depth_upload PROPERTIES TIMEOUT 60)
+        endif()
         # Verify the actual SDK project template when its submodule is present.
         if(UNIX AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/resources/templates/init/rexglue_cmake.inja")
             add_test(NAME cross_build_producers
