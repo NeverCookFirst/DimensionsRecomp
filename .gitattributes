@@ -5,5 +5,5 @@
 *.ttf binary
 *.bin binary
 
-# Empty unified-diff context lines contain their required leading space.
-tools/gpu-aot/patches/*.patch whitespace=-blank-at-eol
+# Empty unified-diff context lines require their leading space, including at EOF.
+tools/gpu-aot/patches/*.patch whitespace=-blank-at-eol,-blank-at-eof

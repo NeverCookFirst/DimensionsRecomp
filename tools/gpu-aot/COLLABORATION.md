@@ -6,6 +6,24 @@ development handoff, not a completed renderer or a release.
 
 ## Local verification on October 7, 2026
 
+The follow-up is published from `AlenHay/DimensionsRecomp` on
+`t3/gpu-renderer-correctness`, against the original experimental draft branch.
+The authenticated account cannot push to either upstream repository, so the
+SDK gitlink now uses the public `AlenHay/rexglue-sdk` fork. Its exact tested
+integration revision remains `2897c31b1407dd96480dc25965f8ee7807f00e0f`.
+Focused SDK drafts against the original dependency branch are:
+
+- [Runtime races and teardown](https://github.com/NeverCookFirst/rexglue-sdk/pull/2).
+- [Host/cross-build portability](https://github.com/NeverCookFirst/rexglue-sdk/pull/3).
+- [Interior entries and compact registration](https://github.com/NeverCookFirst/rexglue-sdk/pull/4).
+- [Portable NT calendar conversion](https://github.com/NeverCookFirst/rexglue-sdk/pull/5).
+
+Their production and test files match the tested integration; each independent
+draft registers only its own fixtures. The independent drafts were not rebuilt
+separately. Local SIMDe and Plume edits are excluded from publication; apply
+their tracked preparers when reconstructing the tested dependencies. Game
+inputs, generated game code, shader banks, captures and saves remain private.
+
 The current source approach preserves exact TU23 CPU setters wherever they do
 not emit GPU packets, then translates their private state at the draw boundary.
 Public API structures and private device structures must not share a type
@@ -111,7 +129,7 @@ run without crashes, visual glitches or performance issues has not been achieved
 ## Clone and portable checks
 
 ```sh
-git clone --branch codex/native-renderer --recurse-submodules https://github.com/NeverCookFirst/DimensionsRecomp.git
+git clone --branch t3/gpu-renderer-correctness --recurse-submodules https://github.com/AlenHay/DimensionsRecomp.git
 cd DimensionsRecomp
 cmake -S tools/gpu-aot -B native-checks -DCMAKE_BUILD_TYPE=Release
 cmake --build native-checks --parallel 2
@@ -207,11 +225,15 @@ allocation failure propagation needed
 by this renderer. The pin-checked preparer refuses conflicting local edits.
 The patch lives at `tools/gpu-aot/patches/plume-lego.patch`.
 
-The SDK gitlink is `17e3675767067339581018c7e722e1d8d65de201`, published on
-the fork's `codex/native-renderer` branch. Its dependency draft is
-https://github.com/NeverCookFirst/rexglue-sdk/pull/1. Use the gitlink with
+The SDK gitlink is `2897c31b1407dd96480dc25965f8ee7807f00e0f`, published on
+the public `AlenHay/rexglue-sdk` fork's `codex/runtime-correctness-20261007`
+branch. The original dependency draft is
+https://github.com/NeverCookFirst/rexglue-sdk/pull/1; the focused follow-up
+drafts are linked above. Use the gitlink with
 `git submodule update --init --recursive`; `git submodule update --remote`
 selects branch tips instead of the recorded dependency revision.
+For the tested SIMDe compatibility overlay, run
+`python3 rexglue-sdk/scripts/prepare_simde.py`, then repeat with `--check`.
 
 ## Reconstruct current shader compiler inputs
 

@@ -1,7 +1,7 @@
 [submodule "rexglue-sdk"]
 	path = rexglue-sdk
-	url = https://github.com/NeverCookFirst/rexglue-sdk.git
-	branch = toypad-ui
+	url = https://github.com/AlenHay/rexglue-sdk.git
+	branch = codex/runtime-correctness-20261007
 [submodule "DimensionsModManager"]
 	path = DimensionsModManager
 	url = https://github.com/NeverCookFirst/DimensionsModLoader.git
