@@ -42,6 +42,17 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     endif()
 
     enable_language(C)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prepare_plume.py" --check
+        RESULT_VARIABLE LEGO_PLUME_PREPARE_RESULT
+        OUTPUT_VARIABLE LEGO_PLUME_PREPARE_OUTPUT
+        ERROR_VARIABLE LEGO_PLUME_PREPARE_ERROR
+        TIMEOUT 30)
+    if(NOT LEGO_PLUME_PREPARE_RESULT STREQUAL "0")
+        message(FATAL_ERROR "Native Plume dependency needs preparation. Run python tools/gpu-aot/prepare_plume.py.\n${LEGO_PLUME_PREPARE_OUTPUT}${LEGO_PLUME_PREPARE_ERROR}")
+    endif()
     set(PLUME_D3D12_AGILITY_SDK_ENABLED OFF CACHE BOOL "" FORCE)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume"
                      "${CMAKE_CURRENT_BINARY_DIR}/thirdparty/plume"

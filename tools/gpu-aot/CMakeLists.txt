@@ -21,6 +21,24 @@ foreach(check IN LISTS CHECKS)
     add_test(NAME ${check} COMMAND test_${check})
 endforeach()
 
+# Validate the public native-renderer dependency with real source and fake COM.
+if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
+        add_test(NAME plume_command_creation
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_plume_command_creation.py
+                ${CMAKE_CURRENT_BINARY_DIR}/fixtures/plume_command_creation
+                --compiler ${CMAKE_CXX_COMPILER})
+        set_tests_properties(plume_command_creation PROPERTIES TIMEOUT 60)
+        if(UNIX AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/.git")
+            add_test(NAME prepare_plume
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_prepare_plume.py
+                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/prepare_plume)
+            set_tests_properties(prepare_plume PROPERTIES TIMEOUT 60)
+        endif()
+    endif()
+endif()
+
 # These fixtures exercise the real extraction CLI with synthetic inputs.
 if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter QUIET)
