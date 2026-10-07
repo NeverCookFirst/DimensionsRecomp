@@ -22,8 +22,18 @@ original viewport writer without that logical extent squashed the menu into
 baseline. The shared writer now receives a scoped promoted extent through its
 original CPU clipping branch; guest resource dimensions and persistent tiling
 state remain unchanged. The actual integer, float and bulk setter bodies cover
-this regression, including the unadapted 512-row negative control. Live menu
-recovery and post-promotion setter ordering still require verification.
+this regression, including the unadapted 512-row negative control. Live build
+`54d86a1b958e726e` recovered the full-height menu: bounded logs confirmed
+post-promotion requests and effective viewports of 1280 by 720. The targeted
+scissor, viewport and draw diagnostics passed 3/3 checks. Save replay reached
+Vorton gameplay with Gandalf, Wyldstyle and Batman present. A controlled PM4
+comparison using the same executable, runtime, save checkpoint and prepared
+tag bytes exposed a remaining native visual gap: large ground shadows are
+missing. Small pose and camera differences prevent pixel-perfect comparison.
+The exact failing shadow pass has not been identified. Evidence is preserved
+under `.local-testing/reports/native-54d8-live-visual-verification.json`,
+`native-pm4-54d8-controlled-visual-comparison.json` and
+`native-54d8-shadow-gap-audit/`.
 
 An isolated native SDK build through local commit `5dc986f` passed its 225
 selected unit and production regressions. Four existing BitStream cases remain
@@ -50,8 +60,12 @@ order; other generated instructions and headers were byte-identical. The
 production registration regression passed after increasing its total deadline
 for five bounded compiler invocations. The complete native game then built
 within a 6 GiB owned-process ceiling, peaking around 2.4 GiB. Its matching
-Windows runtime and PM4 plugin also built; Linux PM4 configuration is being
-prepared in a separate source tree.
+Windows runtime and PM4 plugin also built. The separate Linux PM4 build
+completed compilation but initially failed its final game link with performance
+counters disabled. A private retry with counters enabled was stopped at the
+user's request at 659/711 tasks; final links remain unverified. No Linux game
+was launched. Partial artifacts and the stop report remain in
+`.local-testing/linux-pm4-candidate/user-requested-stop.json`.
 
 The last accepted native checkpoint samples remain 15.84/16.59 FPS with unequal
 draw workloads; no cache speedup is established and the cache stays off. A PM4
@@ -59,6 +73,13 @@ correctness reference must use full uncapped resolve readback, coherent
 memexport/page-state refresh and synchronous pipeline creation. Inherited fast
 readback settings are unsuitable for that comparison. No level or full campaign
 completion has been verified.
+
+Work concluded at the user's request to return the laptop. The PM4 game closed
+normally with exit code zero. The owned Linux build group, compiler/linker/codegen
+workers and private input daemon were stopped; their absence was verified.
+No further gameplay, build or profiling jobs are running on behalf of this work.
+The committed renderer fixes and private evidence are preserved. A full campaign
+run without crashes, visual glitches or performance issues has not been achieved.
 
 ## Linux limitations
 
