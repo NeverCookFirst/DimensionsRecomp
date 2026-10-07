@@ -20,3 +20,18 @@ foreach(check IN LISTS CHECKS)
     endif()
     add_test(NAME ${check} COMMAND test_${check})
 endforeach()
+
+# These fixtures exercise the real extraction CLI with synthetic inputs.
+if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    find_program(LEGO_DOTNET_EXECUTABLE NAMES dotnet)
+    if(Python3_Interpreter_FOUND AND LEGO_DOTNET_EXECUTABLE)
+        foreach(check IN ITEMS extract_paths image_shader_extract embedded_shader_extract)
+            add_test(NAME ${check}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_${check}.py
+                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/${check}
+                    --dotnet ${LEGO_DOTNET_EXECUTABLE})
+            set_tests_properties(${check} PROPERTIES TIMEOUT 70)
+        endforeach()
+    endif()
+endif()
