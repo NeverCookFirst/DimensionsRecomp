@@ -61,4 +61,17 @@ r=report(metric_path=generic)
 assert r['whole_run']['frames']==100 and r['clean_performance_probe'] is None
 generic.with_suffix('.process.json').write_text(json.dumps({'mode':'snapshot'}))
 assert report(metric_path=generic)['clean_performance_probe'] is False
+cadence=path.with_name('cadence-frames.csv')
+with cadence.open('w',newline='') as f:
+ w=csv.DictWriter(f,fieldnames=fields+['detailed_timing_enabled']);w.writeheader()
+ for n in range(1,4):
+  w.writerow(dict.fromkeys(fields,0)|{'frame':n,'interval_ms':20,'draw_calls':543,
+                                    'detailed_timing_enabled':0})
+r=report(metric_path=cadence)['whole_run']
+assert r['mean_fps']==50 and r['draws_mean']==543
+assert r['detailed_timing_enabled'] is False
+with cadence.open('a',newline='') as f:
+ csv.DictWriter(f,fieldnames=fields+['detailed_timing_enabled']).writerow(
+  dict.fromkeys(fields,0)|{'frame':4,'interval_ms':20,'detailed_timing_enabled':1})
+assert report(metric_path=cadence)['whole_run']['detailed_timing_enabled'] is None
 print('PASS: CLI frame budgets, percentile tails, constant phase means, malformed/partial rows, window selection, audit exclusion')

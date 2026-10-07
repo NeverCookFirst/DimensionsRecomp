@@ -45,6 +45,9 @@ def stats(data):
              'acquire_cpu_ms','present_submit_cpu_ms','swap_present_cpu_ms',
              'buffer_watch_hits','buffer_watch_audits','buffer_watch_mismatches'] + [k for k in data[0] if k.startswith(('sync_', 'callbacks_', 'constants_'))]:
   if key in data[0]:result[key+'_mean']=mean(key)
+ if 'detailed_timing_enabled' in data[0]:
+  modes={r['detailed_timing_enabled'] for r in data}
+  result['detailed_timing_enabled']=bool(next(iter(modes))) if len(modes)==1 else None
  return result
 record_path=(a.file.with_name(a.file.name[:-len('-frames.csv')]+'-process.json')
              if a.file.name.endswith('-frames.csv') else a.file.with_suffix('.process.json'))
