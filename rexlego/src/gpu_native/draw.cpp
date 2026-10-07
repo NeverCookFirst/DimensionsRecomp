@@ -288,7 +288,7 @@ bool BindConstants(
   }
   for (u32 i = 0; i < kNativeTextureSlots; ++i) {
     if (!(texture_mask & (1u << i))) continue;
-    const auto texture = ResolveTextureResource(bindings.textures[i]);
+    auto texture = ResolveTextureResource(bindings.textures[i]);
     if (!texture.texture || texture.descriptor_index == ~u32{0}) {
       if (LongProbeEnabled() && bindings.textures[i] &&
           LongProbeOnce(0xBAD1000000000000ull | bindings.textures[i]))
@@ -298,8 +298,18 @@ bool BindConstants(
     }
     // Vertex textures contain animation data. Until every writer participates
     // in invalidation, verify their contents at every use, even with watches.
-    UploadTextureResource(bindings.textures[i], commands,
-        (BoundShaderTextureMask(ShaderStage::kVertex) & (1u << i)) != 0);
+    if (!UploadTextureResource(bindings.textures[i], commands,
+        (BoundShaderTextureMask(ShaderStage::kVertex) & (1u << i)) != 0)) {
+      // Failed residency/conversion must not sample an old or uninitialized
+      // allocation. DispatchDraw propagates this failure to active queries.
+      LongProbeEvent("bound_texture_upload_failed", true, "slot=", i,
+          "guest=", bindings.textures[i]);
+      return false;
+    }
+    // A first CPU depth upload can publish an R32 sampling mirror. Bind the
+    // descriptor selected after successful upload, rather than its old DSV.
+    if (texture.depth && !texture.surface)
+      texture = ResolveTextureResource(bindings.textures[i]);
     TextureFetchWords fetch;
     for (u32 word = 0; word < fetch.size(); ++word) fetch[word] = device->fetch_constants[i].dword[word];
     if (LongProbeEnabled()) {

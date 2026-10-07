@@ -43,8 +43,9 @@ TextureResourceView ResolveTextureResource(u32 guest_address);
 // Call at SetTexture and Resolve, where the header supplies the new binding.
 // A draw already in flight must retain its old texture and immutable SRV.
 void RefreshTextureHeader(u32 guest_address);
-// Copies the complete CPU mirror into the host texture and leaves it in
-// SHADER_READ. The CPU mirror remains authoritative for readback/correctness.
+// Prepares texture contents for sampling. CPU-backed textures require a
+// successful upload; host render targets and native resolves need no upload.
+// A false result must not bind stale or uninitialized host storage.
 bool UploadTextureResource(u32 guest_address,
                            plume::RenderCommandList* commands,
                            bool require_content_hash = false);
