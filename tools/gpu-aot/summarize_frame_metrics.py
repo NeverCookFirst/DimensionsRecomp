@@ -43,10 +43,11 @@ def stats(data):
  for key in ['cpu_resource_wait_skips','bindings_ms','begin_ms','pipeline_ms','issue_ms',
              'tail_ms','buffer_converted_bytes','frame_slot_wait_calls','frame_slot_wait_ms',
              'acquire_cpu_ms','present_submit_cpu_ms','swap_present_cpu_ms',
-             'buffer_watch_hits','buffer_watch_audits','buffer_watch_mismatches'] + [k for k in data[0] if k.startswith(('sync_', 'callbacks_'))]:
+             'buffer_watch_hits','buffer_watch_audits','buffer_watch_mismatches'] + [k for k in data[0] if k.startswith(('sync_', 'callbacks_', 'constants_'))]:
   if key in data[0]:result[key+'_mean']=mean(key)
  return result
-record_path=a.file.with_name(a.file.name.replace('-frames.csv','-process.json'))
+record_path=(a.file.with_name(a.file.name[:-len('-frames.csv')]+'-process.json')
+             if a.file.name.endswith('-frames.csv') else a.file.with_suffix('.process.json'))
 record=json.loads(record_path.read_text(encoding='utf-8-sig')) if record_path.exists() else None
 heavy_capture=bool(record and (record.get('mode')=='snapshot' or any(record.get(k) for k in
  ['longProbe','logoUploads','logoCaptureRenderDocDll','captureMissing','meshTrace','auditTextureWatch','auditBufferWatch','portraitTrace'])))
