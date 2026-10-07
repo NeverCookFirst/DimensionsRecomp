@@ -12,6 +12,7 @@ from sample_cadence import complete_rows, stats
 
 EXPERIMENT_FLAGS = {'command-slots': 'LEGO_NATIVE_COMMAND_SLOTS',
                     'timer-wait': 'REX_TIMER_WAIT_BLOCKING',
+                    'state-cache': 'PLUME_D3D12_STATE_CACHE',
                     'gpu-timestamps': 'LEGO_NATIVE_GPU_TIMESTAMPS'}
 
 
@@ -20,6 +21,8 @@ def experimental_value(sample, varying):
         return sample['slots']
     if varying == 'timer-wait':
         return sample['timer_wait']
+    if varying == 'state-cache':
+        return 'on' if sample['flags'].get('PLUME_D3D12_STATE_CACHE', '0') == '1' else 'off'
     return 'on' if 'LEGO_NATIVE_GPU_TIMESTAMPS' in sample['flags'] else 'off'
 
 
@@ -27,7 +30,8 @@ def comparison_identity(sample, varying='command-slots'):
     require(varying in EXPERIMENT_FLAGS, 'Unknown experimental variable')
     scene = sample['scene']
     flags = {key: value for key, value in sample['flags'].items()
-             if key.startswith(('LEGO_NATIVE_', 'LEGO_DUMP_', 'LEGO_GPU_', 'REX_TIMER_'))}
+             if key.startswith(('LEGO_NATIVE_', 'LEGO_DUMP_', 'LEGO_GPU_', 'REX_TIMER_'))
+             or key == 'PLUME_D3D12_STATE_CACHE'}
     for key in ('LEGO_NATIVE_FRAME_METRICS', 'LEGO_DUMP_MISSING_SHADERS',
                 'LEGO_NATIVE_SHADER_PACK', 'LEGO_NATIVE_SHADER_PACK_TRIGGER'):
         flags.pop(key, None)  # Private paths differ; sampler verifies their ownership.
@@ -53,6 +57,7 @@ def compare(paths, varying='command-slots'):
             require(stats(rows) == sample['metrics'], 'Frozen CSV disagrees with sample metrics')
     outcomes = [{'source': str(path.resolve()), 'status': sample['status'], 'slots': sample['slots'],
                  'timer_wait': sample['timer_wait'],
+                 'state_cache': experimental_value(sample, 'state-cache'),
                  'gpu_timestamps': experimental_value(sample, 'gpu-timestamps'),
                  'metrics': sample.get('metrics'), 'rejection_reasons': sample.get('rejection_reasons', [])}
                 for path, sample in zip(paths, samples)]
@@ -69,6 +74,7 @@ def compare(paths, varying='command-slots'):
             means[str(value)] = {'windows': len(group), 'frames': frames,
                                  'recorded_seconds': seconds, 'fps': frames/seconds}
     baseline, candidate = {'command-slots': ('3', '12'), 'timer-wait': ('spin', 'blocking'),
+                           'state-cache': ('off', 'on'),
                            'gpu-timestamps': ('off', 'on')}[varying]
     gain = (100*(means[candidate]['fps']/means[baseline]['fps']-1)
             if candidate in means and baseline in means else None)

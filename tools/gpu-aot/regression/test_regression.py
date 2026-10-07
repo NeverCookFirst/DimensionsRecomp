@@ -238,6 +238,54 @@ class PreparationTest(unittest.TestCase):
             with self.assertRaisesRegex(Exception, 'without snapshots'):
                 m.prepare(self.args(name='rejected-performance', performance=True, **changes))
 
+    def test_state_cache_and_request_capture_descriptors_are_owned_and_explicit(self):
+        for mode in ('off', 'on'):
+            run = Path(m.prepare(self.args('state-'+mode, cadence_only=True,
+                                          state_cache=mode, state_calls=True))['run_root'])
+            manifest = json.loads((run/'regression-manifest.json').read_text())
+            env = manifest['launch_plan']['environment_overrides']
+            self.assertEqual(manifest['state_cache'], mode)
+            self.assertEqual(env['PLUME_D3D12_STATE_CACHE'], '1' if mode == 'on' else '0')
+            self.assertTrue(manifest['state_call_probe'])
+            m.verify(run)
+            original = dict(env)
+            for key, value, message in (
+                    ('PLUME_D3D12_STATE_CACHE', '0' if mode == 'on' else '1', 'cache descriptor'),
+                    ('LEGO_NATIVE_STATE_CALLS', m.windows(self.root/'escaped.csv'), 'output escaped'),
+                    ('LEGO_NATIVE_STATE_CALLS_TRIGGER', m.windows(self.root/'escaped.trigger'), 'output escaped')):
+                env[key] = value
+                (run/'regression-manifest.json').write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, message): m.verify(run)
+                env.clear(); env.update(original)
+            del env['LEGO_NATIVE_STATE_CALLS_TRIGGER']
+            (run/'regression-manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'State-call descriptor'): m.verify(run)
+        for options in ({'state_cache': 'on'}, {'state_calls': True}):
+            with self.assertRaisesRegex(ValueError, 'require native route'):
+                m.prepare(self.args('pm4-state', renderer='pm4', **options))
+
+    def test_state_cache_comparison_preserves_other_settings_and_all_outcomes(self):
+        off, _ = self.sample_fixture('cache-off')
+        on, original = self.sample_fixture('cache-on', state_cache='on')
+        slow, _ = self.sample_fixture('cache-on-slow', state_cache='on', interval_ms=60)
+        rejected, _ = self.sample_fixture('cache-bad', state_cache='on', event='dumped missing shader')
+        result = comparer.compare([off, on, slow, rejected], 'state-cache')
+        self.assertTrue(result['comparable_identity'])
+        self.assertEqual(len(result['outcomes']), 4)
+        self.assertEqual(result['accepted_aggregate']['on']['windows'], 2)
+        self.assertEqual(result['accepted_aggregate']['off']['windows'], 1)
+        for flag, value in (('LEGO_NATIVE_CULL', '0'), ('REX_TIMER_WAIT_BLOCKING', '1')):
+            changed = json.loads(json.dumps(original)); changed['flags'][flag] = value
+            (on/'sample.json').write_text(json.dumps(changed))
+            self.assertFalse(comparer.compare([off, on], 'state-cache')['comparable_identity'])
+        (on/'sample.json').write_text(json.dumps(original))
+        self.assertFalse(comparer.compare([off, on], 'gpu-timestamps')['comparable_identity'])
+
+    def test_state_request_capture_is_rejected_from_clean_cadence_scope(self):
+        run, scene = self.live_fixture('request-capture', state_calls=True)
+        with self.assertRaisesRegex(ValueError, 'detailed/heavy instrumentation'):
+            sampler.context(run, scene, self.root)
+
     def test_actual_preparer_preserves_sources_and_routes_all_writable_paths(self):
         source_hashes = {p: m.digest(p) for p in self.root.rglob('*') if p.is_file()}
         with patch.object(subprocess, 'Popen', side_effect=AssertionError('process launched')), \
@@ -443,7 +491,8 @@ class PreparationTest(unittest.TestCase):
                  'LEGO_GPU_SNAPSHOT_DIR':'live-readback','LEGO_DUMP_MISSING_SHADERS':'live-capture',
                  'REX_TIMER_WAIT_BLOCKING':'0','REX_USER_DATA_ROOT':'live-save',
                  'XENIA_TOYPAD_PORT':'9191','REXGLUE_TOYPAD_PORT':'9191','PROTON_LOG':'1',
-                 'VKD3D_SHADER_CACHE_PATH':'live-vkd3d','DXVK_STATE_CACHE_PATH':'live-dxvk','PATH':'ordinary-path'}
+                 'VKD3D_SHADER_CACHE_PATH':'live-vkd3d','DXVK_STATE_CACHE_PATH':'live-dxvk',
+                 'PLUME_D3D12_STATE_CACHE':'1','PATH':'ordinary-path'}
         with patch.dict(os.environ,ambient,clear=True):actual=runner.environment(plan)
         self.assertEqual(actual,{'PATH':'ordinary-path','LEGO_NATIVE_PM4_REFERENCE':'0',
                                  'REXGLUE_TOYPAD_PORT':'19207'})

@@ -294,6 +294,11 @@ def prepare(args):
     cadence = getattr(args, 'cadence_only', False)
     performance = getattr(args, 'performance', False) or cadence
     gpu_timestamps = getattr(args, 'gpu_timestamps', False)
+    state_cache = getattr(args, 'state_cache', 'off')
+    state_calls = getattr(args, 'state_calls', False)
+    require(state_cache in ('off', 'on'), 'Unknown command state cache mode')
+    require(args.renderer == 'native' or (state_cache == 'off' and not state_calls),
+            'Command state cache and binding diagnostics require native route')
     require(not gpu_timestamps or args.renderer == 'native',
             'GPU timestamp sidecar requires native route')
     command_slots = getattr(args, 'command_slots', None)
@@ -461,6 +466,7 @@ def prepare(args):
             overrides['REX_TIMER_WAIT_BLOCKING'] = '1'
         if args.renderer == 'native':
             overrides.update({
+            'PLUME_D3D12_STATE_CACHE': '1' if state_cache == 'on' else '0',
             'LEGO_NATIVE_STATIC_TEXTURE_WATCH': '1', 'LEGO_NATIVE_BUFFER_WATCH': '1',
             'LEGO_NATIVE_TIMING': '1', 'LEGO_NATIVE_STENCIL': '1', 'LEGO_NATIVE_VIEWPORT': '1', 'LEGO_NATIVE_CULL': '1',
             'LEGO_NATIVE_FRAME_METRICS': windows(final / 'logs/frames.csv'),
@@ -478,6 +484,9 @@ def prepare(args):
                 overrides['LEGO_NATIVE_COMMAND_SLOTS'] = str(command_slots or 3)
             if gpu_timestamps:
                 overrides['LEGO_NATIVE_GPU_TIMESTAMPS'] = windows(final / 'logs/gpu-timestamps.csv')
+            if state_calls:
+                overrides['LEGO_NATIVE_STATE_CALLS'] = windows(final / 'logs/state-calls.csv')
+                overrides['LEGO_NATIVE_STATE_CALLS_TRIGGER'] = windows(final / 'logs/state-calls.trigger')
         if args.buffer_windows:
             overrides['LEGO_NATIVE_BUFFER_WINDOWS'] = '1'
         if args.snapshots:
@@ -501,7 +510,8 @@ def prepare(args):
                                       str(final / 'legodimensions.exe')],
             'environment_overrides': overrides, 'remove_inherited_prefixes': list(SANITIZED_PREFIXES),
             'remove_inherited_keys': ['XENIA_TOYPAD_PORT', 'REXGLUE_TOYPAD_PORT', 'PROTON_LOG',
-                                     'VKD3D_SHADER_CACHE_PATH', 'DXVK_STATE_CACHE_PATH'],
+                                     'VKD3D_SHADER_CACHE_PATH', 'DXVK_STATE_CACHE_PATH',
+                                     'PLUME_D3D12_STATE_CACHE'],
             'execution_implemented': False,
             'execution_gate': 'Not launched. An operator must refuse any active legodimensions.exe before executing this descriptor; the operator owns launch and desktop. The preparation command does not implement or execute this gate.',
         }
@@ -513,6 +523,7 @@ def prepare(args):
             'performance_probe': performance,
             'cadence_only_probe': cadence,
             'gpu_timestamp_probe': gpu_timestamps,
+            'state_cache': state_cache, 'state_call_probe': state_calls,
             'command_slots': (command_slots or 3) if cadence else None,
             'pm4_plugin': plugin_provenance,
             'checkpoint': str(checkpoint), 'checkpoint_files': pinned_saves,
@@ -600,6 +611,7 @@ def verify(run, workspace=None):
                 'Spin timer descriptor must omit the presence-based flag')
     if renderer == 'native':
         allowed.update({'LEGO_NATIVE_STATIC_TEXTURE_WATCH', 'LEGO_NATIVE_BUFFER_WATCH', 'LEGO_NATIVE_TIMING',
+                        'PLUME_D3D12_STATE_CACHE', 'LEGO_NATIVE_STATE_CALLS', 'LEGO_NATIVE_STATE_CALLS_TRIGGER',
                         'LEGO_NATIVE_STENCIL', 'LEGO_NATIVE_VIEWPORT', 'LEGO_NATIVE_CULL',
                         'LEGO_NATIVE_FRAME_METRICS', 'LEGO_DUMP_MISSING_SHADERS', 'LEGO_NATIVE_SHADER_PACK',
                         'LEGO_NATIVE_GPU_TIMESTAMPS',
@@ -610,6 +622,8 @@ def verify(run, workspace=None):
             1024 <= manifest['toypad_port'] <= 65535 and manifest['toypad_port'] != 9191,
             'Unexpected environment override or private Toypad port')
     path_overrides = {'PROTON_LOG_DIR': run/'logs', 'LEGO_NATIVE_FRAME_METRICS': run/'logs/frames.csv',
+                      'LEGO_NATIVE_STATE_CALLS': run/'logs/state-calls.csv',
+                      'LEGO_NATIVE_STATE_CALLS_TRIGGER': run/'logs/state-calls.trigger',
                       'LEGO_NATIVE_GPU_TIMESTAMPS': run/'logs/gpu-timestamps.csv',
                       'LEGO_DUMP_MISSING_SHADERS': run/'shader-capture',
                       'LEGO_NATIVE_SHADER_PACK': run/'hotload/next.pack',
@@ -622,6 +636,17 @@ def verify(run, workspace=None):
             require(env[key] == (str(target) if key == 'PROTON_LOG_DIR' else windows(target)),
                     'Diagnostic output escaped the private run: '+key)
     timestamp_probe = manifest.get('gpu_timestamp_probe', False)
+    cache_mode = manifest.get('state_cache', 'off')
+    require(cache_mode in ('off', 'on') and
+            ((renderer == 'native' and env.get('PLUME_D3D12_STATE_CACHE', '0') ==
+              ('1' if cache_mode == 'on' else '0')) or
+             (renderer == 'pm4' and cache_mode == 'off' and 'PLUME_D3D12_STATE_CACHE' not in env)),
+            'Command state cache descriptor disagrees')
+    state_probe = manifest.get('state_call_probe', False)
+    require(type(state_probe) is bool and
+            ('LEGO_NATIVE_STATE_CALLS' in env) is state_probe and
+            ('LEGO_NATIVE_STATE_CALLS_TRIGGER' in env) is state_probe and
+            (not state_probe or renderer == 'native'), 'State-call descriptor disagrees')
     require(type(timestamp_probe) is bool and
             ('LEGO_NATIVE_GPU_TIMESTAMPS' in env) is timestamp_probe and
             (not timestamp_probe or renderer == 'native'),
@@ -726,6 +751,10 @@ def main():
                    help='Explicit private cadence experiment slot count (default3)')
     p.add_argument('--gpu-timestamps', action='store_true',
                    help='Opt-in native per-submission queue timestamps in a separate private CSV')
+    p.add_argument('--state-cache', choices=('off', 'on'), default='off',
+                   help='Restart-only Plume command state cache experiment; default off')
+    p.add_argument('--state-calls', action='store_true',
+                   help='Bounded guest binding request capture; private trigger arms next120 frames')
     p.add_argument('--snapshots', action='store_true',
                    help='Explicitly enable bounded native DDS readbacks; changes timing workload')
     p.add_argument('--renderer', choices=('native', 'pm4'), default='native')

@@ -93,6 +93,20 @@ closure alone does not establish internal ABI compatibility. PM4 cannot use
 native diagnostic flags. Actual runtime route logs and visible rendering are
 still required; a launch descriptor does not prove either.
 
+`--state-cache off` (default) or `on` explicitly selects the experimental Plume
+command state cache. The native descriptor writes an exact `0` or `1`; inherited
+cache settings are removed even when an older descriptor omits its sanitizer.
+Compare frozen ON/OFF runs with `--vary state-cache`. Other experiments retain
+this setting in their identity checks. Runtime activation still needs separate
+evidence from the patched backend; requesting the flag cannot prove activation.
+
+`--state-calls` requests a finite binding-request capture at private
+`logs/state-calls.csv`. Creating `logs/state-calls.trigger` arms its next 120
+present intervals, with at most 4096 accounted guest draws per interval.
+Equal adjacent guest requests do not prove redundancy across intervening helper
+or external calls. Clean cadence sampling rejects this diagnostic, including
+after its budget has been exhausted; prepare a separate run for timing.
+
 ## Fixed cadence intervals
 
 Use normal controls to load the checkpoint and required figures, without moving

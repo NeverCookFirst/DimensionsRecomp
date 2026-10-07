@@ -22,6 +22,7 @@ RESOURCE_EVENTS = re.compile(
     r'dumped missing shader|loaded additive precompiled pack')
 FAILURE_EVENTS = re.compile(r'\[(?:error|critical)\]|Native GPU:.*(?:failed|failure|device removed)', re.I)
 HEAVY_FLAGS = ('LEGO_NATIVE_TRACE_DIR', 'LEGO_NATIVE_DRAW_TRACE_TRIGGER',
+               'LEGO_NATIVE_STATE_CALLS', 'LEGO_NATIVE_STATE_CALLS_TRIGGER',
                'LEGO_GPU_SNAPSHOT_DIR', 'LEGO_NATIVE_MESH_TRACE',
                'LEGO_NATIVE_AUDIT_BUFFER_WATCH', 'LEGO_NATIVE_AUDIT_TEXTURE_WATCH')
 CRITERIA = {'resource_quiet_seconds': 10, 'cadence_rows': 60,
@@ -127,6 +128,10 @@ def context(run, scene_file, workspace):
     require('LEGO_NATIVE_TIMING' not in env and not any(k in env for k in HEAVY_FLAGS),
             'Cadence scope contains detailed/heavy instrumentation')
     mode = manifest['timer_wait']
+    cache_mode = manifest.get('state_cache', 'off')
+    require(cache_mode in ('off', 'on') and
+            env.get('PLUME_D3D12_STATE_CACHE', '0') == ('1' if cache_mode == 'on' else '0'),
+            'Command state cache mode disagrees')
     require((mode == 'spin' and 'REX_TIMER_WAIT_BLOCKING' not in env) or
             (mode == 'blocking' and env.get('REX_TIMER_WAIT_BLOCKING') == '1'), 'Timer mode disagrees')
     require(env['LEGO_NATIVE_COMMAND_SLOTS'] == str(manifest['command_slots']) and
@@ -192,7 +197,7 @@ def context(run, scene_file, workspace):
         packs.append({'generation': entry['generation'], 'sha256': entry['sha256']})
     return {'run': str(run), 'scene': scene, 'scene_confirmation': {'source': str(scene_file.resolve()), **digest(scene_file)},
             'binaries': binaries, 'slots': manifest['command_slots'], 'criteria': dict(CRITERIA),
-            'timer_wait': mode,
+            'timer_wait': mode, 'state_cache': cache_mode,
             'flags': env, 'normalized_config': config, 'shader_packs': packs,
             'supporting_state': supporting,
             'checkpoint': manifest['checkpoint_files'],

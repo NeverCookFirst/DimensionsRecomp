@@ -14,7 +14,7 @@ import time
 HERE = Path(__file__).resolve().parent
 INTRINSIC_PREFIXES = ('LEGO_NATIVE_', 'LEGO_GPU_', 'LEGO_DUMP_', 'REX_')
 INTRINSIC_KEYS = ('XENIA_TOYPAD_PORT', 'REXGLUE_TOYPAD_PORT', 'PROTON_LOG',
-                  'VKD3D_SHADER_CACHE_PATH', 'DXVK_STATE_CACHE_PATH')
+                  'VKD3D_SHADER_CACHE_PATH', 'DXVK_STATE_CACHE_PATH', 'PLUME_D3D12_STATE_CACHE')
 
 
 def active_games():
