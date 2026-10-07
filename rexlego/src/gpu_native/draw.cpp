@@ -25,6 +25,7 @@
 
 #include "gpu_native/buffers.h"
 #include "gpu_native/buffer_window.h"
+#include "gpu_native/index_draw.h"
 #include "gpu_native/alpha_test.h"
 #include "gpu_native/blend_state.h"
 #include "gpu_native/queries.h"
@@ -661,6 +662,16 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     }
     return false;
   }
+  BufferResourceView index_metadata;
+  IndexDrawWindow index_window;
+  if (indexed) {
+    index_metadata = InspectBufferResource(bindings.index_buffer, BufferKind::kIndex);
+    index_window = DrawIndexWindow(start, count,
+        index_metadata.guest_format == 1 ? 2 : 4, index_metadata.length);
+    // An invalid window must reject the draw, rather than disabling range
+    // uploads and falling through to an unchecked whole-buffer submission.
+    if (!index_metadata.mirror_address || !index_window) return false;
+  }
   timing.Next();
   auto* commands = HostDevice::BeginFrameCommands();
   if (!commands) {
@@ -853,18 +864,15 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   }();
   std::array<VertexBufferWindow, kNativeVertexStreams> vertex_windows{};
   bool use_windows = false;
-  u32 min_index = 0, index_offset = 0, index_bytes = 0;
-  if (window_uploads && indexed && count &&
-      primitive_type != static_cast<u32>(rex::graphics::xenos::PrimitiveType::kQuadList)) {
-    const auto index = InspectBufferResource(bindings.index_buffer, BufferKind::kIndex);
-    const u32 element_size = index.guest_format == 1 ? 2 : 4;
-    if (index.mirror_address && u64(start) * element_size <= index.length &&
-        u64(count) * element_size <= index.length - u64(start) * element_size) {
-      index_offset = start * element_size;
-      index_bytes = count * element_size;
+  u32 min_index = 0;
+  const u32 index_offset = index_window.offset, index_bytes = index_window.length;
+  if (window_uploads && count) {
+    u32 max_index = 0;
+    if (indexed) {
+      const auto& index = index_metadata;
+      const u32 element_size = index.guest_format == 1 ? 2 : 4;
       const auto* source = REX_KERNEL_MEMORY()->TranslateVirtual<const u8*>(index.mirror_address + index_offset);
       min_index = UINT32_MAX;
-      u32 max_index = 0;
       for (u32 i = 0; i < count; ++i) {
         const u32 value = element_size == 2 ?
             u32(reinterpret_cast<const be_u16*>(source)[i]) :
@@ -874,26 +882,29 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
       }
       // D3D12's signed base vertex must represent -min_index exactly.
       use_windows = min_index <= INT32_MAX;
-      for (u32 i = 0; use_windows && i < kNativeVertexStreams; ++i) {
-        const auto& binding = bindings.vertex_streams[i];
-        if (!binding.buffer) continue;  // Synthetic/optional zero stream.
-        const bool used = std::any_of(declaration.elements,
-            declaration.elements + declaration.element_count,
-            [i](const auto& e) { return e.slotIndex == i; });
-        if (!used) continue;
-        for (u32 e = 0; e < declaration.element_count; ++e) {
-          const auto& element = declaration.elements[e];
-          if (element.slotIndex != i) continue;
-          const u32 width = plume::RenderFormatSize(element.format);
-          if (!width || element.alignedByteOffset > binding.stride ||
-              width > binding.stride - element.alignedByteOffset) use_windows = false;
-        }
-        if (!use_windows) break;
-        const auto metadata = InspectBufferResource(binding.buffer, BufferKind::kVertex);
-        vertex_windows[i] = DrawVertexWindow(min_index, max_index, base_vertex,
-            binding.stride, binding.offset, metadata.length);
-        if (!vertex_windows[i].length) use_windows = false;
+    } else {
+      min_index = start;
+      use_windows = NonIndexedVertexRange(start, count, max_index);
+    }
+    for (u32 i = 0; use_windows && i < kNativeVertexStreams; ++i) {
+      const auto& binding = bindings.vertex_streams[i];
+      if (!binding.buffer) continue;  // Synthetic/optional zero stream.
+      const bool used = std::any_of(declaration.elements,
+          declaration.elements + declaration.element_count,
+          [i](const auto& e) { return e.slotIndex == i; });
+      if (!used) continue;
+      for (u32 e = 0; e < declaration.element_count; ++e) {
+        const auto& element = declaration.elements[e];
+        if (element.slotIndex != i) continue;
+        const u32 width = plume::RenderFormatSize(element.format);
+        if (!width || element.alignedByteOffset > binding.stride ||
+            width > binding.stride - element.alignedByteOffset) use_windows = false;
       }
+      if (!use_windows) break;
+      const auto metadata = InspectBufferResource(binding.buffer, BufferKind::kVertex);
+      vertex_windows[i] = DrawVertexWindow(min_index, max_index, indexed ? base_vertex : 0,
+          binding.stride, binding.offset, metadata.length);
+      if (!vertex_windows[i].length) use_windows = false;
     }
   }
   for (u32 i = 0; i < kNativeVertexStreams; ++i) {
@@ -1023,27 +1034,34 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   }
 
   if (primitive_type == static_cast<u32>(rex::graphics::xenos::PrimitiveType::kQuadList)) {
-    if (count % 4 != 0) return false;
+    const u32 expanded_count = ExpandedQuadIndexCount(count);
+    u32 nonindexed_last = 0;
+    if (!expanded_count || (!indexed && !NonIndexedVertexRange(start, count, nonindexed_last)))
+      return false;
     const auto source = indexed
-        ? ResolveBufferResourceView(bindings.index_buffer, BufferKind::kIndex)
+        ? (use_windows ?
+            ResolveBufferResourceWindow(bindings.index_buffer, BufferKind::kIndex, index_offset, index_bytes) :
+            ResolveBufferResourceView(bindings.index_buffer, BufferKind::kIndex))
         : BufferResourceView{};
+    const u32 source_start = use_windows ? 0 : start;
     const u32 element_size = source.guest_format == 1 ? 2 : 4;
-    if (indexed && (!source.buffer || u64(start + u64(count)) * element_size > source.length))
+    if (indexed && (!source.buffer || !DrawIndexWindow(source_start, count, element_size, source.length)))
       return false;
     auto expanded = std::shared_ptr<plume::RenderBuffer>(HostDevice::Device()->createBuffer(
-        plume::RenderBufferDesc::IndexBuffer(u64(count / 4) * 6 * sizeof(u32),
+        plume::RenderBufferDesc::IndexBuffer(u64(expanded_count) * sizeof(u32),
                                             plume::RenderHeapType::UPLOAD)).release());
     if (!expanded) return false;
     auto* output = static_cast<u32*>(expanded->map());
     const auto* input = indexed ? static_cast<const u8*>(source.buffer->map()) : nullptr;
     if (!output || (indexed && !input)) {
       if (output) expanded->unmap();
+      if (input) source.buffer->unmap();
       return false;
     }
     constexpr u32 order[] = {0, 1, 2, 0, 2, 3};
     for (u32 quad = 0; quad < count / 4; ++quad) {
       for (u32 corner = 0; corner < 6; ++corner) {
-        const u32 index = start + quad * 4 + order[corner];
+        const u32 index = source_start + quad * 4 + order[corner];
         output[quad * 6 + corner] = !indexed ? index
             : element_size == 2 ? reinterpret_cast<const u16*>(input)[index]
                                 : reinterpret_cast<const u32*>(input)[index];
@@ -1052,18 +1070,22 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     if (indexed) source.buffer->unmap();
     expanded->unmap();
     const plume::RenderIndexBufferView index_view(expanded->at(0),
-        u64(count / 4) * 6 * sizeof(u32), plume::RenderFormat::R32_UINT);
+        u64(expanded_count) * sizeof(u32), plume::RenderFormat::R32_UINT);
     commands->setIndexBuffer(&index_view);
     {
       QueryDrawScope query_scope(commands);
-      commands->drawIndexedInstanced(count / 4 * 6, 1, 0, indexed ? base_vertex : 0, 0);
+      commands->drawIndexedInstanced(expanded_count, 1, 0,
+          use_windows ? (indexed ? -i32(min_index) : 0) : (indexed ? base_vertex : 0), 0);
     }
     HostDevice::RetireResource(std::move(expanded));
   } else if (indexed) {
     const auto index = use_windows ?
         ResolveBufferResourceWindow(bindings.index_buffer, BufferKind::kIndex, index_offset, index_bytes) :
         ResolveBufferResourceView(bindings.index_buffer, BufferKind::kIndex);
-    if (!index.buffer) {
+    // Header adoption can replace metadata; check the view actually bound to
+    // this draw too. A range upload starts at zero in its own index buffer.
+    if (!index.buffer || !DrawIndexWindow(use_windows ? 0 : start, count,
+        index.guest_format == 1 ? 2 : 4, index.length)) {
       return false;
     }
     const plume::RenderFormat index_format =
@@ -1077,7 +1099,9 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
         use_windows ? -i32(min_index) : base_vertex, 0);
   } else {
     QueryDrawScope query_scope(commands);
-    commands->drawInstanced(count, 1, start, 0);
+    // Current native vertex recompilation consumes input attributes, not
+    // SV_VertexID. Each used stream starts at the original first vertex.
+    commands->drawInstanced(count, 1, use_windows ? 0 : start, 0);
   }
   timing.Next();
   static const bool trace_stages = [] {
