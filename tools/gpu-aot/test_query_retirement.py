@@ -6,6 +6,7 @@ import subprocess
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('output', type=Path)
+p.add_argument('--compiler', default='clang++')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 a.output.mkdir(parents=True, exist_ok=True)
@@ -77,7 +78,7 @@ namespace plume {struct D3D12Device {DeviceImpl* d3d;};struct D3D12CommandQueue 
 DeviceImpl device_impl;QueueImpl queue_impl;
 plume::D3D12Device device{&device_impl};plume::D3D12CommandQueue queue{&queue_impl};
 struct State {
- static constexpr u32 kFramesInFlight=3;
+ static constexpr u32 kFramesInFlight=3;u32 command_slot_count=kFramesInFlight;
  std::array<bool,3> frame_submitted{true,false,false};
  bool command_list_open=true;u32 frame_slot=1;
  std::array<std::vector<std::shared_ptr<void>>,3> retired_resources;
@@ -139,8 +140,8 @@ int main(){
 source = a.output / 'query-retirement.cpp'
 source.write_text(harness + retire + '\n' + functions + '\n' + tests)
 exe = a.output / 'query-retirement-test.exe'
-subprocess.run(['clang++', '-std=c++20', '-DNOMINMAX', str(source), '-o', str(exe)], check=True)
-subprocess.run([str(exe.resolve())], check=True)
+subprocess.run([a.compiler, '-std=c++20', '-DNOMINMAX', str(source), '-o', str(exe)], check=True, timeout=45)
+subprocess.run([str(exe.resolve())], check=True, timeout=45)
 report = {'passed': True, 'actual_native_functions': ['IssueQuery','GetQueryData','ReleaseQuery','HostDevice::RetireResource'],
           'checks': ['no query drain', 'fresh generations', 'retain at every submitted/open slot',
                      'release before END', 'guest header reuse', 'nonfinal refcount', 'fence readiness',

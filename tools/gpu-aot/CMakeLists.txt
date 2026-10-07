@@ -39,6 +39,29 @@ if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     endif()
 endif()
 
+# Compile production bodies with deterministic allocation and fence failures.
+# These use GNU-style compiler arguments and require no SDK or game assets.
+if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        foreach(check IN ITEMS frame_ring_transaction submission_waits pipeline_failures
+                completion_callbacks cpu_resource_wait draw_upload query_retirement)
+            add_test(NAME ${check}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_${check}.py
+                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/${check}
+                    --compiler ${CMAKE_CXX_COMPILER})
+            set_tests_properties(${check} PROPERTIES TIMEOUT 60)
+        endforeach()
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
+            add_test(NAME resize_fences
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_resize_fences.py
+                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/resize_fences
+                    --compiler ${CMAKE_CXX_COMPILER})
+            set_tests_properties(resize_fences PROPERTIES TIMEOUT 60)
+        endif()
+    endif()
+endif()
+
 # These fixtures exercise the real extraction CLI with synthetic inputs.
 if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter QUIET)

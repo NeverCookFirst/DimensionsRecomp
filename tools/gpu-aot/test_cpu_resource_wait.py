@@ -4,7 +4,10 @@ import json
 import os
 from pathlib import Path
 import subprocess
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__)
+p.add_argument('output',type=Path)
+p.add_argument('--compiler', default='clang++')
+a=p.parse_args()
 root=Path(__file__).resolve().parents[2];a.output.mkdir(parents=True,exist_ok=True)
 def body(path,sig):
  text=(root/path).read_text();start=text.index(sig);end=text.index('{',start)+1;depth=1
@@ -67,7 +70,7 @@ int main(){
 }
 ''')
 exe=a.output/'cpu-resource-wait.exe'
-subprocess.run(['clang++','-std=c++20',str(h),'-o',str(exe)],check=True)
+subprocess.run([a.compiler,'-std=c++20',str(h),'-o',str(exe)],check=True)
 for enabled in (False,True):
  env=os.environ.copy();env.pop('LEGO_NATIVE_ASYNC_CPU_RESOURCES',None)
  if enabled:env['LEGO_NATIVE_ASYNC_CPU_RESOURCES']='1'

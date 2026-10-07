@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);p.add_argument('--compiler',default='clang++');a=p.parse_args()
 root=Path(__file__).resolve().parents[2];a.output.mkdir(parents=True,exist_ok=True)
 source=(root/'rexlego/src/gpu_native/device.cpp').read_text()
 def body(sig):
@@ -33,7 +33,7 @@ struct NativeFence {u64 completed=0;u64 GetCompletedValue(){return completed;}};
 struct D3D12CommandFence {NativeFence native;NativeFence* d3d=&native;u64 fenceValue=1;};
 }
 struct State {
- static constexpr u32 kFramesInFlight=3;
+ static constexpr u32 kFramesInFlight=3;u32 command_slot_count=kFramesInFlight;
  Backend backend=Backend::kD3D12;
  std::array<bool,3> frame_submitted{};
  std::array<std::unique_ptr<plume::D3D12CommandFence>,3> frame_fences;
@@ -97,8 +97,8 @@ int main(){
 }
 ''')
 exe=a.output/'completion-callbacks.exe'
-subprocess.run(['clang++','-std=c++20','-DNOMINMAX','-I'+str(root/'rexlego/src'),str(h),'-o',str(exe)],check=True)
-subprocess.run([str(exe.resolve())],check=True)
+subprocess.run([a.compiler,'-std=c++20','-DNOMINMAX','-I'+str(root/'rexlego/src'),str(h),'-o',str(exe)],check=True, timeout=45)
+subprocess.run([str(exe.resolve())],check=True, timeout=45)
 assert source.count('MarkSubmissionLocked(state, slot);')==4
 hook=(root/'rexlego/src/gpu_native/hooks_device.cpp').read_text()
 insert=hook[hook.index('void InsertCallbackHook('):hook.index('}  // namespace',hook.index('void InsertCallbackHook('))]

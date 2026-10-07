@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);p.add_argument('--compiler',default='clang++');a=p.parse_args()
 root=Path(__file__).resolve().parents[2];a.output.mkdir(parents=True,exist_ok=True)
 source=(root/'rexlego/src/gpu_native/device.cpp').read_text()
 def function(signature):
@@ -53,7 +53,7 @@ struct DrawUploadSlice {
 struct DescriptorRetirement { void CompleteFrame(u32,auto callback){} };
 enum class Backend {kD3D12,kVulkan};
 struct State {
- static constexpr u32 kFramesInFlight=3;
+ static constexpr u32 kFramesInFlight=3;u32 command_slot_count=kFramesInFlight;
  std::unique_ptr<plume::RenderDevice> device=std::make_unique<plume::RenderDevice>();
  std::unique_ptr<plume::Queue> queue=std::make_unique<plume::Queue>();
  std::unique_ptr<plume::Swap> swap_chain=std::make_unique<plume::Swap>();
@@ -72,6 +72,11 @@ struct State {
 };
 void SaveSnapshots(std::vector<int>&){}
 void RefreshCompletedSubmissionsLocked(State&){}
+bool WaitForSubmissionLocked(State& state,u32 slot){
+ state.queue->waitForCommandFence(state.frame_fences[slot].get());
+ state.completed_submission=std::max(state.completed_submission,state.slot_submission[slot]);
+ state.frame_submitted[slot]=false;return true;
+}
 void InitializeNullTextures(State&,plume::RenderCommandList*){}
 bool RebuildSwapChain(State&){return true;}
 bool timing_enabled=true;
@@ -113,8 +118,8 @@ int main() {
 }
 ''')
 exe=a.output/'draw-upload-test.exe'
-subprocess.run(['clang++','-std=c++20','-DNOMINMAX',str(h),'-o',str(exe)],check=True)
-subprocess.run([str(exe.resolve())],check=True)
+subprocess.run([a.compiler,'-std=c++20','-DNOMINMAX',str(h),'-o',str(exe)],check=True,timeout=45)
+subprocess.run([str(exe.resolve())],check=True,timeout=10)
 (a.output/'verification.json').write_text(json.dumps({'actual_production_functions':True,'fake_driver':True,
  'checks':['256-byte alignment','550 immutable draws','page growth','independent slots','reset after fence wait','oversize','allocation failure','shutdown'],
  'passed':True},indent=2))

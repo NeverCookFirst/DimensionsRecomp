@@ -271,7 +271,10 @@ bool CreatePipelineLayout(State& state) {
                          plume::RenderShaderStageFlag::PIXEL);
   layout.end();
   state.pipeline_layout = layout.create(state.device.get());
-  if (!state.pipeline_layout) {
+  if (!state.pipeline_layout ||
+      !static_cast<plume::D3D12PipelineLayout*>(state.pipeline_layout.get())->rootSignature) {
+    state.pipeline_layout.reset();
+    REXLOG_ERROR("Native GPU: D3D12 rejected the root signature");
     return false;
   }
 
@@ -321,6 +324,10 @@ bool CreatePresentPipeline(State& state) {
   desc.renderTargetBlend[0] = plume::RenderBlendDesc::Copy();
   REXLOG_INFO("Native GPU init: creating present pipeline");
   state.copy_pipeline = state.device->createGraphicsPipeline(desc);
+  if (state.copy_pipeline &&
+      !static_cast<plume::D3D12GraphicsPipeline*>(state.copy_pipeline.get())->d3d) {
+    state.copy_pipeline.reset();
+  }
   REXLOG_INFO("Native GPU init: present pipeline {}",
               state.copy_pipeline ? "ready" : "failed");
   return state.copy_pipeline != nullptr;
@@ -329,33 +336,46 @@ bool CreatePresentPipeline(State& state) {
 bool CreateFrameRing(State& state) {
   REXLOG_INFO("Native GPU init: creating frame ring");
   const u32 texture_count = state.swap_chain->getTextureCount();
-  state.framebuffers.clear();
-  state.render_semaphores.clear();
-  state.framebuffers.reserve(texture_count);
-  state.render_semaphores.reserve(texture_count);
+  if (!texture_count) return false;
+  // Resize has already discarded the old swap-chain framebuffers. Publish a
+  // new ring only when every allocation succeeds, so an empty framebuffer
+  // list remains the retry marker after a partial failure.
+  decltype(state.framebuffers) framebuffers;
+  decltype(state.render_semaphores) render_semaphores;
+  decltype(state.command_lists) command_lists;
+  decltype(state.frame_fences) frame_fences;
+  decltype(state.acquire_semaphores) acquire_semaphores;
+  framebuffers.reserve(texture_count);
+  render_semaphores.reserve(texture_count);
   for (u32 i = 0; i < texture_count; ++i) {
     const plume::RenderTexture* attachment = state.swap_chain->getTexture(i);
-    state.framebuffers.emplace_back(state.device->createFramebuffer(
+    framebuffers.emplace_back(state.device->createFramebuffer(
         plume::RenderFramebufferDesc(&attachment, 1)));
-    state.render_semaphores.emplace_back(
+    render_semaphores.emplace_back(
         state.device->createCommandSemaphore());
-    if (!state.framebuffers.back() || !state.render_semaphores.back()) {
+    if (!framebuffers.back() || !render_semaphores.back()) {
       return false;
     }
   }
 
   for (u32 i = 0; i < State::kFramesInFlight; ++i) {
-    state.command_lists[i] = state.queue->createCommandList();
-    state.frame_fences[i] = state.device->createCommandFence();
-    state.acquire_semaphores[i] = state.device->createCommandSemaphore();
+    command_lists[i] = state.queue->createCommandList();
+    frame_fences[i] = state.device->createCommandFence();
+    acquire_semaphores[i] = state.device->createCommandSemaphore();
+    if (!command_lists[i] || !frame_fences[i] || !acquire_semaphores[i]) {
+      return false;
+    }
+  }
+  state.framebuffers = std::move(framebuffers);
+  state.render_semaphores = std::move(render_semaphores);
+  state.command_lists = std::move(command_lists);
+  state.frame_fences = std::move(frame_fences);
+  state.acquire_semaphores = std::move(acquire_semaphores);
+  for (u32 i = 0; i < State::kFramesInFlight; ++i) {
     state.frame_submitted[i] = false;
     state.retired_resources[i].clear();
     state.retired_descriptors.CompleteFrame(i,
         [&](u32 index) { state.texture_slots[index] = false; });
-    if (!state.command_lists[i] || !state.frame_fences[i] ||
-        !state.acquire_semaphores[i]) {
-      return false;
-    }
   }
   state.frame_slot = 0;
   return true;
@@ -495,29 +515,37 @@ void MarkSubmissionLocked(State& state, u32 slot) {
   state.slot_submission[slot] = ++state.last_submission;
 }
 
+bool WaitForSubmissionLocked(State& state, u32 slot) {
+  if (!state.frame_submitted[slot]) return true;
+  if (state.backend == Backend::kD3D12) {
+    auto* fence = static_cast<plume::D3D12CommandFence*>(state.frame_fences[slot].get());
+    if (fence->d3d->GetCompletedValue() == UINT64_MAX) {
+      REXLOG_ERROR("Native GPU: cannot wait for submission after device removal");
+      return false;
+    }
+  }
+  state.queue->waitForCommandFence(state.frame_fences[slot].get());
+  if (state.backend == Backend::kD3D12) {
+    auto* fence = static_cast<plume::D3D12CommandFence*>(state.frame_fences[slot].get());
+    const u64 completed = fence->d3d->GetCompletedValue();
+    if (completed == UINT64_MAX || completed < fence->fenceValue - 1) {
+      REXLOG_ERROR("Native GPU: submission GPU wait failed");
+      return false;
+    }
+  }
+  // A void Plume wait can return on device removal or an event failure. Only
+  // a verified completion permits resource retirement or allocator reuse.
+  state.completed_submission = std::max(state.completed_submission,
+                                       state.slot_submission[slot]);
+  state.frame_submitted[slot] = false;
+  return true;
+}
+
 bool WaitForSubmittedFramesLocked(State& state) {
   // DXGI's frame-latency object is a present throttle, not a GPU completion
   // fence. Rebuilding/releasing the ring requires all submitted GPU users.
   for (u32 slot = 0; slot < State::kFramesInFlight; ++slot) {
-    if (!state.frame_submitted[slot]) continue;
-    if (state.backend == Backend::kD3D12) {
-      auto* fence = static_cast<plume::D3D12CommandFence*>(state.frame_fences[slot].get());
-      if (fence->d3d->GetCompletedValue() == UINT64_MAX) {
-        REXLOG_ERROR("Native GPU: cannot rebuild frame ring after device removal");
-        return false;
-      }
-    }
-    state.queue->waitForCommandFence(state.frame_fences[slot].get());
-    if (state.backend == Backend::kD3D12) {
-      auto* fence = static_cast<plume::D3D12CommandFence*>(state.frame_fences[slot].get());
-      const u64 completed = fence->d3d->GetCompletedValue();
-      if (completed == UINT64_MAX || completed < fence->fenceValue - 1) {
-        REXLOG_ERROR("Native GPU: frame-ring GPU wait failed");
-        return false;
-      }
-    }
-    state.completed_submission = std::max(state.completed_submission, state.slot_submission[slot]);
-    state.frame_submitted[slot] = false;
+    if (!WaitForSubmissionLocked(state, slot)) return false;
   }
   RefreshCompletedSubmissionsLocked(state);
   return true;
@@ -546,10 +574,8 @@ plume::RenderCommandList* BeginFrameCommandsLocked(State& state) {
   const u32 slot = state.frame_slot;
   if (state.frame_submitted[slot]) {
     const auto wait_start = std::chrono::steady_clock::now();
-    state.queue->waitForCommandFence(state.frame_fences[slot].get());
+    if (!WaitForSubmissionLocked(state, slot)) return nullptr;
     RefreshCompletedSubmissionsLocked(state);
-    if (state.backend != Backend::kD3D12)
-      state.completed_submission = std::max(state.completed_submission, state.slot_submission[slot]);
     const auto wait_ms = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - wait_start)
                              .count();
@@ -561,7 +587,6 @@ plume::RenderCommandList* BeginFrameCommandsLocked(State& state) {
       REXLOG_WARN("Native GPU: frame-slot {} GPU wait took {:.2f} ms", slot,
                   wait_ms);
     }
-    state.frame_submitted[slot] = false;
     SaveSnapshots(state.snapshots[slot]);
   }
   state.retired_resources[slot].clear();
@@ -851,11 +876,8 @@ bool HostDevice::Synchronize(SyncReason reason) {
     if (!state.frame_submitted[slot]) {
       continue;
     }
-    state.queue->waitForCommandFence(state.frame_fences[slot].get());
+    if (!WaitForSubmissionLocked(state, slot)) return false;
     RefreshCompletedSubmissionsLocked(state);
-    if (state.backend != Backend::kD3D12)
-      state.completed_submission = std::max(state.completed_submission, state.slot_submission[slot]);
-    state.frame_submitted[slot] = false;
     state.retired_resources[slot].clear();
     state.retired_descriptors.CompleteFrame(slot,
         [&](u32 index) { state.texture_slots[index] = false; });
@@ -1015,8 +1037,12 @@ bool HostDevice::ResolveHdrColor(plume::RenderTexture* source, u32 descriptor_in
       desc.renderTargetFormat[0] = formats[format_index];
       desc.renderTargetBlend[0] = plume::RenderBlendDesc::Copy();
       pipeline = state.device->createGraphicsPipeline(desc);
-      if (!pipeline || !static_cast<plume::D3D12GraphicsPipeline*>(pipeline.get())->d3d)
+      if (!pipeline || !static_cast<plume::D3D12GraphicsPipeline*>(pipeline.get())->d3d) {
+        pipeline.reset();
+        REXLOG_ERROR("Native GPU: D3D12 rejected the color resolve pipeline (format={})",
+                     format_index);
         return false;
+      }
     }
     plume::RenderFramebufferDesc desc;
     const plume::RenderTexture* attachments[] = {destination};
@@ -1092,8 +1118,12 @@ bool HostDevice::TransferDepthAlias(plume::RenderTexture* source, u32 descriptor
       desc.renderTargetFormat[0] = plume::RenderFormat::R8G8B8A8_UNORM;
       desc.renderTargetBlend[0] = plume::RenderBlendDesc::Copy();
       pipeline = state.device->createGraphicsPipeline(desc);
-      if (!pipeline || !static_cast<plume::D3D12GraphicsPipeline*>(pipeline.get())->d3d)
+      if (!pipeline || !static_cast<plume::D3D12GraphicsPipeline*>(pipeline.get())->d3d) {
+        pipeline.reset();
+        REXLOG_ERROR("Native GPU: D3D12 rejected the depth alias pipeline (restore={})",
+                     restore);
         return false;
+      }
     }
     plume::RenderFramebufferDesc desc;
     const plume::RenderTexture* attachments[] = {destination};
