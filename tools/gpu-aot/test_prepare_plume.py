@@ -31,6 +31,7 @@ def main():
     source = args.checkout.resolve()
     preparer = args.preparer.resolve()
     patch = root / "tools/gpu-aot/patches/plume-lego.patch"
+    cache_patch = root / "tools/gpu-aot/patches/plume-state-cache.patch"
     git_executable = shutil.which("git")
     if git_executable is None:
         parser.error("Git is required for the offline public-source fixture")
@@ -51,6 +52,7 @@ def main():
         "head": git(source, "rev-parse", "HEAD").stdout,
         "status": git(source, "status", "--porcelain=v1", "--untracked-files=all").stdout,
         "source_sha256": digest(source / "plume_d3d12.cpp"),
+        "header_sha256": digest(source / "plume_d3d12.h"),
     }
     git(source, "cat-file", "-e", f"{PIN}^{{commit}}")
     public_blob = subprocess.run([git_executable, "-C", str(source), "show", f"{PIN}:plume_d3d12.cpp"],
@@ -78,7 +80,10 @@ def main():
         expected = clone("independent-real-git-patch")
         git(expected, "apply", "--check", str(patch))
         git(expected, "apply", str(patch))
+        git(expected, "apply", "--check", str(cache_patch))
+        git(expected, "apply", str(cache_patch))
         expected_sha = digest(expected / "plume_d3d12.cpp")
+        expected_header_sha = digest(expected / "plume_d3d12.h")
         checks.append("actual pinned public source and independently Git-applied patch")
 
         checkout = clone("preparer-under-test")
@@ -99,11 +104,33 @@ def main():
         prepare(checkout, oracle="Applied native fence/resize/command-allocation fixes")
         if digest(checkout / "plume_d3d12.cpp") != expected_sha:
             raise AssertionError("Preparer result differs from independently applied real public patch")
+        if digest(checkout / "plume_d3d12.h") != expected_header_sha:
+            raise AssertionError("State-cache header differs from independent real patch")
         prepare(checkout, "--check", oracle="PASS: public Plume")
         prepare(checkout, oracle="PASS: public Plume")
         if digest(checkout / "plume_d3d12.cpp") != expected_sha:
             raise AssertionError("Repeated preparation changed the patched source")
         checks.append("apply/check/repeat from unrelated cwd preserve exact patch result")
+
+        old = clone("old-mandatory-prepared-checkout")
+        git(old, "apply", str(patch))
+        old_cpp, old_header = digest(old / "plume_d3d12.cpp"), digest(old / "plume_d3d12.h")
+        prepare(old, "--check", expect=2, oracle="Native Plume state-cache fixes are missing or incomplete")
+        if (digest(old / "plume_d3d12.cpp"), digest(old / "plume_d3d12.h")) != (old_cpp, old_header):
+            raise AssertionError("Old prepared --check mutated source")
+        prepare(old, oracle="Applied native fence/resize/command-allocation fixes")
+        prepare(old, "--check", oracle="PASS: public Plume")
+        if (digest(old / "plume_d3d12.cpp"), digest(old / "plume_d3d12.h")) != (expected_sha, expected_header_sha):
+            raise AssertionError("Old prepared upgrade differs from fresh complete preparation")
+        checks.append("old mandatory-prepared checkout upgrades without reverting existing fixes")
+
+        cache_partial = clone("partial-state-cache-header")
+        prepare(cache_partial)
+        header = (cache_partial / "plume_d3d12.h").read_text()
+        cache_partial.joinpath("plume_d3d12.h").write_text(header.replace(
+            "bool cachedPipelineValid = false;", "bool cachedPipelineValid = true;"))
+        prepare(cache_partial, "--check", expect=2, oracle="Native Plume state-cache fixes are missing or incomplete")
+        checks.append("partial state-cache header rejected")
 
         with (checkout / "plume_d3d12.cpp").open("a") as stream:
             stream.write("\n// Fixture unrelated local edit outside all patched hunks.\n")
@@ -161,18 +188,33 @@ runpy.run_path(preparer, run_name='__main__')
                 raise AssertionError("No-op Git fixture unexpectedly modified source")
         checks.append("false Git success rejected for already-applied and no-op apply paths")
 
+        cache_noop = clone("successful-no-op-state-cache-git")
+        git(cache_noop, "apply", str(patch))
+        cache_before = (digest(cache_noop / "plume_d3d12.cpp"), digest(cache_noop / "plume_d3d12.h"))
+        cache_wrapper = wrapper.replace("and 'apply' in argv:",
+            "and 'apply' in argv and any('plume-state-cache.patch' in str(v) for v in argv):")
+        for mode in ("already", "apply"):
+            command([sys.executable, "-c", cache_wrapper, mode, str(preparer), str(cache_noop)], unrelated,
+                    expect=2, oracle="Native Plume source verification failed: missing patched hunk")
+            if (digest(cache_noop / "plume_d3d12.cpp"), digest(cache_noop / "plume_d3d12.h")) != cache_before:
+                raise AssertionError("State-cache no-op fixture modified source")
+        checks.append("state-cache false Git success rejected independently of mandatory stage")
+
     after = {
         "head": git(source, "rev-parse", "HEAD").stdout,
         "status": git(source, "status", "--porcelain=v1", "--untracked-files=all").stdout,
         "source_sha256": digest(source / "plume_d3d12.cpp"),
+        "header_sha256": digest(source / "plume_d3d12.h"),
     }
     if original != after:
         raise AssertionError("Original Plume checkout changed during the offline fixture")
     checks.append("original checkout HEAD/status/source preserved")
     report = {"passed": True, "pin": PIN, "actual_public_source": True, "offline": True,
               "preparer_sha256": digest(preparer), "patch_sha256": digest(patch),
+              "state_cache_patch_sha256": digest(cache_patch),
               "public_source_sha256": hashlib.sha256(public_blob).hexdigest(),
-              "patched_source_sha256": expected_sha, "checks": checks}
+              "patched_source_sha256": expected_sha,
+              "patched_header_sha256": expected_header_sha, "checks": checks}
     (args.output / "verification.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"PASS: {len(checks)} actual-public-source Plume preparation checks; original checkout unchanged")
 

@@ -37,7 +37,7 @@ def main():
         if "*" in relative:
             continue
         path = (source / relative).resolve()
-        if path in input_files or path.suffix not in (".cpp", ".h", ".hlsl", ".hlsli", ".in"):
+        if path in input_files or path.suffix not in (".cpp", ".h", ".hlsl", ".hlsli", ".in", ".py", ".patch"):
             continue
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("// synthetic fingerprint input\n")

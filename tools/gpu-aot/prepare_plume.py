@@ -67,7 +67,10 @@ def main():
     parser.add_argument("--check", action="store_true", help="Verify only; do not modify the checkout")
     args = parser.parse_args()
     checkout = args.checkout.resolve()
-    patch = root / "tools/gpu-aot/patches/plume-lego.patch"
+    patches = (
+        (root / "tools/gpu-aot/patches/plume-lego.patch", "Native Plume fixes"),
+        (root / "tools/gpu-aot/patches/plume-state-cache.patch", "Native Plume state-cache fixes"),
+    )
 
     def git(*arguments, check=False):
         return subprocess.run(["git", "-C", str(checkout), *arguments],
@@ -81,25 +84,30 @@ def main():
     revision = git("rev-parse", "HEAD", check=True).stdout.strip()
     if revision != PIN:
         parser.error(f"Expected public Plume {PIN}, got {revision}; select the recorded dependency revision")
-    if git("apply", "--reverse", "--check", str(patch)).returncode == 0:
+    applied = False
+    for patch, description in patches:
+        if git("apply", "--reverse", "--check", str(patch)).returncode == 0:
+            try:
+                verify_patched_source(checkout, patch)
+            except ValueError as error:
+                parser.error(str(error))
+            continue
+        if args.check:
+            parser.error(description + " are missing or incomplete; run prepare_plume.py without --check")
+        applicability = git("apply", "--check", str(patch))
+        if applicability.returncode:
+            parser.error("Cannot apply " + description.lower() + " without conflicting with existing edits:\n" + applicability.stderr.strip())
+        git("apply", str(patch), check=True)
+        git("apply", "--reverse", "--check", str(patch), check=True)
         try:
             verify_patched_source(checkout, patch)
         except ValueError as error:
             parser.error(str(error))
-        print(f"PASS: public Plume {PIN} with native fence/resize/command-allocation fixes")
-        return
-    if args.check:
-        parser.error("Native Plume fixes are missing or incomplete; run prepare_plume.py without --check")
-    applicability = git("apply", "--check", str(patch))
-    if applicability.returncode:
-        parser.error("Cannot apply native Plume fixes without conflicting with existing edits:\n" + applicability.stderr.strip())
-    git("apply", str(patch), check=True)
-    git("apply", "--reverse", "--check", str(patch), check=True)
-    try:
-        verify_patched_source(checkout, patch)
-    except ValueError as error:
-        parser.error(str(error))
-    print(f"Applied native fence/resize/command-allocation fixes to public Plume {PIN}")
+        applied = True
+    if applied:
+        print(f"Applied native fence/resize/command-allocation fixes and opt-in state cache to public Plume {PIN}")
+    else:
+        print(f"PASS: public Plume {PIN} with native fence/resize/command-allocation fixes and opt-in state cache")
 
 
 if __name__ == "__main__":

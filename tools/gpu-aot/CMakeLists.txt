@@ -78,7 +78,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING
             list(APPEND PRODUCTION_CHECKS unmapped_vertex_fetch)
         endif()
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
-            list(APPEND PRODUCTION_CHECKS plume_command_creation gpu_timestamps resize_fences)
+            list(APPEND PRODUCTION_CHECKS plume_command_creation plume_state_bindings gpu_timestamps resize_fences)
         endif()
         if(UNIX)
             list(APPEND PRODUCTION_CHECKS prelink_publication)
