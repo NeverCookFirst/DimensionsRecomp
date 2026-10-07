@@ -2,6 +2,18 @@ cmake_minimum_required(VERSION 3.25)
 project(NativeGpuPortableChecks LANGUAGES CXX)
 include(CTest)
 
+# The private-run harness uses Linux /proc, flock and reflinks. No game assets
+# are required by its synthetic preparation, sampling and comparison checks.
+if(BUILD_TESTING AND UNIX)
+    find_package(Python3 3.11 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME renderer_regression
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/regression/test_regression.py)
+        set_tests_properties(renderer_regression PROPERTIES TIMEOUT 30)
+    endif()
+endif()
+
+
 # No SDK, generated game code, game assets, DXC, or graphics device required.
 set(CHECKS blend_state buffer_header color_resolve_swizzle descriptor_retirement
     pixel_shader_filter polygon_offset pool_copy portrait_identity present_rect
