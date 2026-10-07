@@ -78,16 +78,10 @@ bool PhysicalSpan(rex::memory::Memory* memory, CpuMemorySpan input, CpuMemorySpa
   if (first == UINT32_MAX || uint64_t(first) + input.length > kPhysicalSize ||
       physical(input.address + input.length - 1) != first + input.length - 1) return false;
   auto* heap = memory->GetPhysicalHeap();
-  for (uint64_t at = first, end = uint64_t(first) + input.length; at < end;) {
-    rex::memory::HeapAllocationInfo info{};
-    if (!heap->QueryRegionInfo(uint32_t(at), &info) ||
-        !(info.state & rex::memory::kMemoryAllocationCommit) ||
-        !(info.protect & rex::memory::kMemoryProtectRead)) return false;
-    const uint64_t page = heap->heap_base() + ((at - heap->heap_base()) / heap->page_size()) * heap->page_size();
-    const uint64_t next = page + info.region_size;
-    if (next <= at) return false;
-    at = std::min(next, end);
-  }
+  // WatchCpuMemory holds the SDK global critical region before this heap lock.
+  // Validate only the requested pages; QueryRegionInfo scans to the allocation
+  // end even when a draw uses a small window within a large shared pool.
+  if (!heap->IsRangeCommittedReadable(first, input.length)) return false;
   output = {first, input.length};
   return true;
 }

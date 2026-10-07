@@ -67,6 +67,9 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING
                 list(APPEND PRODUCTION_CHECKS precompiled_pack)
             endif()
         endif()
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/system/xmemory.cpp")
+            list(APPEND PRODUCTION_CHECKS memory_watch_bounds)
+        endif()
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/shaders/bytecode/d3d12_5_1/texture_load_depth_unorm_cs.h"
             AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/d3d12/texture_cache.cpp"
             AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/pipeline/texture/util.cpp"

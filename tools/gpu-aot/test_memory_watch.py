@@ -36,6 +36,9 @@ struct Heap {
  bool QueryRegionInfo(uint32_t at,HeapAllocationInfo* info) {
    if(at>=0x100000) return false; *info={}; return true;
  }
+ bool IsRangeCommittedReadable(uint32_t at,uint32_t size) {
+   return uint64_t(at)+size<=0x100000;
+ }
  uint32_t heap_base() { return 0; } uint32_t page_size() { return 4096; }
 };
 struct Memory {
