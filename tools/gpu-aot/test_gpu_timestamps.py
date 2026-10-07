@@ -74,6 +74,7 @@ def main():
 #include <string>
 #include <vector>
 using u32=uint32_t;using u64=uint64_t;using UINT64=unsigned long long;using HRESULT=long;
+u64 g_recording_serial=0;
 #define FAILED(x) ((x)<0)
 #define SUCCEEDED(x) ((x)>=0)
 #define REXLOG_ERROR(...) ((void)0)

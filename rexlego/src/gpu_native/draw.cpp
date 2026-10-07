@@ -48,6 +48,7 @@
 #include "gpu_native/long_probe.h"
 #include "gpu_native/renderdoc_probe.h"
 #include "gpu_native/vertex_declarations.h"
+#include "gpu_native/state_call_diagnostic.h"
 
 REXCVAR_DEFINE_BOOL(gpu_native_buffer_windows, false, "GPU",
     "Upload and retain only the vertex buffer ranges fetched by native draws")
@@ -249,6 +250,40 @@ plume::RenderRect CullDrawScissor(plume::RenderRect scissor,
   if ((control & kNativeCullCandidate) &&
       DecodeNativeCullState(control, polygonal).discard) return {0, 0, 0, 0};
   return scissor;
+}
+
+StateCallCapture* NativeStateCalls() {
+  static std::unique_ptr<StateCallCapture> capture = [] {
+    const char* output = std::getenv("LEGO_NATIVE_STATE_CALLS");
+    if (!output || !*output) return std::unique_ptr<StateCallCapture>{};
+    const char* trigger = std::getenv("LEGO_NATIVE_STATE_CALLS_TRIGGER");
+    return std::make_unique<StateCallCapture>(output, trigger ? trigger : "");
+  }();
+  return capture.get();
+}
+
+void BindNativeDrawLayout(plume::RenderCommandList* commands,
+                          const DrawDeviceView& view, StateCallLedger* diagnostic) {
+  if (diagnostic) diagnostic->Layout(view.pipeline_layout);
+  commands->setGraphicsPipelineLayout(view.pipeline_layout);
+}
+
+void BindNativeDrawDescriptorSets(plume::RenderCommandList* commands,
+                                  const DrawDeviceView& view, StateCallLedger* diagnostic) {
+  if (diagnostic) {
+    for (u32 i = 0; i < 3; ++i) diagnostic->Descriptor(view.texture_descriptors, i);
+    diagnostic->Descriptor(view.sampler_descriptors, 3);
+  }
+  commands->setGraphicsDescriptorSet(view.texture_descriptors, 0);
+  commands->setGraphicsDescriptorSet(view.texture_descriptors, 1);
+  commands->setGraphicsDescriptorSet(view.texture_descriptors, 2);
+  commands->setGraphicsDescriptorSet(view.sampler_descriptors, 3);
+}
+
+void BindNativeDrawPipeline(plume::RenderCommandList* commands,
+                            plume::RenderPipeline* pipeline, StateCallLedger* diagnostic) {
+  if (diagnostic) diagnostic->Pipeline(pipeline);
+  commands->setPipeline(pipeline);
 }
 
 bool BindConstants(
@@ -960,6 +995,13 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   if (!commands) {
     return false;
   }
+  const auto draw_device = HostDevice::CurrentDrawDeviceView();
+  if (draw_device.commands != commands || !draw_device.recording_serial ||
+      !draw_device.pipeline_layout || !draw_device.texture_descriptors ||
+      !draw_device.sampler_descriptors || !draw_device.null_vertex_buffer) return false;
+  StateCallLedger* state_calls = nullptr;
+  if (auto* capture = NativeStateCalls())
+    state_calls = capture->BeginDraw(commands, draw_device.recording_serial);
   timing.Next();
 
   std::array<plume::RenderTextureBarrier, kNativeRenderTargets + 1> texture_barriers;
@@ -1095,14 +1137,11 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
 
   {
     ConstantTimer constant_timing(ConstantCost::kBindings);
-    commands->setGraphicsPipelineLayout(HostDevice::PipelineLayout());
+    BindNativeDrawLayout(commands, draw_device, state_calls);
     if (enable_stencil && (key.depth_control & 1u))
       static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetStencilRef(
           state_bytes[NativeStencilWordOffset(key.raster_control, key.depth_control, polygonal) + 3]);
-    commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 0);
-    commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 1);
-    commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 2);
-    commands->setGraphicsDescriptorSet(HostDevice::SamplerDescriptorSet(), 3);
+    BindNativeDrawDescriptorSets(commands, draw_device, state_calls);
   }
   auto constants = BindConstants(commands, device, bindings, declaration, count<=6);
   if (!constants) {
@@ -1116,7 +1155,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     commands->setFramebuffer(framebuffer);
   }
   timing.Next();
-  commands->setPipeline(pipeline);
+  BindNativeDrawPipeline(commands, pipeline, state_calls);
   // 83FB82F0 writes normalized R,G,B,A blend constants at +10464..10476.
   const auto* guest_blend_factor = reinterpret_cast<const be_f32*>(
       reinterpret_cast<const u8*>(device) + 10464);
@@ -1146,7 +1185,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
 
   std::array<plume::RenderVertexBufferView, kNativeVertexStreams> views;
   std::array<plume::RenderInputSlot, kNativeVertexStreams> slots;
-  auto* null_buffer = HostDevice::NullVertexBuffer();
+  auto* null_buffer = draw_device.null_vertex_buffer;
   std::array<BufferResourceView, kNativeVertexStreams> vertex_buffers;
   static const bool window_uploads = [] {
     const char* value = std::getenv("LEGO_NATIVE_BUFFER_WINDOWS");
@@ -1624,6 +1663,7 @@ u32 SwapHook(D3DDevice* /*device*/, u32 front_buffer, u32 /*parameters*/) {
   HostDevice::PollCompletionCallbacks();
   auto recording = HostDevice::LockRecording();
   const auto texture = ResolveTextureResource(front_buffer);
+  if (auto* capture = NativeStateCalls()) capture->Present(g_probe_frame.load());
   if (!HostDevice::PresentTexture(texture.texture, texture.descriptor_index) &&
       g_unsupported_draw_logs++ < 20) {
     LogUnknownTexture(front_buffer, "present");

@@ -231,6 +231,9 @@ constexpr u32 kFirstTextureSlot = 3;
 
 std::mutex g_mutex;
 std::unique_ptr<State> g_state;
+// Accessed under g_mutex. Do not reset on device recreation: a command-list
+// address may be reused, but its recording identity must never be reused.
+u64 g_recording_serial = 0;
 
 std::unique_ptr<plume::RenderInterface> CreateInterface(Backend backend) {
   switch (backend) {
@@ -594,6 +597,9 @@ plume::RenderCommandList* BeginFrameCommandsLocked(State& state) {
   if (state.command_list_open) {
     return state.command_lists[state.frame_slot].get();
   }
+  // Reserve zero for a closed/invalid view and fail before any ring mutation
+  // if the process-wide serial can no longer advance.
+  if (g_recording_serial == UINT64_MAX) return nullptr;
   if ((state.framebuffers.empty() || state.swap_chain->needsResize()) &&
       !RebuildSwapChain(state)) {
     return nullptr;
@@ -629,6 +635,7 @@ plume::RenderCommandList* BeginFrameCommandsLocked(State& state) {
   if (state.gpu_timestamps)
     state.gpu_timestamps->Begin(commands, slot, u64(state.present_number) + 1);
   InitializeNullTextures(state, commands);
+  ++g_recording_serial;
   state.command_list_open = true;
   return commands;
 }
@@ -756,6 +763,17 @@ void HostDevice::Shutdown() {
 bool HostDevice::IsReady() {
   std::lock_guard lock(g_mutex);
   return g_state && g_state->device && g_state->queue && g_state->swap_chain;
+}
+
+DrawDeviceView HostDevice::CurrentDrawDeviceView() {
+  std::lock_guard lock(g_mutex);
+  if (!g_state) return {};
+  const auto& state = *g_state;
+  return {state.device.get(), state.pipeline_layout.get(),
+          state.texture_descriptors.get(), state.sampler_descriptors.get(),
+          state.null_vertex_buffer.get(),
+          state.command_list_open ? state.command_lists[state.frame_slot].get() : nullptr,
+          state.command_list_open ? g_recording_serial : 0};
 }
 
 plume::RenderDevice* HostDevice::Device() {

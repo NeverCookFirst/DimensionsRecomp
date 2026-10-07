@@ -49,6 +49,18 @@ struct DrawUploadSlice {
   explicit operator bool() const { return buffer && mapped; }
 };
 
+// Immutable device objects plus the identity of the currently open recording.
+// The caller must hold LockRecording throughout every use of these pointers.
+struct DrawDeviceView {
+  plume::RenderDevice* device = nullptr;
+  plume::RenderPipelineLayout* pipeline_layout = nullptr;
+  plume::RenderDescriptorSet* texture_descriptors = nullptr;
+  plume::RenderDescriptorSet* sampler_descriptors = nullptr;
+  plume::RenderBuffer* null_vertex_buffer = nullptr;
+  plume::RenderCommandList* commands = nullptr;
+  u64 recording_serial = 0;
+};
+
 class HostDevice {
  public:
   // Hold across the whole CPU recording operation, not only list acquisition.
@@ -57,6 +69,9 @@ class HostDevice {
   static bool Create(rex::ui::Window* window, Backend backend = Backend::kD3D12);
   static void Shutdown();
   static bool IsReady();
+  // One state-lock acquisition replaces repeated immutable draw getters.
+  // Closed recordings return commands=nullptr and recording_serial=0.
+  static DrawDeviceView CurrentDrawDeviceView();
 
   static plume::RenderDevice* Device();
   static plume::RenderCommandQueue* Queue();

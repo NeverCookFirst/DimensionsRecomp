@@ -61,7 +61,7 @@ endif()
 if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
-        foreach(check IN ITEMS buffer_alloc_diagnostic native_build_fingerprint command_slots constant_timing frame_cadence cull_state draw_diagnostic prelink_workers prelink_emission
+        foreach(check IN ITEMS draw_device_view state_call_diagnostic buffer_alloc_diagnostic native_build_fingerprint command_slots constant_timing frame_cadence cull_state draw_diagnostic prelink_workers prelink_emission
                 frame_ring_transaction submission_waits pipeline_failures
                 completion_callbacks cpu_resource_wait draw_upload query_retirement)
             add_test(NAME ${check}

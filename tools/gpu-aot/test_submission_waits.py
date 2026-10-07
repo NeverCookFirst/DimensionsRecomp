@@ -43,6 +43,7 @@ def main():
 #include <vector>
 #include "gpu_native/descriptor_retirement.h"
 using u32=std::uint32_t;using u64=std::uint64_t;
+u64 g_recording_serial=0;
 using legodimensions::gpu_native::DescriptorRetirement;
 #define REXLOG_ERROR(...) ((void)0)
 #define REXLOG_WARN(...) ((void)0)
