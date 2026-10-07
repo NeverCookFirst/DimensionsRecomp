@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <windows.h>
-#include <renderdoc/renderdoc_app.h>
+#include <renderdoc_app.h>
 #include <rex/logging.h>
 
 namespace legodimensions::gpu_native {

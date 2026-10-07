@@ -118,7 +118,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     target_include_directories(legodimensions PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd")
-    target_link_libraries(legodimensions PRIVATE plume d3d12 dxgi rex::xxhash)
+    target_link_libraries(legodimensions PRIVATE plume d3d12 dxgi rex::xxhash renderdoc)
 
     # Generated locally by tools/gpu-aot. Keeping it out of Git avoids a
     # multi-megabyte generated source file while still making an enabled build
