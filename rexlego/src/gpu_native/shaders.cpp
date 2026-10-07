@@ -52,6 +52,9 @@ struct ShaderResource {
 std::mutex g_registry_mutex;
 std::unordered_map<u32, std::shared_ptr<ShaderResource>> g_registry;
 std::array<std::shared_ptr<ShaderResource>, 2> g_bound_shaders;
+// A failed nonnull bind is distinct from an intentional null pixel shader.
+// Keep the guest request even when no AOT resource could be adopted.
+std::array<u32, 2> g_bound_shader_addresses{};
 std::atomic<u32> g_shader_warning_count{0};
 
 size_t StageIndex(ShaderStage stage) {
@@ -72,7 +75,7 @@ void DumpMissingShader(const ShaderContainer* container, size_t byte_length,
                        ShaderStage stage, u64 hash, const char* category = "");
 
 bool ReadableGuestRange(u32 address, u32 size) {
-  if (!size || uint64_t(address) + size > 0x100000000ull) return false;
+  if (!address || !size || uint64_t(address) + size > 0x100000000ull) return false;
   auto* memory = REX_KERNEL_MEMORY();
   for (uint64_t at = address; at < uint64_t(address) + size;) {
     auto* heap = memory->LookupHeap(static_cast<u32>(at));
@@ -85,6 +88,106 @@ bool ReadableGuestRange(u32 address, u32 size) {
   return true;
 }
 
+// Query page-aligned addresses: QueryRegionInfo counts whole pages, even when
+// its input is not aligned. Bound every result by the original allocation.
+size_t ReadableGuestSpan(u32 address) {
+  if (!address) return 0;
+  auto* memory = REX_KERNEL_MEMORY();
+  auto* heap = memory->LookupHeap(address);
+  if (!heap) return 0;
+  const u32 page_size = heap->page_size();
+  if (!page_size || (page_size & (page_size - 1))) return 0;
+  const u32 page_mask = page_size - 1;
+  const u32 heap_base = heap->heap_base();
+  if (address < heap_base) return 0;
+  const auto page_start = [&](u32 at) { return heap_base + ((at - heap_base) & ~page_mask); };
+  rex::memory::HeapAllocationInfo initial{};
+  if (!heap->QueryRegionInfo(page_start(address), &initial) ||
+      !(initial.state & rex::memory::kMemoryAllocationCommit) ||
+      !(initial.protect & rex::memory::kMemoryProtectRead)) return 0;
+  const uint64_t allocation_end = uint64_t(initial.allocation_base) + initial.allocation_size;
+  // Creation already rejects containers larger than 4 MiB. The extra word
+  // allows checking the archive marker at the end of that bounded window.
+  const uint64_t limit = std::min({allocation_end, uint64_t{0x100000000ull},
+                                  uint64_t(address) + 4 * 1024 * 1024 + 4});
+  uint64_t at = address;
+  while (at < limit) {
+    const u32 page = page_start(u32(at));
+    rex::memory::HeapAllocationInfo info{};
+    if (!heap->QueryRegionInfo(page, &info) ||
+        info.allocation_base != initial.allocation_base ||
+        !(info.state & rex::memory::kMemoryAllocationCommit) ||
+        !(info.protect & rex::memory::kMemoryProtectRead)) break;
+    const uint64_t end = std::min(limit, uint64_t(page) + info.region_size);
+    if (end <= at) break;
+    at = end;
+  }
+  return at > address ? size_t(at - address) : 0;
+}
+
+void CaptureMissingPlacementShader(u32 guest_address, u32 container_address,
+    const uint8_t* microcode, size_t readable_size, ShaderStage stage) {
+  static const bool enabled = [] {
+    char* value = nullptr;
+    size_t length = 0;
+    _dupenv_s(&value, &length, "LEGO_DUMP_MISSING_SHADERS");
+    const bool result = value && length > 1;
+    std::free(value);
+    return result;
+  }();
+  if (!enabled) return;
+  static std::mutex capture_mutex;
+  static std::array<std::unordered_set<u64>, 2> captured_containers;
+  {
+    std::lock_guard lock(capture_mutex);
+    if (captured_containers[0].size() + captured_containers[1].size() >= 256) return;
+  }
+  // XGSet*ShaderHeader copies the virtual section immediately after the SDK
+  // object. Validate both sections before reading, hashing or reserving a slot.
+  const u64 header_offset = u64(guest_address) +
+      (stage == ShaderStage::kVertex ? kVertexShaderGuestSize : kPixelShaderGuestSize);
+  if (header_offset > UINT32_MAX) return;
+  const u32 header_address = static_cast<u32>(header_offset);
+  if (!ReadableGuestRange(header_address, sizeof(ShaderContainer))) return;
+  const auto* virtual_header =
+      REX_KERNEL_MEMORY()->TranslateVirtual<const ShaderContainer*>(header_address);
+  const u32 flags = virtual_header->flags;
+  const u32 virtual_size = virtual_header->virtual_size;
+  const u32 physical_size = virtual_header->physical_size;
+  if ((flags & 0xFFFFFFFEu) != 0x102A1100u ||
+      (flags & 1u) != (stage == ShaderStage::kVertex ? 1u : 0u) ||
+      virtual_size < sizeof(ShaderContainer) || virtual_size > 65536 ||
+      physical_size < 8 || physical_size > 65536 || physical_size > readable_size ||
+      !ReadableGuestRange(header_address, virtual_size) ||
+      !ReadableGuestRange(container_address, physical_size)) return;
+  // Preserve the exact virtual/physical bytes and explicit archive marker.
+  std::vector<uint8_t> capture(virtual_size + 4 + physical_size);
+  std::memcpy(capture.data(), virtual_header, virtual_size);
+  std::memcpy(capture.data() + virtual_size,
+      reinterpret_cast<const uint8_t*>(virtual_header) + 8, 4);
+  std::memcpy(capture.data() + virtual_size + 4, microcode, physical_size);
+  const u64 hash = XXH3_64bits(capture.data(), capture.size());
+  {
+    std::lock_guard lock(capture_mutex);
+    // Placement addresses can be reused for different code. Deduplicate the
+    // complete container and stage, preserving the process-wide capture cap.
+    if (captured_containers[0].size() + captured_containers[1].size() >= 256 ||
+        !captured_containers[StageIndex(stage)].insert(hash).second) return;
+  }
+  // Record the exact identity even when its capture file already exists from
+  // an earlier run. The validated range and capture budget bound this work.
+  LongProbeEvent("missing_placement_shader_identity", true,
+      "stage=", static_cast<u32>(stage), "guest=", guest_address,
+      "physical=", container_address, "virtual_bytes=", virtual_size,
+      "physical_bytes=", physical_size, "container_hash=", hash,
+      "physical_hash=", XXH3_64bits(capture.data() + virtual_size + 4, physical_size));
+  DumpMissingShader(reinterpret_cast<const ShaderContainer*>(microcode),
+      std::min<size_t>({2048, 4096 - (container_address & 4095), readable_size}),
+      stage, XXH3_64bits(microcode, 8), "placement-raw");
+  DumpMissingShader(reinterpret_cast<const ShaderContainer*>(capture.data()),
+      capture.size(), stage, hash, "placement-containers");
+}
+
 std::shared_ptr<ShaderResource> AdoptShader(u32 guest_address,
                                            ShaderStage expected_stage) {
   if (const auto existing = FindResource(guest_address)) {
@@ -93,6 +196,9 @@ std::shared_ptr<ShaderResource> AdoptShader(u32 guest_address,
   if (!guest_address) {
     return nullptr;
   }
+  const u32 guest_size = expected_stage == ShaderStage::kVertex ?
+      kVertexShaderGuestSize : kPixelShaderGuestSize;
+  if (!ReadableGuestRange(guest_address, guest_size)) return nullptr;
   auto* memory = REX_KERNEL_MEMORY();
   const auto* bytes = memory->TranslateVirtual<const uint8_t*>(guest_address);
   const auto* header = reinterpret_cast<const D3DResource*>(bytes);
@@ -128,60 +234,13 @@ std::shared_ptr<ShaderResource> AdoptShader(u32 guest_address,
   // AOT entry before creating any host object.
   const auto* microcode =
       memory->TranslateVirtual<const uint8_t*>(container_address);
+  const size_t readable_size = ReadableGuestSpan(container_address);
+  if (readable_size < 8) return nullptr;
   const ShaderCacheEntry* cache_entry = FindShaderByMicrocode(
-      microcode, expected_stage == ShaderStage::kPixel ? 1u : 0u);
+      microcode, expected_stage == ShaderStage::kPixel ? 1u : 0u, readable_size);
   if (!cache_entry) {
-    // Diagnostic only, opt-in. Bound distinct objects rather than bind calls:
-    // repeated draws must not exhaust the capture budget on the first pair.
-    static const bool capture_enabled = [] {
-      char* value = nullptr;
-      size_t length = 0;
-      _dupenv_s(&value, &length, "LEGO_DUMP_MISSING_SHADERS");
-      const bool enabled = value && length > 1;
-      std::free(value);
-      return enabled;
-    }();
-    static std::mutex capture_mutex;
-    static std::unordered_set<u32> captured_objects;
-    bool capture_object = false;
-    if (capture_enabled) {
-      std::lock_guard lock(capture_mutex);
-      capture_object = captured_objects.size() < 256 &&
-                       captured_objects.insert(guest_address).second;
-    }
-    if (capture_object) {
-      DumpMissingShader(reinterpret_cast<const ShaderContainer*>(microcode),
-          std::min<size_t>(2048, 4096 - (container_address & 4095)),
-          expected_stage, XXH3_64bits(microcode, 8), "placement-raw");
-      // XGSet*ShaderHeader copies the virtual section immediately after the
-      // SDK object (TU23 83FB7618 / 83FB74F0). Validate both ranges before
-      // reconstructing a container from the separately allocated sections.
-      const u32 header_address = guest_address +
-          (expected_stage == ShaderStage::kVertex ? kVertexShaderGuestSize
-                                                  : kPixelShaderGuestSize);
-      const auto* virtual_header =
-          memory->TranslateVirtual<const ShaderContainer*>(header_address);
-      if (ReadableGuestRange(header_address, sizeof(ShaderContainer))) {
-        const u32 virtual_size = virtual_header->virtual_size;
-        const u32 physical_size = virtual_header->physical_size;
-        if ((u32(virtual_header->flags) & 0xFFFFFFFEu) == 0x102A1100u &&
-            virtual_size >= sizeof(ShaderContainer) && virtual_size <= 65536 &&
-            physical_size >= 8 && physical_size <= 65536 &&
-            ReadableGuestRange(header_address, virtual_size) &&
-            ReadableGuestRange(container_address, physical_size)) {
-          // Preserve the exact two sections, with an explicit archive marker.
-          // This is a capture, not a substitute shader or a guessed binding.
-          std::vector<uint8_t> capture(virtual_size + 4 + physical_size);
-          std::memcpy(capture.data(), virtual_header, virtual_size);
-          std::memcpy(capture.data() + virtual_size,
-                      reinterpret_cast<const uint8_t*>(virtual_header) + 8, 4);
-          std::memcpy(capture.data() + virtual_size + 4, microcode, physical_size);
-          DumpMissingShader(reinterpret_cast<const ShaderContainer*>(capture.data()),
-              capture.size(), expected_stage,
-              XXH3_64bits(capture.data(), capture.size()), "placement-containers");
-        }
-      }
-    }
+    CaptureMissingPlacementShader(guest_address, container_address, microcode,
+                                  readable_size, expected_stage);
     if (g_shader_warning_count.fetch_add(1, std::memory_order_relaxed) < 16) {
       const auto* words = reinterpret_cast<const be_u32*>(microcode);
       REXLOG_WARN("Native GPU: placement {} shader 0x{:08X} backing "
@@ -190,7 +249,8 @@ std::shared_ptr<ShaderResource> AdoptShader(u32 guest_address,
                   expected_stage == ShaderStage::kVertex ? "vertex" : "pixel",
                   guest_address, container_address, XXH3_64bits(microcode, 8),
                   static_cast<u32>(words[0]), static_cast<u32>(words[1]),
-                  static_cast<u32>(words[2]), static_cast<u32>(words[3]));
+                  readable_size >= 12 ? static_cast<u32>(words[2]) : 0u,
+                  readable_size >= 16 ? static_cast<u32>(words[3]) : 0u);
     }
     return nullptr;
   }
@@ -202,12 +262,8 @@ std::shared_ptr<ShaderResource> AdoptShader(u32 guest_address,
   resource->cache_entry = cache_entry;
   resource->owns_guest_memory = false;
   resource->physical_code_address = container_address;
-  for (size_t i = 0; i < g_shaderMicrocodeEntryCount; ++i) {
-    const auto& entry = g_shaderMicrocodeEntries[i];
-    if (entry.containerHash == resource->hash &&
-        entry.stage == (expected_stage == ShaderStage::kPixel ? 1u : 0u))
-      resource->physical_code_size = std::max(resource->physical_code_size, entry.microcodeSize);
-  }
+  resource->physical_code_size = FindShaderPhysicalSize(resource->hash,
+      expected_stage == ShaderStage::kPixel ? 1u : 0u);
   {
     std::lock_guard lock(g_registry_mutex);
     const auto [it, inserted] = g_registry.emplace(guest_address, resource);
@@ -259,11 +315,81 @@ void DumpMissingShader(const ShaderContainer* container, size_t byte_length,
   }
 }
 
+
+void PollPrecompiledShaders() {
+  static const auto paths = [] {
+    std::pair<std::string, std::string> result;
+    if (const char* value = std::getenv("LEGO_NATIVE_SHADER_PACK")) result.first = value;
+    if (const char* value = std::getenv("LEGO_NATIVE_SHADER_PACK_TRIGGER")) result.second = value;
+    return result;
+  }();
+  if (paths.first.empty() || paths.second.empty()) return;
+  auto recording = HostDevice::LockRecording();
+  static uint32_t last_frame = ~uint32_t{0};
+  const uint32_t frame = g_probe_frame.load(std::memory_order_relaxed);
+  if (frame == last_frame) return;
+  last_frame = frame;
+  std::error_code filesystem_error;
+  if (!std::filesystem::exists(paths.second, filesystem_error)) return;
+  if (!std::filesystem::remove(paths.second, filesystem_error) || filesystem_error) {
+    REXLOG_WARN("Native GPU: precompiled pack trigger could not be consumed");
+    return;
+  }
+  try {
+    std::ifstream input(paths.first, std::ios::binary | std::ios::ate);
+    const auto size = input.tellg();
+    if (!input || size < 160 || size > 64 * 1024 * 1024) {
+      REXLOG_WARN("Native GPU: precompiled pack file outside size bounds");
+      return;
+    }
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    input.seekg(0);
+    if (!input.read(reinterpret_cast<char*>(bytes.data()), size) || input.peek() != EOF) {
+      REXLOG_WARN("Native GPU: precompiled pack file changed or could not be read");
+      return;
+    }
+    std::string error;
+    if (!LoadPrecompiledShaderPack(bytes, error)) {
+      REXLOG_WARN("Native GPU: rejected precompiled pack: {}", error);
+      return;
+    }
+    std::array<u32, 2> retry{};
+    {
+      std::lock_guard lock(g_registry_mutex);
+      // Create hooks may have allocated a guest resource before its hash was
+      // available. Repair these resources as well as failed placement binds.
+      for (auto& [address, resource] : g_registry) {
+        if (!resource->cache_entry) {
+          resource->cache_entry = FindShader(resource->hash);
+          if (resource->cache_entry)
+            resource->texture_mask = FindShaderTextureMask(resource->hash);
+        }
+      }
+      for (size_t i = 0; i < retry.size(); ++i)
+        if (g_bound_shader_addresses[i] &&
+            !g_bound_shaders[i])
+          retry[i] = g_bound_shader_addresses[i];
+    }
+    // Release registry and archive locks before adoption. Successful bindings
+    // remain intact; rebinding is needed only for previously missing resources.
+    for (size_t i = 0; i < retry.size(); ++i)
+      if (retry[i]) BindShader(i ? ShaderStage::kPixel : ShaderStage::kVertex, retry[i]);
+    LongProbeEvent("precompiled_shader_pack_loaded", false, "generation=",
+        PrecompiledShaderPackGeneration(), "bytes=", bytes.size());
+    REXLOG_INFO("Native GPU: loaded additive precompiled pack, generation={}",
+                PrecompiledShaderPackGeneration());
+  } catch (const std::exception& error) {
+    REXLOG_WARN("Native GPU: precompiled pack failed: {}", error.what());
+  }
+}
+
 }  // namespace
 
 bool ShouldSkipBoundPixelShader() {
+  PollPrecompiledShaders();
   // Called under the recording lock; rebuild only when the user changes it.
   static std::string previous;
+  static uint64_t previous_generation = 0;
   static std::unordered_set<u64> containers;
   auto list = rex::cvar::GetFlagByName("skip_pixel_shaders");
   // Native mode may not link the Xenos command processor that registers its
@@ -272,15 +398,13 @@ bool ShouldSkipBoundPixelShader() {
     if (!list.empty()) list += ',';
     list += cheats::kDofPixelShaderHash;
   }
-  if (list != previous) {
+  const uint64_t generation = PrecompiledShaderPackGeneration();
+  if (list != previous || generation != previous_generation) {
+    previous_generation = generation;
     previous = list;
     containers.clear();
     const auto hashes = ParsePixelShaderFilter(list);
-    for (size_t i = 0; i < g_shaderMicrocodeEntryCount; ++i) {
-      const auto& entry = g_shaderMicrocodeEntries[i];
-      if (entry.stage == 1 && hashes.contains(entry.microcodeHash))
-        containers.insert(entry.containerHash);
-    }
+    containers = FindPixelShaderContainers(hashes);
     REXLOG_INFO("Native GPU: pixel shader filter matches {} AOT containers", containers.size());
   }
   return containers.contains(BoundShaderHash(ShaderStage::kPixel));
@@ -292,7 +416,8 @@ u32 CreateShaderResource(mapped_u32 function, ShaderStage stage) {
   }
 
   const auto* container = reinterpret_cast<const ShaderContainer*>(function.host_address());
-  const size_t byte_length = ShaderContainerByteLength(container);
+  const size_t readable_size = ReadableGuestSpan(function.guest_address());
+  const size_t byte_length = ShaderContainerByteLength(container, readable_size);
   // Corrupt sizes must never turn a guest pointer into an unbounded host read.
   if (byte_length < sizeof(ShaderContainer) || byte_length > 4 * 1024 * 1024) {
     REXLOG_ERROR("Native GPU: rejected {} shader container of {} bytes",
@@ -300,7 +425,7 @@ u32 CreateShaderResource(mapped_u32 function, ShaderStage stage) {
     return 0;
   }
 
-  const u64 hash = HashShaderContainer(container);
+  const u64 hash = HashShaderContainer(container, readable_size);
   const ShaderCacheEntry* cache_entry = FindShader(hash);
   if (!cache_entry) {
     REXLOG_WARN("Native GPU: shader not present in AOT cache, hash=0x{:016X}", hash);
@@ -343,6 +468,7 @@ u32 CreateShaderResource(mapped_u32 function, ShaderStage stage) {
 }
 
 bool BindShader(ShaderStage stage, u32 guest_address) {
+  auto recording = HostDevice::LockRecording();
   std::shared_ptr<ShaderResource> resource;
   if (guest_address) {
     resource = AdoptShader(guest_address, stage);
@@ -351,6 +477,7 @@ bool BindShader(ShaderStage stage, u32 guest_address) {
           "stage=", static_cast<u32>(stage));
       {
         std::lock_guard lock(g_registry_mutex);
+        g_bound_shader_addresses[StageIndex(stage)] = guest_address;
         g_bound_shaders[StageIndex(stage)].reset();
       }
       if (g_shader_warning_count.fetch_add(1, std::memory_order_relaxed) < 32) {
@@ -362,6 +489,7 @@ bool BindShader(ShaderStage stage, u32 guest_address) {
     }
   }
   std::lock_guard lock(g_registry_mutex);
+  g_bound_shader_addresses[StageIndex(stage)] = guest_address;
   g_bound_shaders[StageIndex(stage)] = std::move(resource);
   return true;
 }
@@ -401,10 +529,13 @@ plume::RenderShader* ResolveBoundShader(ShaderStage stage, u32 spec_constants) {
   return it->second.get();
 }
 
-u32 BoundShaderAddress(ShaderStage stage) {
+u32 BoundShaderAddress(ShaderStage stage, bool* binding_failed) {
+  PollPrecompiledShaders();
   std::lock_guard lock(g_registry_mutex);
-  const auto& resource = g_bound_shaders[StageIndex(stage)];
-  return resource ? resource->guest_address : 0;
+  const size_t index = StageIndex(stage);
+  const u32 address = g_bound_shader_addresses[index];
+  if (binding_failed) *binding_failed = address && !g_bound_shaders[index];
+  return address;
 }
 
 bool IsNativeShader(u32 guest_address) {
@@ -506,10 +637,12 @@ u32 ReleaseNativeShader(u32 guest_address) {
 }
 
 void ResetShaderResources() {
+  auto recording = HostDevice::LockRecording();
   std::vector<u32> guest_addresses;
   {
     std::lock_guard lock(g_registry_mutex);
     g_bound_shaders = {};
+    g_bound_shader_addresses = {};
     guest_addresses.reserve(g_registry.size());
     for (const auto& [guest_address, resource] : g_registry) {
       if (resource->owns_guest_memory) {

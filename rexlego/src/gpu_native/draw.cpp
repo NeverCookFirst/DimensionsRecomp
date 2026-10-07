@@ -673,8 +673,20 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   commands->setFramebuffer(framebuffer);
 
   PipelineKey key;
-  key.vertex_shader = BoundShaderAddress(ShaderStage::kVertex);
-  key.pixel_shader = BoundShaderAddress(ShaderStage::kPixel);
+  bool vertex_binding_failed = false;
+  key.vertex_shader = BoundShaderAddress(ShaderStage::kVertex, &vertex_binding_failed);
+  bool pixel_binding_failed = false;
+  key.pixel_shader = BoundShaderAddress(ShaderStage::kPixel, &pixel_binding_failed);
+  // Failed nonnull binds must not reuse a cached PSO or turn a requested
+  // pixel shader into a depth-only pass. Check before shader resolution.
+  if (vertex_binding_failed) {
+    LongProbeEvent("draw_missing_vertex_shader", true, "guest_vs=", key.vertex_shader);
+    return false;
+  }
+  if (pixel_binding_failed) {
+    LongProbeEvent("draw_missing_pixel_shader", true, "guest_ps=", key.pixel_shader);
+    return false;
+  }
   key.vertex_shader_hash = BoundShaderHash(ShaderStage::kVertex);
   key.pixel_shader_hash = BoundShaderHash(ShaderStage::kPixel);
   key.declaration_hash = declaration.content_hash;

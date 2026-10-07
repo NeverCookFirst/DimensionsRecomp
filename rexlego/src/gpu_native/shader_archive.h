@@ -10,6 +10,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
+#include <string>
+#include <unordered_set>
 
 // XenosRecomp emits these names in the global namespace.
 struct ShaderCacheEntry {
@@ -65,21 +68,33 @@ struct ShaderBytecode {
 // Archive containers repeat physical_size between their virtual and physical
 // programs. Runtime-created containers omit that marker; both layouts occur in
 // LEGO Dimensions and are detected from the container contents.
-size_t ShaderContainerByteLength(const void* shader_container);
+// readable_size is the validated source span; malformed/truncated inputs return 0.
+size_t ShaderContainerByteLength(const void* shader_container, size_t readable_size);
 
 const ShaderCacheEntry* FindShader(uint64_t hash);
 uint32_t FindShaderTextureMask(uint64_t hash);
 
 // Matches an XDK placement shader, which retains only its physical microcode
 // pointer, back to the original container compiled into the AOT archive.
+// Prefix and candidate hashes are restricted to readable_size source bytes.
 const ShaderCacheEntry* FindShaderByMicrocode(const void* microcode,
-                                              uint32_t stage);
+                                              uint32_t stage, size_t readable_size);
 
 // Hashes the exact Xbox container span used by the AOT generator.
-uint64_t HashShaderContainer(const void* shader_container);
+uint64_t HashShaderContainer(const void* shader_container, size_t readable_size);
 
 // Returns complete DXIL ready for D3D12. Specialization-library entries are
 // resolved exclusively through the build-time linked archive.
 ShaderBytecode FindDxil(uint64_t hash, uint32_t spec_constants);
+
+// Development-only additive packs. Published entries and bytecode live until
+// process exit; existing shaders are never replaced. The caller serializes
+// publication and binding recovery with HostDevice's recording lock.
+bool LoadPrecompiledShaderPack(std::span<const uint8_t> bytes,
+                               std::string& error);
+uint64_t PrecompiledShaderPackGeneration();
+uint32_t FindShaderPhysicalSize(uint64_t hash, uint32_t stage);
+std::unordered_set<uint64_t> FindPixelShaderContainers(
+    const std::unordered_set<uint64_t>& physical_hashes);
 
 }  // namespace legodimensions::gpu_native
