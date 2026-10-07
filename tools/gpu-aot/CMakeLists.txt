@@ -56,7 +56,8 @@ endif()
 if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
-        foreach(check IN ITEMS frame_ring_transaction submission_waits pipeline_failures
+        foreach(check IN ITEMS command_slots constant_timing frame_cadence
+                frame_ring_transaction submission_waits pipeline_failures
                 completion_callbacks cpu_resource_wait draw_upload query_retirement)
             add_test(NAME ${check}
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_${check}.py

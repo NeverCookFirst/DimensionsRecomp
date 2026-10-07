@@ -142,8 +142,10 @@ struct DrawTimer {
   std::chrono::steady_clock::time_point last;
   std::array<double, 7> elapsed{};
   DrawTimer() {
+    // Keep workload counts available to the per-present cadence probe even
+    // when detailed per-draw clocks are disabled.
+    ++g_draw_timing.calls;
     if (enabled) {
-      ++g_draw_timing.calls;
       last = std::chrono::steady_clock::now();
     }
   }
@@ -169,6 +171,25 @@ struct DrawTimer {
           total, elapsed[0], elapsed[1], elapsed[2], elapsed[3], elapsed[4],
           elapsed[5], elapsed[6]);
   }
+};
+
+enum class ConstantCost : size_t { kShadow, kUpload, kBindings, kTextures, kRestore };
+struct ConstantTimer {
+  bool enabled = NativeTextureTimingEnabled();
+  ConstantCost stage;
+  std::chrono::steady_clock::time_point last;
+  explicit ConstantTimer(ConstantCost initial) : stage(initial) {
+    if (enabled) last = std::chrono::steady_clock::now();
+  }
+  void Next(ConstantCost next) {
+    if (!enabled) return;
+    const auto now = std::chrono::steady_clock::now();
+    g_draw_timing.constants_ms[static_cast<size_t>(stage)] +=
+        std::chrono::duration<double, std::milli>(now - last).count();
+    last = now;
+    stage = next;
+  }
+  ~ConstantTimer() { Next(stage); }
 };
 
 bool MapTopology(u32 primitive_type, plume::RenderPrimitiveTopology& result) {
@@ -206,6 +227,7 @@ void CopyBigEndianDwords(void* destination, const void* source, u32 size) {
 bool BindConstants(
     plume::RenderCommandList* commands, const D3DDevice* device,
     const DrawBindings& bindings, const VertexDeclarationView& declaration, bool capture_constants) {
+  ConstantTimer constant_timing(ConstantCost::kUpload);
   constexpr u32 kConstantsSize = 0x1000;
   constexpr u32 kSharedOffset = kConstantsSize * 2;
   DrawUploadSlice upload;
@@ -220,6 +242,7 @@ bool BindConstants(
     upload = {separate_upload.get(), separate_upload->map(), 0};
   } else upload = HostDevice::AllocateDrawUpload(kSharedOffset + sizeof(SharedConstants));
   if (!upload) return false;
+  constant_timing.Next(ConstantCost::kShadow);
   // Build in cacheable CPU memory. Persistently mapped UPLOAD storage is
   // write-combined and must never be read for diagnostics or partial updates.
   alignas(16) std::array<u8, kSharedOffset + sizeof(SharedConstants)> data;
@@ -287,6 +310,7 @@ bool BindConstants(
             ps[index*4], ps[index*4+1], ps[index*4+2], ps[index*4+3]);
     }
   }
+  constant_timing.Next(ConstantCost::kTextures);
   for (u32 i = 0; i < kNativeTextureSlots; ++i) {
     if (!(texture_mask & (1u << i))) continue;
     auto texture = ResolveTextureResource(bindings.textures[i]);
@@ -357,6 +381,7 @@ bool BindConstants(
       shared.texture_2d[i] = texture.descriptor_index;
     }
   }
+  constant_timing.Next(ConstantCost::kShadow);
   std::memcpy(mapped + kSharedOffset, &shared, sizeof(shared));
   if (capture_constants && HostDevice::LongProbeSnapshotActive()) {
     const auto name=SaveLongProbeConstants({mapped,kSharedOffset+sizeof(shared)});
@@ -365,7 +390,9 @@ bool BindConstants(
         "PS=", BoundShaderHash(ShaderStage::kPixel), "texture_mask=", texture_mask,
         "VS_offset=0 PS_offset=4096 shared_offset=8192 shared_bytes=624");
   }
+  constant_timing.Next(ConstantCost::kUpload);
   std::memcpy(upload.mapped, data.data(), data.size());
+  constant_timing.Next(ConstantCost::kBindings);
   commands->setGraphicsRootDescriptor(upload.buffer->at(upload.offset), 0);
   commands->setGraphicsRootDescriptor(upload.buffer->at(upload.offset + kConstantsSize), 1);
   commands->setGraphicsRootDescriptor(upload.buffer->at(upload.offset + kSharedOffset), 2);
@@ -807,22 +834,28 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   }
   timing.Next();
 
-  commands->setGraphicsPipelineLayout(HostDevice::PipelineLayout());
-  if (enable_stencil && (key.depth_control & 1u))
-    static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetStencilRef(
-        reinterpret_cast<const u8*>(device)[10499]);
-  commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 0);
-  commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 1);
-  commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 2);
-  commands->setGraphicsDescriptorSet(HostDevice::SamplerDescriptorSet(), 3);
+  {
+    ConstantTimer constant_timing(ConstantCost::kBindings);
+    commands->setGraphicsPipelineLayout(HostDevice::PipelineLayout());
+    if (enable_stencil && (key.depth_control & 1u))
+      static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetStencilRef(
+          reinterpret_cast<const u8*>(device)[10499]);
+    commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 0);
+    commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 1);
+    commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 2);
+    commands->setGraphicsDescriptorSet(HostDevice::SamplerDescriptorSet(), 3);
+  }
   auto constants = BindConstants(commands, device, bindings, declaration, count<=6);
   if (!constants) {
     return false;
   }
   // A raw depth texture view may need a conversion draw while binding textures.
   // Restore the guest framebuffer after that helper's temporary target.
-  commands->barriers(plume::RenderBarrierStage::GRAPHICS, texture_barriers.data(), barrier_count);
-  commands->setFramebuffer(framebuffer);
+  {
+    ConstantTimer constant_timing(ConstantCost::kRestore);
+    commands->barriers(plume::RenderBarrierStage::GRAPHICS, texture_barriers.data(), barrier_count);
+    commands->setFramebuffer(framebuffer);
+  }
   timing.Next();
   commands->setPipeline(pipeline);
   // 83FB82F0 writes normalized R,G,B,A blend constants at +10464..10476.

@@ -107,7 +107,7 @@ int main() {
  timing_enabled=false;
  g_state->command_list_open=false;g_state->frame_submitted[0]=true;
  auto untimed=HostDevice::AllocateDrawUpload(8816);assert(untimed);
- assert(g_state->queue->waits==2 && g_state->frame_slot_wait_calls==1);
+ assert(g_state->queue->waits==2 && g_state->frame_slot_wait_calls==2); // Cheap count survives timing-off.
  std::memset(reuse.mapped,0xDD,8816);assert(static_cast<u8*>(other.mapped)[0]==0xCC);
  auto large=HostDevice::AllocateDrawUpload(5*1024*1024);assert(large&&large.offset==0);
  assert(g_state->device->allocations==4);
