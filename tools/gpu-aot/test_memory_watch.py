@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 
-p=argparse.ArgumentParser(description=__doc__); p.add_argument('output',type=Path); a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__); p.add_argument('output',type=Path); p.add_argument('--verify-regression',action='store_true'); p.add_argument('--compiler',default='clang++'); a=p.parse_args()
 root=Path(__file__).resolve().parents[2]; a.output.mkdir(parents=True,exist_ok=True)
 stub=a.output/'include/rex/system'; stub.mkdir(parents=True,exist_ok=True)
 (stub.parent/'cvar.h').write_text(r'''
@@ -73,6 +73,10 @@ h.write_text(r'''
 #include <rex/system/xmemory.h>
 #include <cassert>
 #include <thread>
+#ifdef WATCH_FIXTURE_COUNTER
+extern uint64_t fixture_page_checks;
+namespace legodimensions::gpu_native { void FixtureSetEpoch(uint64_t); }
+#endif
 using namespace legodimensions::gpu_native;
 CpuMemoryStamp Stamp(uint32_t at,uint32_t length) {
  CpuMemorySpan span{at,length}; return WatchCpuMemory({&span,1});
@@ -109,25 +113,71 @@ int main(int argc,char**) {
  ShutdownCpuMemoryWatch();assert(!CpuMemoryUnchanged(after));
  auto recreated=Stamp(0xA0009000,4096);assert(CpuMemoryUnchanged(recreated));
  memory.Write(0xE0008001);assert(!CpuMemoryUnchanged(recreated));
+ #ifdef WATCH_FIXTURE_COUNTER
+ auto large=Stamp(0xA0010000,128*4096);
+ fixture_page_checks=0;assert(CpuMemoryUnchanged(large));assert(fixture_page_checks==128);
+ for(unsigned i=0;i<10000;++i) assert(CpuMemoryUnchanged(large));
+ assert(fixture_page_checks==128); // No page walk without an intervening write.
+ std::thread reader([&]{for(unsigned i=0;i<1000;++i) assert(CpuMemoryUnchanged(large));});
+ reader.join();assert(fixture_page_checks==128);
+ InvalidateCpuPhysicalMemory(0x1000,4); // Unrelated write: validate once again.
+ assert(CpuMemoryUnchanged(large));assert(fixture_page_checks==256);
+ assert(CpuMemoryUnchanged(large));assert(fixture_page_checks==256);
+ InvalidateCpuPhysicalMemory(0x10004,4);assert(!CpuMemoryUnchanged(large));
+ large=Stamp(0xA0010000,128*4096);assert(CpuMemoryUnchanged(large));
+ FixtureSetEpoch(UINT64_MAX);assert(CpuMemoryUnchanged(large));
+ InvalidateCpuPhysicalMemory(0x1000,4); // Wrap disables cache permanently.
+ fixture_page_checks=0;
+ assert(CpuMemoryUnchanged(large));assert(CpuMemoryUnchanged(large));
+ assert(fixture_page_checks==256);
+ InvalidateCpuPhysicalMemory(0x1000,4);
+ assert(CpuMemoryUnchanged(large));assert(fixture_page_checks==384);
+ ShutdownCpuMemoryWatch();assert(!CpuMemoryUnchanged(large));
+ #endif
  ShutdownCpuMemoryWatch();
 }
 ''')
 exe=a.output/'memory-watch-test.exe'
-subprocess.run(['clang++','-std=c++20','-DNOMINMAX','-I'+str(a.output/'include'),
- '-I'+str(root/'rexlego/src'),str(root/'rexlego/src/gpu_native/memory_watch.cpp'),str(h),'-o',str(exe)],check=True)
+subprocess.run([a.compiler,'-std=c++20','-DNOMINMAX','-I'+str(a.output/'include'),
+ '-I'+str(root/'rexlego/src'),str(root/'rexlego/src/gpu_native/memory_watch.cpp'),str(h),'-o',str(exe)],check=True,timeout=45)
 env=dict(os.environ);env.pop('LEGO_NATIVE_NO_MEMORY_WATCH',None);env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='1'
-subprocess.run([str(exe.resolve())],env=env,check=True)
-env['LEGO_NATIVE_NO_MEMORY_WATCH']='1';subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True)
+subprocess.run([str(exe.resolve())],env=env,check=True,timeout=10)
+env['LEGO_NATIVE_NO_MEMORY_WATCH']='1';subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True,timeout=10)
 env.pop('LEGO_NATIVE_NO_MEMORY_WATCH');env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='0'
-subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True)
+subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True,timeout=10)
 env.pop('LEGO_NATIVE_STATIC_TEXTURE_WATCH')
-subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True)
+subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True,timeout=10)
 env['LEGO_NATIVE_BUFFER_WATCH']='1';env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='0'
-subprocess.run([str(exe.resolve())],env=env,check=True)
+subprocess.run([str(exe.resolve())],env=env,check=True,timeout=10)
 env['LEGO_NATIVE_NO_MEMORY_WATCH']='1'
-subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True)
+subprocess.run([str(exe.resolve()),'disabled'],env=env,check=True,timeout=10)
+# Count page comparisons in the production loop; all decisions remain unchanged.
+production=(root/'rexlego/src/gpu_native/memory_watch.cpp').read_text()
+loop='  for (const auto [page, version] : stamp.pages)\n    if (g_page_versions[page] != version) return false;'
+assert production.count(loop)==1
+instrumented=production.replace(loop, '  for (const auto [page, version] : stamp.pages) {\n    ++fixture_page_checks;\n    if (g_page_versions[page] != version) return false;\n  }')
+instrumented='#include <cstdint>\nuint64_t fixture_page_checks=0;\n'+instrumented
+instrumented+='\nnamespace legodimensions::gpu_native { void FixtureSetEpoch(uint64_t epoch) { auto lock=g_watch_region.Acquire();g_write_epoch=epoch; } }\n'
+counted=a.output/'watch-counted.cpp';counted.write_text(instrumented)
+count_exe=a.output/'memory-watch-counted.exe'
+command=[a.compiler,'-std=c++20','-DNOMINMAX','-DWATCH_FIXTURE_COUNTER','-I'+str(a.output/'include'),'-I'+str(root/'rexlego/src'),str(counted),str(h),'-o',str(count_exe)]
+subprocess.run(command,check=True,timeout=45)
+env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='1';env.pop('LEGO_NATIVE_NO_MEMORY_WATCH',None)
+subprocess.run([str(count_exe.resolve())],env=env,check=True,timeout=10)
+if a.verify_regression:
+ shortcut='  if (g_write_epoch && stamp.checked_write_epoch == g_write_epoch) return true;'
+ assert instrumented.count(shortcut)==1
+ counted.write_text(instrumented.replace(shortcut,''))
+ negative_exe=a.output/'memory-watch-uncached-control.exe'
+ negative_command=command[:-1]+[str(negative_exe)]
+ subprocess.run(negative_command,check=True,timeout=45)
+ import resource
+ def no_core(): resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+ bad=subprocess.run([str(negative_exe.resolve())],env=env,capture_output=True,text=True,timeout=10,preexec_fn=no_core)
+ assert bad.returncode!=0 and 'fixture_page_checks==128' in bad.stderr,bad.stderr
+ counted.write_text(instrumented)
 (a.output/'verification.json').write_text(json.dumps({'production_source':True,'sdk_model':True,'checks':[
  'A/C/E aliases and +4KB','same-frame writes','neighbor watch retained','base+mips','physical host write',
  'write between arm and reuse','unknown/uncommitted/overflow fallback','device recreation','disabled fallback'],
- 'passed':True},indent=2))
+ 'clean_validation_page_walks':128,'repeated_clean_checks':11000,'unrelated_write_revalidates':True,'epoch_wrap_disables_cache':True,'negative_control_passed':a.verify_regression,'passed':True},indent=2))
 print('Passed production watcher with SDK callback model: aliases, same-frame writes, separate mips, races, neighbor protection, physical copies and fallback.')
