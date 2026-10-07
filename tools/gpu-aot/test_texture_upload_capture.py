@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 import struct
 import subprocess
+import shutil
 
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('output',type=Path)
+p.add_argument('--compiler',default='clang++')
 a=p.parse_args()
 a.output.mkdir(parents=True,exist_ok=True)
 root=Path(__file__).resolve().parents[2]
@@ -21,6 +23,7 @@ cpp.write_text(r'''
 #include <atomic>
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -29,6 +32,14 @@ cpp.write_text(r'''
 #include <unordered_set>
 #include <vector>
 using u8=uint8_t;using u32=uint32_t;using u64=uint64_t;
+#ifndef _WIN32
+int _putenv_s(const char* name,const char* value){return setenv(name,value,1);}
+int _dupenv_s(char** value,size_t* size,const char* name){
+ const char* input=std::getenv(name);*value=nullptr;*size=0;
+ if(input){*size=std::strlen(input)+1;*value=static_cast<char*>(std::malloc(*size));std::memcpy(*value,input,*size);}
+ return 0;
+}
+#endif
 std::atomic<u32> g_probe_frame{0};
 namespace plume {enum class RenderFormat {BC1_UNORM,BC3_UNORM,R8G8B8A8_UNORM};}
 enum class ShaderStage {kVertex,kPixel};
@@ -39,9 +50,33 @@ struct TextureResource {plume::RenderFormat format;u32 guest_address,width=5,hei
 u32 RowPitch(plume::RenderFormat,u32){return 256;}
 u32 RowCount(plume::RenderFormat f,u32 h){return f==plume::RenderFormat::R8G8B8A8_UNORM?h:(h+3)/4;}
 #define REXLOG_INFO(...) ((void)0)
+int warnings=0;
+#define REXLOG_WARN(...) (++warnings)
 '''+function+r'''
 int main(int argc,char**argv){
  _putenv_s("LEGO_DUMP_TEXTURE_UPLOADS",argv[1]);
+ if(argc>4){
+  _putenv_s("LEGO_DUMP_TEXTURE_UPLOADS_PIXEL_SHADER",argv[3]);
+  TextureResource r{plume::RenderFormat::BC3_UNORM,42};
+  std::vector<u8> data(256*7,0xAB);
+  if(argv[4][0]=='0'){
+   for(int i=0;i<3;++i)DumpTextureUpload(r,data.data());
+   if(warnings!=1 || !TextureCapture().dumped.empty() || TextureCapture().written_bytes ||
+      std::filesystem::exists(argv[1]))return 20;
+   return 0;
+  }
+  const u64 hash=std::strtoull(argv[3],nullptr,16);
+  ps=hash^1;
+  DumpTextureUpload(r,data.data());
+  if(!TextureCapture().dumped.empty() || TextureCapture().written_bytes ||
+     std::filesystem::exists(argv[1]))return 21;
+  ps=hash;
+  if(!TextureUploadCapturePending(r))return 22;
+  DumpTextureUpload(r,data.data());
+  if(warnings || TextureCapture().dumped.size()!=1 || !TextureCapture().written_bytes ||
+     !std::filesystem::is_regular_file(std::filesystem::path(argv[1])/"42.dds"))return 23;
+  return 0;
+ }
  if(argc>2){
   _putenv_s("LEGO_DUMP_TEXTURE_UPLOADS_ALL_LEVELS","1");
   _putenv_s("LEGO_DUMP_TEXTURE_UPLOADS_TRIGGER",argv[2]);
@@ -101,9 +136,9 @@ int main(int argc,char**argv){
 }
 ''')
 exe=a.output/'test.exe'
-subprocess.run(['clang++','-std=c++20','-O2',str(cpp),'-o',str(exe)],check=True)
+subprocess.run([a.compiler,'-std=c++20','-O2',str(cpp),'-o',str(exe)],check=True,timeout=45)
 data=a.output/'dds'
-subprocess.run([str(exe.resolve()),str(data.resolve())],check=True)
+subprocess.run([str(exe.resolve()),str(data.resolve())],check=True,timeout=10)
 assert not (data/'999.dds').exists()
 for name,code,row_bytes,rows in [('1',b'DXT5',32,2),('2',b'DXT1',16,2),('3',b'\0'*4,20,7)]:
     b=(data/(name+'.dds')).read_bytes()
@@ -115,7 +150,7 @@ for name,code,row_bytes,rows in [('1',b'DXT5',32,2),('2',b'DXT1',16,2),('3',b'\0
 all_data=a.output/'all-mips'
 trigger=a.output/'arm-capture'
 trigger.unlink(missing_ok=True)
-subprocess.run([str(exe.resolve()),str(all_data.resolve()),str(trigger.resolve())],check=True)
+subprocess.run([str(exe.resolve()),str(all_data.resolve()),str(trigger.resolve())],check=True,timeout=10)
 b=(all_data/'armed/42.dds').read_bytes()
 assert struct.unpack_from('<I',b,28)[0]==7
 expected=bytearray()
@@ -131,11 +166,23 @@ assert not (all_data/'armed/43.dds').exists()
 for stage in ('lotr','third','fourth'):
     assert (all_data/stage/'42.dds').read_bytes()==b
 assert not (all_data/'fifth').exists()
+for index,(value,valid) in enumerate([
+    ('D93BF7D40B24167D',True),('d93bf7d40b24167d',True),('0000000000000000',True),
+    ('',False),('D93BF7D40B24167',False),('0D93BF7D40B24167D',False),
+    ('0x3BF7D40B24167D',False),(' D93BF7D40B24167',False),
+    ('D93BF7D40B24167G',False),('D93BF7D40B24167\n',False)]):
+    filter_output=a.output/f'filter-{index}'
+    if filter_output.exists():
+        shutil.rmtree(filter_output)
+    subprocess.run([str(exe.resolve()),str(filter_output.resolve()),
+                    'filter',value,'1' if valid else '0'],check=True,timeout=10)
 (a.output/'verification.json').write_text(json.dumps({'passed':True,'formats':['BC3/DXT5','BC1/DXT1','RGBA8'],
     'checks':['odd dimensions','256-byte row padding stripped','exact payload preserved','both TT shader variants','unrelated shader filtered',
               'late trigger','cached-upload capture request','all seven packed-tail mip sizes','512-byte mip gaps stripped',
               'exact raw guest backing','volume refused','128MiB budget',
               'rearm after full scene quota','scene files preserved','no reused scene overwrite',
-              'four scene limit','invalid scene path refused','global byte budget retained'],
+              'four scene limit','invalid scene path refused','global byte budget retained',
+              'exact pixel shader match','uppercase and lowercase hash','zero hash',
+              'nonmatching draw consumes no capture quota','malformed hash disables capture and warns once'],
     'game_launched':False},indent=2)+'\n')
 print('PASS: DXT5/DXT1/RGBA capture preserves exact rows and filters unrelated shaders')

@@ -86,6 +86,12 @@ bool legodimensions::gpu_native::CpuMemoryUnchanged(const CpuMemoryStamp& stamp)
  return true;
 }
 '''+resource+r'''
+struct AllocationRecord {u64 old_hash,new_hash,conversion;size_t previous;bool evicted;};
+std::vector<AllocationRecord> allocation_records;
+void TraceBufferAllocation(const BufferResource&,const VertexByteOrder&,u64 old_hash,
+ u64 new_hash,u64 conversion,size_t previous,bool evicted){
+ allocation_records.push_back({old_hash,new_hash,conversion,previous,evicted});
+}
 std::shared_ptr<BufferResource> resource;
 auto AdoptBuffer(u32,BufferKind)->std::shared_ptr<BufferResource>{return resource;}
 struct BufferResourceView {
@@ -123,17 +129,25 @@ int main() {
  auto* first=ResolveBufferResource(1,BufferKind::kVertex,order);assert(first);
  const auto original_bytes=first->data;
  assert(HostDevice::device.allocations==1);
+ assert(allocation_records.size()==1&&allocation_records.back().old_hash==0&&
+   allocation_records.back().new_hash!=0&&allocation_records.back().previous==0);
  order.stream_offset=160;assert(ResolveBufferResource(1,BufferKind::kVertex,order)==first);
  assert(HostDevice::device.allocations==1);
+ assert(allocation_records.size()==1); // A reused conversion is not an allocation.
  auto* plain=ResolveBufferResource(1,BufferKind::kVertex,{});assert(plain&&plain!=first);
  assert(ResolveBufferResource(1,BufferKind::kVertex,order)==first);
  assert(HostDevice::device.allocations==2);
+ assert(allocation_records.size()==2&&allocation_records.back().previous==1&&
+   allocation_records.back().old_hash==allocation_records.back().new_hash);
  memory.bytes[32+164]^=0xFF; // CPU update between draws in the same frame.
  auto* changed=ResolveBufferResource(1,BufferKind::kVertex,order);assert(changed&&changed!=first);
  assert(changed->data!=original_bytes&&first->data==original_bytes);
  assert(resource->variants.size()==1&&HostDevice::held.size()==2);
+ assert(allocation_records.size()==3&&allocation_records.back().previous==2&&
+   allocation_records.back().old_hash!=allocation_records.back().new_hash);
  for(u32 phase=0;phase<16;++phase){order.stream_offset=phase;assert(ResolveBufferResource(1,BufferKind::kVertex,order));}
  assert(resource->variants.size()==8); // Evicted versions survive their fence.
+ assert(allocation_records.back().evicted&&allocation_records.back().previous==8);
  assert(first->data==original_bytes);
  order.stream_offset=2048;assert(!ResolveBufferResource(1,BufferKind::kVertex,order));
  resource->kind=BufferKind::kIndex;resource->variants.clear();resource->buffer.reset();resource->format=1;

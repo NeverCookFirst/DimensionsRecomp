@@ -76,7 +76,7 @@ void Check(const char* path, size_t physical, size_t offset, uint32_t stage) {
  // readable trailing storage, as the guest committed allocation does.
  bytes.resize(bytes.size()+padding);
  for (auto start : {physical,physical+offset}) {
-  auto* result=FindShaderByMicrocode(bytes.data()+start,stage);
+  auto* result=FindShaderByMicrocode(bytes.data()+start,stage,bytes.size()-start);
   if (!result || result->hash!=expected) {
    std::cerr << path << " section " << start << " failed exact lookup\n";
    std::abort();

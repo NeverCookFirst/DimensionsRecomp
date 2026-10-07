@@ -39,6 +39,7 @@
 #include "gpu_native/long_probe.h"
 #include "gpu_native/memory_watch.h"
 #include "gpu_native/depth_alias.h"
+#include "gpu_native/texture_depth_upload.h"
 
 namespace legodimensions::gpu_native {
 namespace {
@@ -102,6 +103,10 @@ struct TextureResource {
   bool upload_source_key_valid = false;
   CpuMemoryStamp cpu_stamp;
   bool resolved_on_host = false;
+  // Diagnostic-only cache, serialized by the caller's LockRecording. Keep the
+  // global probe deduplication for authority transitions and resource reuse.
+  u64 last_authority_probe_signature = 0;
+  bool authority_probe_signature_valid = false;
   u32 edram_base = ~0u;
   u32 guest_msaa = 0;
   u64 write_generation = 0;
@@ -114,6 +119,10 @@ std::unique_ptr<plume::RenderTexture> CreateHostTexture(
 
 std::mutex g_textures_mutex;
 std::unordered_map<u32, std::shared_ptr<TextureResource>> g_textures;
+// Only these resources can contain cached framebuffer dependencies. Serialized
+// with framebuffer creation/invalidation/reset by HostDevice::LockRecording;
+// weak pointers never extend texture or framebuffer lifetimes.
+std::unordered_map<u32, std::weak_ptr<TextureResource>> g_framebuffer_owners;
 std::atomic<u32> g_texture_lifecycle_logs{0};
 TextureUploadTiming g_upload_timing;  // Serialized by LockRecording.
 u64 g_depth_alias_generation = 0;  // Serialized by LockRecording.
@@ -392,12 +401,22 @@ bool UpdateResolvedSampling(TextureResource& resource) {
 }
 
 void InvalidateFramebufferReferences(u32 guest_address) {
+  auto recording = HostDevice::LockRecording();
   std::vector<std::shared_ptr<TextureResource>> resources;
   {
     std::lock_guard lock(g_textures_mutex);
-    resources.reserve(g_textures.size());
-    for (const auto& [address, resource] : g_textures) {
-      resources.push_back(resource);
+    resources.reserve(g_framebuffer_owners.size());
+    for (auto it = g_framebuffer_owners.begin(); it != g_framebuffer_owners.end();) {
+      const auto resource = it->second.lock();
+      const auto current = g_textures.find(it->first);
+      // A released/replaced owner retains its own framebuffers through fenced
+      // retirement. Only current owners need their attachment keys invalidated.
+      if (!resource || current == g_textures.end() || current->second != resource) {
+        it = g_framebuffer_owners.erase(it);
+      } else {
+        resources.push_back(resource);
+        ++it;
+      }
     }
   }
   for (const auto& resource : resources) {
@@ -412,6 +431,8 @@ void InvalidateFramebufferReferences(u32 guest_address) {
           it = resource->framebuffers.erase(it);
         } else ++it;
       }
+      if (resource->framebuffers.empty())
+        g_framebuffer_owners.erase(resource->guest_address);
     }
     for (auto& framebuffer : retired) HostDevice::RetireResource(std::move(framebuffer));
   }
@@ -475,6 +496,8 @@ struct TextureCaptureState {
   std::string stage;
   std::unordered_set<std::string> completed_stage_names;
   bool all_levels = false, armed = false;
+  bool pixel_shader_filter_enabled = false, pixel_shader_filter_valid = true;
+  u64 pixel_shader_filter = 0;
   u32 checked_frame = ~u32{0};
   u64 written_bytes = 0;
   std::unordered_set<u32> dumped;
@@ -493,6 +516,26 @@ TextureCaptureState& TextureCapture() {
     result.trigger = value ? value : "";
     std::free(value);
     result.all_levels = std::getenv("LEGO_DUMP_TEXTURE_UPLOADS_ALL_LEVELS") != nullptr;
+    value = nullptr;
+    _dupenv_s(&value, &length, "LEGO_DUMP_TEXTURE_UPLOADS_PIXEL_SHADER");
+    if (value) {
+      result.pixel_shader_filter_enabled = true;
+      result.pixel_shader_filter_valid = std::strlen(value) == 16;
+      if (result.pixel_shader_filter_valid) {
+        for (const char* digit = value; *digit; ++digit) {
+          u32 nibble;
+          if (*digit >= '0' && *digit <= '9') nibble = *digit - '0';
+          else if (*digit >= 'a' && *digit <= 'f') nibble = *digit - 'a' + 10;
+          else if (*digit >= 'A' && *digit <= 'F') nibble = *digit - 'A' + 10;
+          else { result.pixel_shader_filter_valid = false; break; }
+          result.pixel_shader_filter = (result.pixel_shader_filter << 4) | nibble;
+        }
+      }
+      if (!result.pixel_shader_filter_valid) {
+        REXLOG_WARN("Native GPU: texture upload capture disabled: LEGO_DUMP_TEXTURE_UPLOADS_PIXEL_SHADER must be exactly 16 hexadecimal digits");
+      }
+    }
+    std::free(value);
     return result;
   }();
   return state;
@@ -503,6 +546,9 @@ TextureCaptureState& TextureCapture() {
 bool TextureUploadCapturePending(const TextureResource& resource) {
   auto& state = TextureCapture();
   if (state.root.empty() || state.written_bytes >= 128ull * 1024 * 1024) return false;
+  if (!state.pixel_shader_filter_valid ||
+      (state.pixel_shader_filter_enabled &&
+       BoundShaderHash(ShaderStage::kPixel) != state.pixel_shader_filter)) return false;
   if (!state.trigger.empty() && state.checked_frame != g_probe_frame.load()) {
     state.checked_frame = g_probe_frame.load();
     std::error_code error;
@@ -687,6 +733,146 @@ std::unique_ptr<plume::RenderTexture> CreateHostTexture(
     return nullptr;
   }
   return texture;
+}
+
+bool EnsureDepthSamplingMirror(TextureResource& resource) {
+  if (resource.sampled_texture && resource.sampled_view &&
+      resource.sampled_descriptor_index != ~0u) return true;
+  plume::RenderTextureDesc desc;
+  desc.dimension = plume::RenderTextureDimension::TEXTURE_2D;
+  desc.width = resource.width; desc.height = resource.height;
+  desc.depth = 1; desc.mipLevels = 1; desc.arraySize = 1;
+  desc.multisampling.sampleCount = plume::RenderSampleCount::COUNT_1;
+  desc.format = plume::RenderFormat::R32_FLOAT;
+  desc.flags |= plume::RenderTextureFlag::RENDER_TARGET;
+  desc.committed = true;
+  auto texture = HostDevice::Device()->createTexture(desc);
+  if (!texture || !static_cast<plume::D3D12Texture*>(texture.get())->d3d) return false;
+  plume::RenderTextureViewDesc view_desc;
+  view_desc.dimension = plume::RenderTextureViewDimension::TEXTURE_2D;
+  view_desc.format = plume::RenderFormat::R32_FLOAT;
+  view_desc.mipLevels = 1;
+  constexpr plume::RenderSwizzle swizzles[] = {
+      plume::RenderSwizzle::R, plume::RenderSwizzle::G,
+      plume::RenderSwizzle::B, plume::RenderSwizzle::A,
+      plume::RenderSwizzle::ZERO, plume::RenderSwizzle::ONE};
+  const u32 swizzle = NativeTextureSwizzle(resource.guest_format & 0x3Fu,
+                                         resource.guest_fetch.swizzle);
+  view_desc.componentMapping = plume::RenderComponentMapping(
+      swizzles[swizzle & 7], swizzles[(swizzle >> 3) & 7],
+      swizzles[(swizzle >> 6) & 7], swizzles[(swizzle >> 9) & 7]);
+  auto view = texture->createTextureView(view_desc);
+  if (!view) return false;
+  const u32 descriptor = HostDevice::RegisterTexture(texture.get(), view.get());
+  if (descriptor == ~0u) return false;
+  // Publish a complete immutable descriptor only after all allocation steps
+  // succeed. Host resolves reuse this same mirror and remain authoritative.
+  resource.sampled_texture = std::move(texture);
+  resource.sampled_view = std::move(view);
+  resource.sampled_descriptor_index = descriptor;
+  return true;
+}
+
+bool UploadGuestDepthTexture(TextureResource& resource,
+                             plume::RenderCommandList* commands,
+                             bool require_content_hash) {
+  namespace tu = rex::graphics::texture_util;
+  using rex::graphics::xenos::DataDimension;
+  std::lock_guard lock(resource.mutex);
+  const auto& fetch = resource.guest_fetch;
+  // Only the actual UNORM24 2D atlas path is supported here. FLOAT24 has a
+  // different encoding; cubes, volumes and mip chains need separate coverage.
+  if (!commands || resource.surface || resource.owns_guest_memory ||
+      resource.resolved_on_host || !resource.texture || resource.guest_format != 22 ||
+      !IsDepthFormat(resource.format) || resource.levels != 1 ||
+      resource.d3d_type != u32(D3DResourceType::kTexture) ||
+      fetch.dimension != DataDimension::k2DOrStacked || fetch.stacked ||
+      !fetch.base_address || fetch.num_format || fetch.exp_adjust ||
+      (u32(fetch.sign_x) | u32(fetch.sign_y) | u32(fetch.sign_z) | u32(fetch.sign_w)))
+    return false;
+  const bool audit = std::getenv("LEGO_NATIVE_AUDIT_TEXTURE_WATCH") != nullptr;
+  if (!require_content_hash && !audit && resource.guest_uploaded &&
+      resource.sampled_valid && CpuMemoryUnchanged(resource.cpu_stamp)) {
+    if (NativeTextureTimingEnabled()) ++g_upload_timing.source_hits;
+    return true;
+  }
+  const auto layout = tu::GetGuestTextureLayout(fetch.dimension, fetch.pitch,
+      resource.width, resource.height, 1, fetch.tiled, fetch.format,
+      fetch.packed_mips, true, 0);
+  const u32 address = fetch.base_address << 12;
+  const u32 size = layout.base.level_data_extent_bytes;
+  if (!size || layout.base.array_slice_data_extent_bytes > size ||
+      !ReadableUploadSpan(address, size)) return false;
+  const CpuMemorySpan spans[] = {{address, size}};
+  auto stamp = CpuMemoryWatchEnabled() ? WatchCpuMemory(spans) : CpuMemoryStamp{};
+  const auto* source = address < 0x20000000u
+      ? REX_KERNEL_MEMORY()->TranslatePhysical<const u8*>(address)
+      : REX_KERNEL_MEMORY()->TranslateVirtual<const u8*>(address);
+  const auto start = NativeTextureTimingEnabled() ? std::chrono::steady_clock::now()
+                                                : std::chrono::steady_clock::time_point{};
+  const auto key = MakeTextureUploadSourceKey({source, size}, {},
+      {reinterpret_cast<const u8*>(&fetch), sizeof(fetch)});
+  if (NativeTextureTimingEnabled()) {
+    const double elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+    g_upload_timing.hash_ms += elapsed;
+    g_upload_timing.source_ms += elapsed;
+    g_upload_timing.hashed_bytes += size;
+  }
+  if (resource.guest_uploaded && resource.sampled_valid &&
+      resource.upload_source_key_valid && resource.upload_source_key == key) {
+    resource.cpu_stamp = std::move(stamp);
+    if (NativeTextureTimingEnabled()) ++g_upload_timing.source_hits;
+    return true;
+  }
+  const u32 pitch = RowPitch(plume::RenderFormat::R32_FLOAT, resource.width);
+  const u64 bytes = u64(pitch) * resource.height;
+  if (!resource.width || !resource.height || !bytes || bytes > 128u * 1024 * 1024)
+    return false;
+  std::vector<u8> decoded(static_cast<size_t>(bytes));
+  u32 offset_x = 0, offset_y = 0, offset_z = 0;
+  if (fetch.packed_mips)
+    tu::GetPackedMipOffset(resource.width, resource.height, 1, fetch.format,
+                           0, offset_x, offset_y, offset_z);
+  const u32 endian_xor = u32(fetch.endianness) == 1 ? 1
+      : u32(fetch.endianness) == 2 ? 3 : u32(fetch.endianness) == 3 ? 2 : 0;
+  if (!CopyTextureDepth24({source, layout.base.array_slice_data_extent_bytes},
+          decoded, resource.width, resource.height, pitch, endian_xor,
+          [&](u32 x, u32 y, u32) -> int64_t {
+            if (fetch.tiled)
+              return tu::GetTiledOffset2D(x + offset_x, y + offset_y,
+                  layout.base.row_pitch_bytes / 4, 2);
+            return u64(y + offset_y) * layout.base.row_pitch_bytes +
+                   u64(x + offset_x) * 4;
+          })) return false;
+  if (!EnsureDepthSamplingMirror(resource)) return false;
+  auto upload = std::shared_ptr<plume::RenderBuffer>(HostDevice::Device()->createBuffer(
+      plume::RenderBufferDesc::UploadBuffer(static_cast<u32>(bytes))).release());
+  if (!upload) return false;
+  auto* mapped = upload->map();
+  if (!mapped) return false;
+  std::memcpy(mapped, decoded.data(), decoded.size());
+  upload->unmap();
+  commands->barriers(plume::RenderBarrierStage::COPY,
+      plume::RenderTextureBarrier(resource.sampled_texture.get(), plume::RenderTextureLayout::COPY_DEST));
+  commands->copyTextureRegion(
+      plume::RenderTextureCopyLocation::Subresource(resource.sampled_texture.get(), 0, 0),
+      plume::RenderTextureCopyLocation::PlacedFootprint(upload.get(), plume::RenderFormat::R32_FLOAT,
+          resource.width, resource.height, 1, pitch / 4, 0));
+  commands->barriers(plume::RenderBarrierStage::GRAPHICS,
+      plume::RenderTextureBarrier(resource.sampled_texture.get(), plume::RenderTextureLayout::SHADER_READ));
+  HostDevice::RetireResource(std::move(upload));
+  resource.guest_uploaded = true;
+  resource.sampled_valid = true;
+  resource.guest_content_hash = XXH3_64bits(decoded.data(), decoded.size());
+  resource.upload_source_key = key;
+  resource.upload_source_key_valid = true;
+  resource.cpu_stamp = std::move(stamp);
+  if (NativeTextureTimingEnabled()) g_upload_timing.converted_bytes += bytes;
+  if (LongProbeEnabled()) LongProbeEvent("depth_texture_upload", false,
+      "guest=", resource.guest_address, "base=", address, "width=", resource.width,
+      "height=", resource.height, "bytes=", bytes);
+  return true;
 }
 
 u32 AllocateResource(const std::shared_ptr<TextureResource>& resource,
@@ -1012,7 +1198,7 @@ TextureResourceView ResolveTextureResource(u32 guest_address) {
   if (!resource) {
     return {};
   }
-  if (resource->resolved_on_host && resource->sampled_valid)
+  if ((resource->resolved_on_host || resource->guest_uploaded) && resource->sampled_valid)
     return {resource->sampled_texture.get(), resource->sampled_view.get(),
             IsDepthFormat(resource->format) ? plume::RenderFormat::R32_FLOAT
                                           : plume::RenderFormat::R32G32B32A32_FLOAT,
@@ -1025,13 +1211,18 @@ TextureResourceView ResolveTextureResource(u32 guest_address) {
         (u64(resource->descriptor_index) << 3) ^
         (u64(resource->resolved_descriptor_index) << 11) ^
         (u64(resource->resolved_on_host) << 1) ^ u64(native_color);
-    if (LongProbeOnce(signature ^ 0xC010A07000000000ull))
-      LongProbeEvent("texture_color_authority", false, "guest=", guest_address,
-          "host_resolved=", resource->resolved_on_host, "logical_rgba=", native_color,
-          "raw_descriptor=", resource->descriptor_index,
-          "resolved_descriptor=", resource->resolved_descriptor_index,
-          "guest_swizzle=", u32(resource->guest_fetch.swizzle),
-          "width=", resource->width, "height=", resource->height);
+    if (!resource->authority_probe_signature_valid ||
+        resource->last_authority_probe_signature != signature) {
+      resource->last_authority_probe_signature = signature;
+      resource->authority_probe_signature_valid = true;
+      if (LongProbeOnce(signature ^ 0xC010A07000000000ull))
+        LongProbeEvent("texture_color_authority", false, "guest=", guest_address,
+            "host_resolved=", resource->resolved_on_host, "logical_rgba=", native_color,
+            "raw_descriptor=", resource->descriptor_index,
+            "resolved_descriptor=", resource->resolved_descriptor_index,
+            "guest_swizzle=", u32(resource->guest_fetch.swizzle),
+            "width=", resource->width, "height=", resource->height);
+    }
   }
   return {resource->texture.get(),
           native_color ? resource->resolved_view.get() : resource->view.get(),
@@ -1050,6 +1241,13 @@ bool UploadTextureResource(u32 guest_address,
   auto recording = HostDevice::LockRecording();
   UploadTimer timer;
   const auto resource = FindTexture(guest_address);
+  // Render targets and native resolves already have authoritative host
+  // storage, including resolved depth sampling mirrors. No CPU upload is
+  // required; reporting success lets callers reject genuine upload failures.
+  if (resource && commands && resource->texture &&
+      (resource->surface || resource->resolved_on_host)) return true;
+  if (resource && resource->guest_format == 22 && IsDepthFormat(resource->format))
+    return UploadGuestDepthTexture(*resource, commands, require_content_hash);
   if (DepthAliasesEnabled() && resource && commands && !resource->surface &&
       !resource->owns_guest_memory && !resource->resolved_on_host && resource->guest_format == 6 &&
       resource->guest_fetch.num_format == 0 && resource->guest_fetch.exp_adjust == 0 &&
@@ -1131,9 +1329,10 @@ bool UploadTextureResource(u32 guest_address,
     if (LongProbeEnabled() && !source_key_valid && LongProbeOnce(0xBAD0000000000000ull | guest_address))
       LongProbeEvent("unreadable_texture_source", true, "guest=", guest_address,
           "base=", u32(fetch.base_address<<12), "mip=", u32(fetch.mip_address<<12));
-    // Never read an unvalidated volume extent. Volumes may have padding
-    // between Z slices, so validating just width*height*depth isn't enough.
-    if ((volume || alpha4 || capture_pending) && !source_key_valid) return false;
+    // Every format must have resident base/mip storage before decoding. The
+    // layout extents include tiled padding, cube faces and packed mip tails;
+    // a failed hash-span check must never fall through to unchecked CPU reads.
+    if (!source_key_valid) return false;
     if (source_key_valid) {
       const auto hash_start = timer.enabled ? std::chrono::steady_clock::now()
                                             : std::chrono::steady_clock::time_point{};
@@ -1248,17 +1447,23 @@ bool UploadTextureResource(u32 guest_address,
         destination_offset += LevelSize(*resource, level);
         continue;
       }
-      for (u32 y = 0; y < (height + block_width - 1) / block_width; ++y) {
-        for (u32 x = 0; x < (width + block_width - 1) / block_width; ++x) {
-          const u32 source_offset = fetch.tiled
-              ? tu::GetTiledOffset2D(x + offset_x, y + offset_y,
-                    guest_level.row_pitch_bytes / block_bytes, rex::log2_floor(block_bytes))
-              : (y + offset_y) * guest_level.row_pitch_bytes + (x + offset_x) * block_bytes;
-          for (u32 byte = 0; byte < block_bytes; ++byte)
-            mapped[destination_offset + y * pitch + x * block_bytes + byte] =
-                source[(source_offset + byte) ^ endian_xor];
-        }
-      }
+      // The checked block copier also handles one 2D/cube slice. Validate each
+      // computed address, including endian XOR and packed-mip offsets, against
+      // the same guest extent whose residency was checked above.
+      const bool copied = CopyTextureVolumeBlocks(
+          {source, guest_level.array_slice_data_extent_bytes},
+          {mapped + destination_offset, LevelSize(*resource, level)},
+          (width + block_width - 1) / block_width,
+          (height + format_info->block_height - 1) / format_info->block_height,
+          1, block_bytes, pitch, endian_xor,
+          [&](u32 x, u32 y, u32) -> int64_t {
+            if (fetch.tiled)
+              return tu::GetTiledOffset2D(x + offset_x, y + offset_y,
+                  guest_level.row_pitch_bytes / block_bytes, rex::log2_floor(block_bytes));
+            return u64(y + offset_y) * guest_level.row_pitch_bytes +
+                   u64(x + offset_x) * block_bytes;
+          });
+      if (!copied) return false;
       destination_offset += LevelSize(*resource, level);
     }
     DumpTextureUpload(*resource, mapped,
@@ -1471,31 +1676,10 @@ bool ResolveTextureFromSurface(u32 destination_texture, u32 source_surface,
       (adopted_destination->guest_fetch.swizzle == 0xB48 ||
        adopted_destination->guest_fetch.swizzle == 0x688)) {
     auto& dst = *adopted_destination;
-    if (!dst.sampled_texture) {
-      auto* device = HostDevice::Device();
-      plume::RenderTextureDesc desc;
-      desc.dimension = plume::RenderTextureDimension::TEXTURE_2D;
-      desc.width = dst.width; desc.height = dst.height;
-      desc.depth = 1; desc.mipLevels = 1; desc.arraySize = 1;
-      desc.multisampling.sampleCount = plume::RenderSampleCount::COUNT_1;
-      desc.format = plume::RenderFormat::R32_FLOAT;
-      desc.flags |= plume::RenderTextureFlag::RENDER_TARGET;
-      desc.committed = true;
-      dst.sampled_texture = device->createTexture(desc);
-      if (!dst.sampled_texture ||
-          !static_cast<plume::D3D12Texture*>(dst.sampled_texture.get())->d3d) return false;
-      plume::RenderTextureViewDesc view;
-      view.dimension = plume::RenderTextureViewDimension::TEXTURE_2D;
-      view.format = plume::RenderFormat::R32_FLOAT;
-      view.mipLevels = 1;
-      if (dst.guest_fetch.swizzle == 0xB48)
-        view.componentMapping = plume::RenderComponentMapping(plume::RenderSwizzle::R,
-            plume::RenderSwizzle::G, plume::RenderSwizzle::ONE, plume::RenderSwizzle::ONE);
-      dst.sampled_view = dst.sampled_texture->createTextureView(view);
-      if (!dst.sampled_view) return false;
-      dst.sampled_descriptor_index = HostDevice::RegisterTexture(
-          dst.sampled_texture.get(), dst.sampled_view.get());
-    }
+    // CPU-first and GPU-first sampling must compose the same Xenos depth
+    // channel expansion with the guest swizzle. Publish storage/view/descriptor
+    // together so an allocation failure can be retried safely.
+    if (!EnsureDepthSamplingMirror(dst)) return false;
     if (!HostDevice::ResolveHdrColor(source->texture.get(), source->descriptor_index,
         dst.sampled_texture.get(), dst.width, dst.height, 1.0f,
         ColorResolveDestination::kDepthFloat32, true, &*region)) return false;
@@ -1670,6 +1854,18 @@ bool ResolveTextureFromSurface(u32 destination_texture, u32 source_surface,
   return UpdateResolvedSampling(*resolved_destination);
 }
 
+bool NativePromotedSurfaceExtent(u32 guest_address, u32& width, u32& height) {
+  const auto resource = FindTexture(guest_address);
+  if (!resource || !resource->surface || !resource->texture ||
+      !resource->host_width || !resource->host_height ||
+      resource->host_width > 16384 || resource->host_height > 32768 ||
+      (resource->host_width == resource->width &&
+       resource->host_height == resource->height)) return false;
+  width = resource->host_width;
+  height = resource->host_height;
+  return true;
+}
+
 bool PromoteTiledSurface(u32 guest_address, u32 width, u32 height) {
   auto recording = HostDevice::LockRecording();
   if (!guest_address) return true;
@@ -1716,6 +1912,9 @@ plume::RenderFramebuffer* ResolveFramebuffer(u32 render_target, u32 depth_stenci
 
 plume::RenderFramebuffer* ResolveFramebuffer(
     const std::array<u32, 4>& render_targets, u32 depth_stencil) {
+  // Registration and insertion must be atomic relative to invalidation; its
+  // owner snapshot must never miss a framebuffer being created concurrently.
+  auto recording = HostDevice::LockRecording();
   std::array<std::shared_ptr<TextureResource>, 4> colors;
   u32 color_count = 0;
   for (u32 i = 0; i < colors.size(); ++i) {
@@ -1763,6 +1962,7 @@ plume::RenderFramebuffer* ResolveFramebuffer(
     return nullptr;
   }
   auto* result = framebuffer.get();
+  g_framebuffer_owners[owner->guest_address] = owner;
   owner->framebuffers.emplace(key, std::move(framebuffer));
   return result;
 }
@@ -1859,6 +2059,8 @@ u32 ReleaseNativeTexture(u32 guest_address) {
 }
 
 void ResetTextureResources() {
+  auto recording = HostDevice::LockRecording();
+  g_framebuffer_owners.clear();
   g_depth_resolves.clear();
   g_edram_colors.clear();
   g_depth_alias_generation = 0;

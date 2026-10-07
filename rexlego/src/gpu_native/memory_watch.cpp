@@ -22,9 +22,15 @@ constexpr uint32_t kPageSize = 4096, kPhysicalSize = 0x20000000;
 // Protected by the SDK global critical region. Fault callbacks never take
 // renderer/resource locks and never call the driver.
 std::array<uint64_t, kPhysicalSize / kPageSize> g_page_versions{};
+uint64_t g_write_epoch = 1;
 rex::thread::global_critical_region g_watch_region;
 rex::memory::Memory* g_memory = nullptr;
 void* g_callback = nullptr;
+
+void AdvanceWriteEpoch() {
+  // Zero permanently disables the shortcut if this counter ever wraps.
+  if (g_write_epoch) ++g_write_epoch;
+}
 
 bool SelectedMemoryWatch() {
   // Vertex animation textures retain every-use content checks.
@@ -49,6 +55,7 @@ bool SelectedBufferWatch() {
 
 void Invalidate(uint32_t address, uint32_t length) {
   if (!length || address >= kPhysicalSize) return;
+  AdvanceWriteEpoch();
   const uint64_t end = std::min(uint64_t(address) + length, uint64_t(kPhysicalSize));
   for (uint32_t page = address / kPageSize; uint64_t(page) * kPageSize < end; ++page)
     ++g_page_versions[page];
@@ -71,16 +78,10 @@ bool PhysicalSpan(rex::memory::Memory* memory, CpuMemorySpan input, CpuMemorySpa
   if (first == UINT32_MAX || uint64_t(first) + input.length > kPhysicalSize ||
       physical(input.address + input.length - 1) != first + input.length - 1) return false;
   auto* heap = memory->GetPhysicalHeap();
-  for (uint64_t at = first, end = uint64_t(first) + input.length; at < end;) {
-    rex::memory::HeapAllocationInfo info{};
-    if (!heap->QueryRegionInfo(uint32_t(at), &info) ||
-        !(info.state & rex::memory::kMemoryAllocationCommit) ||
-        !(info.protect & rex::memory::kMemoryProtectRead)) return false;
-    const uint64_t page = heap->heap_base() + ((at - heap->heap_base()) / heap->page_size()) * heap->page_size();
-    const uint64_t next = page + info.region_size;
-    if (next <= at) return false;
-    at = std::min(next, end);
-  }
+  // WatchCpuMemory holds the SDK global critical region before this heap lock.
+  // Validate only the requested pages; QueryRegionInfo scans to the allocation
+  // end even when a draw uses a small window within a large shared pool.
+  if (!heap->IsRangeCommittedReadable(first, input.length)) return false;
   output = {first, input.length};
   return true;
 }
@@ -121,8 +122,10 @@ CpuMemoryStamp WatchCpuMemory(std::span<const CpuMemorySpan> spans) {
 bool CpuMemoryUnchanged(const CpuMemoryStamp& stamp) {
   if (stamp.pages.empty()) return false;
   auto lock = g_watch_region.Acquire();
+  if (g_write_epoch && stamp.checked_write_epoch == g_write_epoch) return true;
   for (const auto [page, version] : stamp.pages)
     if (g_page_versions[page] != version) return false;
+  stamp.checked_write_epoch = g_write_epoch;
   return true;
 }
 
@@ -137,6 +140,7 @@ void ShutdownCpuMemoryWatch() {
   g_callback = nullptr;
   g_memory = nullptr;
   // Invalidate stamps even if a new device is created with the same Memory.
+  AdvanceWriteEpoch();
   for (auto& version : g_page_versions) ++version;
 }
 }  // namespace legodimensions::gpu_native

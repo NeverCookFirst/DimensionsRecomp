@@ -24,6 +24,18 @@ struct D3DViewport9 {
 };
 static_assert(sizeof(D3DViewport9) == 0x18);
 
+// TU23 83FBA710 stores numeric floats in the private device shadow. The
+// public D3DVIEWPORT9 argument above keeps its unsigned integer ABI.
+struct D3DViewportState {
+  be_f32 x;
+  be_f32 y;
+  be_f32 width;
+  be_f32 height;
+  be_f32 min_z;
+  be_f32 max_z;
+};
+static_assert(sizeof(D3DViewportState) == 0x18);
+
 struct D3DRect {
   be_i32 left;
   be_i32 top;
@@ -134,7 +146,7 @@ struct D3DDevice {
   be_u32 vertex_stream_buffers[18];
   u8 unknown_326C[0x3278 - 0x326C];
   be_u32 textures[kNativeTextureSlots];
-  D3DViewport9 viewport;
+  D3DViewportState viewport;
   be_u32 viewport_reserved;
   D3DRect scissor;
   be_u32 pixel_shader;

@@ -1,0 +1,13 @@
+--- a/XenosRecomp/shader_recompiler.cpp
++++ b/XenosRecomp/shader_recompiler.cpp
+@@ -192,7 +192,9 @@
+     out += " = ";
+ 
+     auto findResult = vertexElements.find(address);
+-    assert(findResult != vertexElements.end());
++    if (findResult == vertexElements.end())
++        throw std::runtime_error(fmt::format(
++            "unsupported vertex fetch address {} (no semantic input mapping)", address));
+ 
+ #ifdef REBLUE_RECOMP
+     // Wrap each 16-bit-packed semantic in swapFloats() (per-usage mask); TEXCOORD also runs sintTexcoord() for raw-int bindings.

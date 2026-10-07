@@ -27,7 +27,9 @@ bool BindShader(ShaderStage stage, u32 guest_address);
 // Materializes the correct prelinked specialization at pipeline creation time.
 // A null result marks the containing render pass as unsupported by native GPU.
 plume::RenderShader* ResolveBoundShader(ShaderStage stage, u32 spec_constants);
-u32 BoundShaderAddress(ShaderStage stage);
+// Returns the latest guest request, including an unavailable nonnull binding.
+// Optional failure status is sampled under the same lock as the address.
+u32 BoundShaderAddress(ShaderStage stage, bool* binding_failed = nullptr);
 u32 BoundShaderTextureMask(ShaderStage stage);
 u64 BoundShaderHash(ShaderStage stage);
 // Same microcode skip list used by the existing Graphics/DoF setting.

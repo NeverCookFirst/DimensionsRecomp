@@ -5,9 +5,11 @@
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
+#include <iomanip>
 #include <memory>
 #include <mutex>
 #include <set>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -25,14 +27,18 @@
 
 #include "gpu_native/buffers.h"
 #include "gpu_native/buffer_window.h"
+#include "gpu_native/index_draw.h"
 #include "gpu_native/alpha_test.h"
 #include "gpu_native/blend_state.h"
+#include "gpu_native/cull_state.h"
 #include "gpu_native/queries.h"
 #include "gpu_native/d3d.h"
 #include "gpu_native/draw.h"
+#include "gpu_native/draw_diagnostic.h"
 #include "gpu_native/depth_state.h"
 #include "gpu_native/polygon_offset.h"
 #include "gpu_native/stencil_state.h"
+#include "gpu_native/scissor_state.h"
 #include "gpu_native/device.h"
 #include "gpu_native/shaders.h"
 #include "gpu_native/state.h"
@@ -43,6 +49,7 @@
 #include "gpu_native/long_probe.h"
 #include "gpu_native/renderdoc_probe.h"
 #include "gpu_native/vertex_declarations.h"
+#include "gpu_native/state_call_diagnostic.h"
 
 REXCVAR_DEFINE_BOOL(gpu_native_buffer_windows, false, "GPU",
     "Upload and retain only the vertex buffer ranges fetched by native draws")
@@ -96,6 +103,7 @@ struct PipelineKey {
   u32 depth_format = 0;
   u32 depth_control = 0;
   u32 clip_disable = 0;
+  u32 raster_control = 0;
   u32 stencil_masks = 0;
   u32 stencil_face = 0;
   u32 color_write_mask = 0;
@@ -119,6 +127,7 @@ struct PipelineKeyHash {
     for (const auto format : key.render_target_formats) mix(format);
     mix(key.depth_format); mix(key.depth_control); mix(key.color_write_mask); mix(key.clip_disable);
     mix(key.stencil_masks); mix(key.stencil_face);
+    mix(key.raster_control);
     for (const auto blend : key.blend_controls) mix(blend);
     mix(key.topology); mix(key.spec_constants);
     mix(u32(key.depth_bias)); mix(key.slope_scaled_depth_bias);
@@ -141,8 +150,10 @@ struct DrawTimer {
   std::chrono::steady_clock::time_point last;
   std::array<double, 7> elapsed{};
   DrawTimer() {
+    // Keep workload counts available to the per-present cadence probe even
+    // when detailed per-draw clocks are disabled.
+    ++g_draw_timing.calls;
     if (enabled) {
-      ++g_draw_timing.calls;
       last = std::chrono::steady_clock::now();
     }
   }
@@ -168,6 +179,25 @@ struct DrawTimer {
           total, elapsed[0], elapsed[1], elapsed[2], elapsed[3], elapsed[4],
           elapsed[5], elapsed[6]);
   }
+};
+
+enum class ConstantCost : size_t { kShadow, kUpload, kBindings, kTextures, kRestore };
+struct ConstantTimer {
+  bool enabled = NativeTextureTimingEnabled();
+  ConstantCost stage;
+  std::chrono::steady_clock::time_point last;
+  explicit ConstantTimer(ConstantCost initial) : stage(initial) {
+    if (enabled) last = std::chrono::steady_clock::now();
+  }
+  void Next(ConstantCost next) {
+    if (!enabled) return;
+    const auto now = std::chrono::steady_clock::now();
+    g_draw_timing.constants_ms[static_cast<size_t>(stage)] +=
+        std::chrono::duration<double, std::milli>(now - last).count();
+    last = now;
+    stage = next;
+  }
+  ~ConstantTimer() { Next(stage); }
 };
 
 bool MapTopology(u32 primitive_type, plume::RenderPrimitiveTopology& result) {
@@ -202,9 +232,65 @@ void CopyBigEndianDwords(void* destination, const void* source, u32 size) {
   }
 }
 
+void ApplyCullPipeline(plume::RenderGraphicsPipelineDesc& desc,
+                       u32 control, bool polygonal) {
+  desc.cullMode = plume::RenderCullMode::NONE;
+  if (!(control & kNativeCullCandidate)) return;
+  const auto raster = DecodeNativeCullState(control, polygonal);
+  // Winding also controls SV_IsFrontFace when stencil is disabled.
+  desc.frontFace = raster.clockwise ? plume::RenderFrontFace::CLOCKWISE
+                                   : plume::RenderFrontFace::COUNTER_CLOCKWISE;
+  if (raster.faces == 1) desc.cullMode = plume::RenderCullMode::FRONT;
+  else if (raster.faces == 2) desc.cullMode = plume::RenderCullMode::BACK;
+}
+
+plume::RenderRect CullDrawScissor(plume::RenderRect scissor,
+                                 u32 control, bool polygonal) {
+  // D3D12 has no BOTH cull mode. Empty coverage preserves the draw and its
+  // vertex processing/query scope, while producing no pixel/depth/stencil work.
+  if ((control & kNativeCullCandidate) &&
+      DecodeNativeCullState(control, polygonal).discard) return {0, 0, 0, 0};
+  return scissor;
+}
+
+StateCallCapture* NativeStateCalls() {
+  static std::unique_ptr<StateCallCapture> capture = [] {
+    const char* output = std::getenv("LEGO_NATIVE_STATE_CALLS");
+    if (!output || !*output) return std::unique_ptr<StateCallCapture>{};
+    const char* trigger = std::getenv("LEGO_NATIVE_STATE_CALLS_TRIGGER");
+    return std::make_unique<StateCallCapture>(output, trigger ? trigger : "");
+  }();
+  return capture.get();
+}
+
+void BindNativeDrawLayout(plume::RenderCommandList* commands,
+                          const DrawDeviceView& view, StateCallLedger* diagnostic) {
+  if (diagnostic) diagnostic->Layout(view.pipeline_layout);
+  commands->setGraphicsPipelineLayout(view.pipeline_layout);
+}
+
+void BindNativeDrawDescriptorSets(plume::RenderCommandList* commands,
+                                  const DrawDeviceView& view, StateCallLedger* diagnostic) {
+  if (diagnostic) {
+    for (u32 i = 0; i < 3; ++i) diagnostic->Descriptor(view.texture_descriptors, i);
+    diagnostic->Descriptor(view.sampler_descriptors, 3);
+  }
+  commands->setGraphicsDescriptorSet(view.texture_descriptors, 0);
+  commands->setGraphicsDescriptorSet(view.texture_descriptors, 1);
+  commands->setGraphicsDescriptorSet(view.texture_descriptors, 2);
+  commands->setGraphicsDescriptorSet(view.sampler_descriptors, 3);
+}
+
+void BindNativeDrawPipeline(plume::RenderCommandList* commands,
+                            plume::RenderPipeline* pipeline, StateCallLedger* diagnostic) {
+  if (diagnostic) diagnostic->Pipeline(pipeline);
+  commands->setPipeline(pipeline);
+}
+
 bool BindConstants(
     plume::RenderCommandList* commands, const D3DDevice* device,
     const DrawBindings& bindings, const VertexDeclarationView& declaration, bool capture_constants) {
+  ConstantTimer constant_timing(ConstantCost::kUpload);
   constexpr u32 kConstantsSize = 0x1000;
   constexpr u32 kSharedOffset = kConstantsSize * 2;
   DrawUploadSlice upload;
@@ -219,6 +305,7 @@ bool BindConstants(
     upload = {separate_upload.get(), separate_upload->map(), 0};
   } else upload = HostDevice::AllocateDrawUpload(kSharedOffset + sizeof(SharedConstants));
   if (!upload) return false;
+  constant_timing.Next(ConstantCost::kShadow);
   // Build in cacheable CPU memory. Persistently mapped UPLOAD storage is
   // write-combined and must never be read for diagnostics or partial updates.
   alignas(16) std::array<u8, kSharedOffset + sizeof(SharedConstants)> data;
@@ -253,7 +340,7 @@ bool BindConstants(
   }
   const auto alpha = DecodeNativeAlphaState(
       *reinterpret_cast<const be_u32*>(bytes + 10556),
-      *reinterpret_cast<const be_f32*>(bytes + 10620));
+      *reinterpret_cast<const be_f32*>(bytes + 10500));
   shared.alpha_function = alpha.function;
   shared.alpha_threshold = alpha.reference;
   std::fill(std::begin(shared.texture_3d), std::end(shared.texture_3d), 1u);
@@ -286,9 +373,10 @@ bool BindConstants(
             ps[index*4], ps[index*4+1], ps[index*4+2], ps[index*4+3]);
     }
   }
+  constant_timing.Next(ConstantCost::kTextures);
   for (u32 i = 0; i < kNativeTextureSlots; ++i) {
     if (!(texture_mask & (1u << i))) continue;
-    const auto texture = ResolveTextureResource(bindings.textures[i]);
+    auto texture = ResolveTextureResource(bindings.textures[i]);
     if (!texture.texture || texture.descriptor_index == ~u32{0}) {
       if (LongProbeEnabled() && bindings.textures[i] &&
           LongProbeOnce(0xBAD1000000000000ull | bindings.textures[i]))
@@ -298,8 +386,18 @@ bool BindConstants(
     }
     // Vertex textures contain animation data. Until every writer participates
     // in invalidation, verify their contents at every use, even with watches.
-    UploadTextureResource(bindings.textures[i], commands,
-        (BoundShaderTextureMask(ShaderStage::kVertex) & (1u << i)) != 0);
+    if (!UploadTextureResource(bindings.textures[i], commands,
+        (BoundShaderTextureMask(ShaderStage::kVertex) & (1u << i)) != 0)) {
+      // Failed residency/conversion must not sample an old or uninitialized
+      // allocation. DispatchDraw propagates this failure to active queries.
+      LongProbeEvent("bound_texture_upload_failed", true, "slot=", i,
+          "guest=", bindings.textures[i]);
+      return false;
+    }
+    // A first CPU depth upload can publish an R32 sampling mirror. Bind the
+    // descriptor selected after successful upload, rather than its old DSV.
+    if (texture.depth && !texture.surface)
+      texture = ResolveTextureResource(bindings.textures[i]);
     TextureFetchWords fetch;
     for (u32 word = 0; word < fetch.size(); ++word) fetch[word] = device->fetch_constants[i].dword[word];
     if (LongProbeEnabled()) {
@@ -346,6 +444,7 @@ bool BindConstants(
       shared.texture_2d[i] = texture.descriptor_index;
     }
   }
+  constant_timing.Next(ConstantCost::kShadow);
   std::memcpy(mapped + kSharedOffset, &shared, sizeof(shared));
   if (capture_constants && HostDevice::LongProbeSnapshotActive()) {
     const auto name=SaveLongProbeConstants({mapped,kSharedOffset+sizeof(shared)});
@@ -354,7 +453,9 @@ bool BindConstants(
         "PS=", BoundShaderHash(ShaderStage::kPixel), "texture_mask=", texture_mask,
         "VS_offset=0 PS_offset=4096 shared_offset=8192 shared_bytes=624");
   }
+  constant_timing.Next(ConstantCost::kUpload);
   std::memcpy(upload.mapped, data.data(), data.size());
+  constant_timing.Next(ConstantCost::kBindings);
   commands->setGraphicsRootDescriptor(upload.buffer->at(upload.offset), 0);
   commands->setGraphicsRootDescriptor(upload.buffer->at(upload.offset + kConstantsSize), 1);
   commands->setGraphicsRootDescriptor(upload.buffer->at(upload.offset + kSharedOffset), 2);
@@ -427,7 +528,9 @@ plume::RenderPipeline* GetPipeline(
                                      : plume::RenderFrontFace::COUNTER_CLOCKWISE;
   }
   desc.primitiveTopology = topology;
-  desc.cullMode = plume::RenderCullMode::NONE;
+  ApplyCullPipeline(desc, key.raster_control,
+      topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
+      topology == plume::RenderPrimitiveTopology::TRIANGLE_STRIP);
   desc.fillMode = plume::RenderFillMode::SOLID;
   desc.renderTargetCount = 0;
   for (u32 i = 0; i < kNativeRenderTargets; ++i) {
@@ -487,6 +590,229 @@ plume::RenderPipeline* GetPipeline(
         key.blend_controls[0], key.blend_controls[1], key.blend_controls[2], key.blend_controls[3]);
   g_pipelines.emplace(key, std::move(pipeline));
   return result;
+}
+
+// Inspect only committed, readable guest spans. Diagnostic reads must not
+// introduce a fault for a bad declaration/index or walk an unbounded buffer.
+bool ReadDrawDiagnosticBytes(u32 address, void* output, u32 bytes) {
+  if (!address || !output || !bytes || bytes > 64 * 12 ||
+      u64(address) + bytes > 0x100000000ull) return false;
+  auto* memory = REX_KERNEL_MEMORY();
+  if (!memory) return false;
+  const u64 end = u64(address) + bytes;
+  for (u64 at = address; at < end;) {
+    auto* heap = memory->LookupHeap(u32(at));
+    if (!heap) return false;
+    const u32 size = heap->page_size(), base = heap->heap_base();
+    if (!size || (size & (size - 1)) || at < base) return false;
+    const u32 page = base + ((u32(at) - base) & ~(size - 1));
+    rex::memory::HeapAllocationInfo info{};
+    if (!heap->QueryRegionInfo(page, &info) ||
+        !(info.state & rex::memory::kMemoryAllocationCommit) ||
+        !(info.protect & rex::memory::kMemoryProtectRead)) return false;
+    const u64 region_end = std::min(u64(page) + info.region_size,
+        u64(info.allocation_base) + info.allocation_size);
+    if (region_end <= at) return false;
+    at = std::min(end, region_end);
+  }
+  std::memcpy(output, memory->TranslateVirtual<const u8*>(address), bytes);
+  return true;
+}
+
+std::optional<u32> ReadDrawDiagnosticDeviceWord(const D3DDevice* device, u32 offset) {
+  auto* memory = REX_KERNEL_MEMORY();
+  if (!device || !memory) return std::nullopt;
+  const uintptr_t pointer = reinterpret_cast<uintptr_t>(device);
+  const uintptr_t base = reinterpret_cast<uintptr_t>(memory->virtual_membase());
+  if (pointer < base || pointer - base > UINT32_MAX) return std::nullopt;
+  const u64 address = u64(pointer - base) + offset;
+  be_u32 word{};
+  if (address > UINT32_MAX || !ReadDrawDiagnosticBytes(u32(address), &word, sizeof(word)))
+    return std::nullopt;
+  return u32(word);
+}
+
+struct CpuDrawDiagnostic {
+  DrawDiagnosticSession& session;
+  std::ostringstream record;
+  DrawBindings bindings;
+  bool indexed = false, submitted = false;
+  u32 start = 0, count = 0;
+  i32 base_vertex = 0;
+
+  CpuDrawDiagnostic(DrawDiagnosticSession& selected, u32 id,
+      D3DDevice* device, u32 primitive, bool indexed_draw, u32 first,
+      u32 vertices, i32 base)
+      : session(selected), bindings(SnapshotDrawBindings()),
+        indexed(indexed_draw), start(first), count(vertices), base_vertex(base) {
+    record << "draw=" << id << " attempted_ordinal=" << session.attempted_ordinal()
+        << " frame=" << g_probe_frame.load()
+        << " primitive=" << primitive << " indexed=" << indexed
+        << " start=" << start << " count=" << count << " base=" << base_vertex
+        << std::hex << " VS=" << BoundShaderHash(ShaderStage::kVertex)
+        << " PS=" << BoundShaderHash(ShaderStage::kPixel)
+        << " IB=" << bindings.index_buffer << " RT=" << bindings.render_targets[0]
+        << " DS=" << bindings.depth_stencil;
+    if (!device) { record << " device=null\n"; return; }
+    const auto guest_declaration = ReadDrawDiagnosticDeviceWord(device,
+        offsetof(D3DDevice, vertex_declaration));
+    if (!guest_declaration) { record << " device_fields=unreadable\n"; return; }
+    bindings.vertex_declaration = *guest_declaration;
+    record << " decl=" << bindings.vertex_declaration;
+    constexpr std::pair<const char*, u32> fields[] = {{"raster", 10568}, {"depth", 10548},
+        {"stencil", 10496}, {"alpha", 10556}, {"alpha_ref_bits", 10500},
+        {"legacy_float10620_bits", 10620},
+        {"blend", 10552}, {"color_mask", 12292}, {"clip_control", 10564},
+        {"viewport_control", 10572}, {"viewport_x_bits", 13024}, {"viewport_y_bits", 13028},
+        {"viewport_width_bits", 13032}, {"viewport_height_bits", 13036},
+        {"viewport_min_z_bits", 13040}, {"viewport_max_z_bits", 13044},
+        {"scissor_left", 13052}, {"scissor_top", 13056},
+        {"scissor_right", 13060}, {"scissor_bottom", 13064}};
+    for (const auto& [name, offset] : fields) {
+      record << ' ' << name << '=';
+      if (const auto word = ReadDrawDiagnosticDeviceWord(device, offset)) record << *word;
+      else record << "unreadable";
+    }
+    record << '\n';
+    // Raw guest constants used by the captured UI/world transforms and alpha.
+    // Read individual words through the same protected guest reader; never
+    // inspect write-combined host constant uploads. Fixed 48+12-word budget.
+    constexpr u32 vertex_registers[] = {0, 1, 2, 3, 23, 24, 48, 49, 50, 51, 73, 74};
+    const auto constants = [&](const char* name, u32 bank, u32 index) {
+      record << name << std::dec << index << "=" << std::hex;
+      for (u32 component = 0; component < 4; ++component) {
+        if (const auto word = ReadDrawDiagnosticDeviceWord(device,
+            bank + index * 16 + component * 4))
+          record << std::setfill('0') << std::setw(8) << *word;
+        else record << "unreadable";
+        record << ',';
+      }
+      record << '\n';
+    };
+    for (const u32 index : vertex_registers) constants("VS_C", 0x780, index);
+    for (const u32 index : {4u, 32u, 45u}) constants("PS_C", 0x1780, index);
+    std::array<be_u32, 7> header{};
+    if (!ReadDrawDiagnosticBytes(bindings.vertex_declaration, header.data(), sizeof(header))) {
+      record << "raw_decl=unreadable\n";
+      return;
+    }
+    const u32 elements = header[6];
+    record << "raw_decl_header=" << LongProbeHex(header) << std::dec
+        << " raw_count=" << elements << '\n';
+    std::array<u8, 64 * 12> declaration{};
+    const u64 address = u64(bindings.vertex_declaration) + 52;
+    if (elements > 64 || address > UINT32_MAX ||
+        (elements && !ReadDrawDiagnosticBytes(u32(address), declaration.data(), elements * 12))) {
+      record << "raw_decl=invalid_or_unreadable\n";
+      return;
+    }
+    record << "raw_decl_bytes=" << std::hex << std::setfill('0');
+    for (u32 i = 0; i < elements * 12; ++i)
+      record << std::setw(2) << u32(declaration[i]);
+    record << '\n';
+  }
+
+  void Layout(const VertexDeclarationView& declaration) {
+    record << "host_supported=" << declaration.supported
+        << " swapped_position=" << declaration.swapped_positions
+        << " swapped_normal=" << declaration.swapped_normals
+        << " swapped_texcoord=" << declaration.swapped_texcoords
+        << " sint_texcoord=" << declaration.sint_texcoords
+        << " reversed_elements=" << declaration.reversed_byte_elements << '\n';
+    std::array<i64, 4> vertices{start, i64(start) + 1, i64(start) + 2, i64(start) + 3};
+    u32 vertex_count = std::min(count, 4u);
+    if (indexed) {
+      std::array<u8, sizeof(D3DBuffer)> header{};
+      const auto index = ReadDrawDiagnosticBytes(bindings.index_buffer, header.data(), header.size())
+          ? InspectBufferResource(bindings.index_buffer, BufferKind::kIndex) : BufferResourceView{};
+      const u32 width = index.guest_format == 1 ? 2 : 4;
+      record << "index_source=" << index.mirror_address << std::dec
+          << " length=" << index.length << " guest_format=" << index.guest_format
+          << " first_indices=";
+      vertex_count = 0;
+      for (u32 i = 0; i < std::min(count, 6u); ++i) {
+        const u64 offset = (u64(start) + i) * width;
+        const u64 address = u64(index.mirror_address) + offset;
+        std::array<be_u16, 2> raw{};
+        if (!index.mirror_address || offset > index.length || width > index.length - offset ||
+            address > UINT32_MAX || !ReadDrawDiagnosticBytes(u32(address), raw.data(), width)) {
+          record << "unreadable,";
+          continue;
+        }
+        const u32 value = width == 2 ? u32(raw[0]) :
+            (u32(raw[0]) << 16) | u32(raw[1]);
+        record << value << ',';
+        // Preserve actual corner order, including the fourth quad corner.
+        // All attribute reads still share the twelve-sample draw budget.
+        if (i < 4) vertices[vertex_count++] = i64(value) + base_vertex;
+      }
+      record << '\n' << std::hex;
+    }
+    std::array<BufferResourceView, kNativeVertexStreams> buffers{};
+    std::array<bool, kNativeVertexStreams> inspected{};
+    u32 samples_left = 12;
+    for (u32 i = 0; declaration.elements && i < std::min(declaration.element_count, 75u); ++i) {
+      const auto& element = declaration.elements[i];
+      record << "host_attr=" << element.semanticName << std::dec << element.semanticIndex
+          << " slot=" << element.slotIndex << " offset=" << element.alignedByteOffset
+          << " format=" << u32(element.format);
+      if (element.slotIndex >= kNativeVertexStreams) { record << '\n'; continue; }
+      const auto& binding = bindings.vertex_streams[element.slotIndex];
+      record << " stride=" << binding.stride << " stream_offset=" << binding.offset
+          << std::hex << " VB=" << binding.buffer << '\n';
+      if (!binding.buffer || (std::strcmp(element.semanticName, "POSITION") &&
+          std::strcmp(element.semanticName, "COLOR") &&
+          std::strcmp(element.semanticName, "NORMAL"))) continue;
+      if (!inspected[element.slotIndex]) {
+        std::array<u8, sizeof(D3DBuffer)> header{};
+        if (ReadDrawDiagnosticBytes(binding.buffer, header.data(), header.size()))
+          buffers[element.slotIndex] = InspectBufferResource(binding.buffer, BufferKind::kVertex);
+        inspected[element.slotIndex] = true;
+      }
+      const auto& buffer = buffers[element.slotIndex];
+      const u32 width = std::min(plume::RenderFormatSize(element.format), 16u);
+      for (u32 v = 0; v < vertex_count && samples_left; ++v, --samples_left) {
+        const auto offset = DrawDiagnosticVertexOffset(vertices[v], binding.stride,
+            binding.offset, element.alignedByteOffset, width, buffer.length);
+        const u64 address = offset ? u64(buffer.mirror_address) + *offset : UINT64_MAX;
+        std::array<u8, 16> sample{};
+        record << "sample_attr=" << element.semanticName << std::dec << element.semanticIndex
+            << " vertex=" << vertices[v] << std::hex << " source=" << address;
+        if (!buffer.mirror_address || !offset || address > UINT32_MAX ||
+            !ReadDrawDiagnosticBytes(u32(address), sample.data(), width)) {
+          record << " bytes=unreadable\n";
+          continue;
+        }
+        record << " bytes=" << std::setfill('0');
+        for (u32 b = 0; b < width; ++b) record << std::setw(2) << u32(sample[b]);
+        record << '\n';
+      }
+    }
+  }
+
+  ~CpuDrawDiagnostic() {
+    record << "submitted=" << submitted << '\n';
+    session.Write(record.str());
+  }
+};
+
+std::unique_ptr<CpuDrawDiagnostic> BeginCpuDrawDiagnostic(D3DDevice* device,
+    u32 primitive, bool indexed, u32 start, u32 count, i32 base_vertex) {
+  static DrawDiagnosticSession session([] {
+    char* value = nullptr; size_t length = 0;
+    _dupenv_s(&value, &length, "LEGO_NATIVE_DRAW_TRACE_TRIGGER");
+    std::filesystem::path result(value ? value : "");
+    std::free(value);
+    return result;
+  }());
+  static const bool enabled = !session.output().empty();
+  if (!enabled) return {};
+  const u32 id = session.Begin(g_probe_frame.load());
+  if (!id) return {};
+  if (id == 1) REXLOG_INFO("Native CPU draw trace: capturing one frame, up to 64 draws, output={}",
+                           session.output().string());
+  return std::make_unique<CpuDrawDiagnostic>(session, id, device, primitive,
+                                            indexed, start, count, base_vertex);
 }
 
 u32 TraceMeshDraw(D3DDevice* device, u32 primitive, bool indexed,
@@ -556,7 +882,7 @@ u32 TraceMeshDraw(D3DDevice* device, u32 primitive, bool indexed,
       u32(device->vertex_declaration), bindings.index_buffer, bindings.render_targets[0],
       bindings.depth_stencil, read(10548), read(10496), read(10568), read(10460), read(10552), bindings.textures[5]);
   REXLOG_INFO("Native mesh: id={} alpha_control={:08X} alpha_ref={}", id,
-      read(10556), float(*reinterpret_cast<const be_f32*>(bytes + 10620)));
+      read(10556), float(*reinterpret_cast<const be_f32*>(bytes + 10500)));
   REXLOG_INFO("Native mesh: id={} frame={} brick_pair={}", id,
       g_probe_frame.load(), brick_trace);
   for (u32 i = 0; i < bindings.vertex_streams.size(); ++i) {
@@ -584,6 +910,7 @@ u32 TraceMeshDraw(D3DDevice* device, u32 primitive, bool indexed,
 bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
                   u32 start, u32 count, i32 base_vertex) {
   DrawTimer timing;
+  auto cpu_trace = BeginCpuDrawDiagnostic(device, primitive_type, indexed, start, count, base_vertex);
   const u32 mesh_trace = TraceMeshDraw(device, primitive_type, indexed, start, count, base_vertex);
   // Report early exits as well as successful submissions for each sample.
   struct MeshTraceResult {
@@ -594,6 +921,11 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   if (!device || !count) {
     return false;
   }
+  if (!NativeViewportValid(device->viewport.x, device->viewport.y,
+      device->viewport.width, device->viewport.height,
+      device->viewport.min_z, device->viewport.max_z)) return false;
+  if (float(device->viewport.width) == 0.0f ||
+      float(device->viewport.height) == 0.0f) return true;
   // Trace attempted bindings before shader/declaration/pipeline early exits.
   // A mask on a rejected draw is diagnostic evidence, not a submitted draw.
   if (PortraitProbeEnabled()) {
@@ -617,6 +949,8 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     }
     return false;
   }
+  const bool polygonal = topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
+                         topology == plume::RenderPrimitiveTopology::TRIANGLE_STRIP;
   DrawBindings bindings = SnapshotDrawBindings();
   if (g_logo_capture_api) {
     static std::set<std::array<u64, 6>> traced;
@@ -632,6 +966,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   // the public SetVertexDeclaration hook.
   bindings.vertex_declaration = device->vertex_declaration;
   const auto declaration = ResolveVertexDeclaration(bindings.vertex_declaration);
+  if (cpu_trace) cpu_trace->Layout(declaration);
   std::array<TextureResourceView, kNativeRenderTargets> colors;
   for (u32 i = 0; i < colors.size(); ++i)
     colors[i] = ResolveTextureResource(bindings.render_targets[i]);
@@ -651,11 +986,28 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     }
     return false;
   }
+  BufferResourceView index_metadata;
+  IndexDrawWindow index_window;
+  if (indexed) {
+    index_metadata = InspectBufferResource(bindings.index_buffer, BufferKind::kIndex);
+    index_window = DrawIndexWindow(start, count,
+        index_metadata.guest_format == 1 ? 2 : 4, index_metadata.length);
+    // An invalid window must reject the draw, rather than disabling range
+    // uploads and falling through to an unchecked whole-buffer submission.
+    if (!index_metadata.mirror_address || !index_window) return false;
+  }
   timing.Next();
   auto* commands = HostDevice::BeginFrameCommands();
   if (!commands) {
     return false;
   }
+  const auto draw_device = HostDevice::CurrentDrawDeviceView();
+  if (draw_device.commands != commands || !draw_device.recording_serial ||
+      !draw_device.pipeline_layout || !draw_device.texture_descriptors ||
+      !draw_device.sampler_descriptors || !draw_device.null_vertex_buffer) return false;
+  StateCallLedger* state_calls = nullptr;
+  if (auto* capture = NativeStateCalls())
+    state_calls = capture->BeginDraw(commands, draw_device.recording_serial);
   timing.Next();
 
   std::array<plume::RenderTextureBarrier, kNativeRenderTargets + 1> texture_barriers;
@@ -673,12 +1025,29 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   commands->setFramebuffer(framebuffer);
 
   PipelineKey key;
-  key.vertex_shader = BoundShaderAddress(ShaderStage::kVertex);
-  key.pixel_shader = BoundShaderAddress(ShaderStage::kPixel);
+  bool vertex_binding_failed = false;
+  key.vertex_shader = BoundShaderAddress(ShaderStage::kVertex, &vertex_binding_failed);
+  bool pixel_binding_failed = false;
+  key.pixel_shader = BoundShaderAddress(ShaderStage::kPixel, &pixel_binding_failed);
+  // Failed nonnull binds must not reuse a cached PSO or turn a requested
+  // pixel shader into a depth-only pass. Check before shader resolution.
+  if (vertex_binding_failed) {
+    LongProbeEvent("draw_missing_vertex_shader", true, "guest_vs=", key.vertex_shader);
+    return false;
+  }
+  if (pixel_binding_failed) {
+    LongProbeEvent("draw_missing_pixel_shader", true, "guest_ps=", key.pixel_shader);
+    return false;
+  }
   key.vertex_shader_hash = BoundShaderHash(ShaderStage::kVertex);
   key.pixel_shader_hash = BoundShaderHash(ShaderStage::kPixel);
   key.declaration_hash = declaration.content_hash;
   key.declaration = bindings.vertex_declaration;
+  const auto* state_bytes = reinterpret_cast<const u8*>(device);
+  const u32 guest_raster = *reinterpret_cast<const be_u32*>(state_bytes + 10568);
+  static const bool cull_candidate = std::getenv("LEGO_NATIVE_CULL") != nullptr;
+  if (cull_candidate)
+    key.raster_control = kNativeCullCandidate | (guest_raster & (polygonal ? 7u : 4u));
   for (u32 i = 0; i < colors.size(); ++i)
     key.render_target_formats[i] = static_cast<u32>(colors[i].format);
   key.depth_format = static_cast<u32>(depth.format);
@@ -698,17 +1067,18 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     key.depth_control = *reinterpret_cast<const be_u32*>(
         reinterpret_cast<const u8*>(device) + 10548);
     if ((key.depth_control & 1u) && depth.format == plume::RenderFormat::D32_FLOAT_S8_UINT) {
-      // D3D12 has one mask pair. With native culling disabled, follow Xenia's
-      // front-face mask choice. Per-face mask differences remain unsupported.
+      // Select back masks when the candidate culls only front faces; with
+      // both faces surviving, per-face mask differences remain unsupported.
+      const u32 word_offset = NativeStencilWordOffset(key.raster_control,
+          key.depth_control, polygonal);
       key.stencil_masks = *reinterpret_cast<const be_u32*>(
-          reinterpret_cast<const u8*>(device) + 10496) & 0x00FFFF00u;
-      key.stencil_face = (*reinterpret_cast<const be_u32*>(
-          reinterpret_cast<const u8*>(device) + 10568) >> 2) & 1u;
+          state_bytes + word_offset) & 0x00FFFF00u;
+      key.stencil_face = (guest_raster >> 2) & 1u;
       static std::unordered_set<u64> logged_stencil;
       const u64 identity = (u64(key.depth_control) << 32) | key.stencil_masks;
       if (logged_stencil.size() < 32 && logged_stencil.insert(identity).second)
         REXLOG_INFO("Native GPU: stencil candidate control={:08X} masks={:06X} ref={} VS={:016X} PS={:016X}",
-            key.depth_control, key.stencil_masks, reinterpret_cast<const u8*>(device)[10499],
+            key.depth_control, key.stencil_masks, state_bytes[word_offset + 3],
             key.vertex_shader_hash, key.pixel_shader_hash);
     }
   }
@@ -731,28 +1101,25 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
                 key.depth_control, bindings.depth_stencil);
   key.topology = static_cast<u32>(topology);
   key.spec_constants = declaration.has_r11g11b10_normal ? 1u : 0u;
-  const auto* state_bytes = reinterpret_cast<const u8*>(device);
   const auto alpha = DecodeNativeAlphaState(
       *reinterpret_cast<const be_u32*>(state_bytes + 10556),
-      *reinterpret_cast<const be_f32*>(state_bytes + 10620));
+      *reinterpret_cast<const be_f32*>(state_bytes + 10500));
   if (alpha.enabled) key.spec_constants |= 2u;
   // Polygon offset. TU23 D3DRS_SLOPESCALEDEPTHBIAS (83FB88A8) stores the
   // scale, already in 1/16 subpixel units, at +10832 (front) / +10840 (back);
   // D3DRS_DEPTHBIAS (83FB8970) stores the offset at +10836 / +10844; both set
   // PA_SU_SC_MODE_CNTL (+10568) poly_offset_front/back_enable (bits 11/12).
   // Convert the stored offset for the host rasterizer. Face selection follows
-  // SDK's GetPreferredFacePolygonOffset/GetD3D10IntegerPolygonOffset: native
-  // never culls, so front wins, then back; non-triangles use para_enable.
+  // SDK's GetPreferredFacePolygonOffset/GetD3D10IntegerPolygonOffset: ignore
+  // culled faces in the candidate; non-triangles use para_enable.
   // Unorm24 and float24 guests both come to ~offset * 2^24 host D32 units.
   // LEGO_NATIVE_NO_DEPTH_BIAS=1 restores the old behaviour for A/B checks.
   static const bool depth_bias_disabled = std::getenv("LEGO_NATIVE_NO_DEPTH_BIAS") != nullptr;
   if (!depth_bias_disabled && depth.format != plume::RenderFormat::UNKNOWN) {
-    const u32 mode = *reinterpret_cast<const be_u32*>(state_bytes + 10568);
+    const u32 mode = CullPolygonOffsetMode(guest_raster, key.raster_control, polygonal);
     const auto poly = [&](u32 offset) {
       return float(*reinterpret_cast<const be_f32*>(state_bytes + offset));
     };
-    const bool polygonal = topology == plume::RenderPrimitiveTopology::TRIANGLE_LIST ||
-                           topology == plume::RenderPrimitiveTopology::TRIANGLE_STRIP;
     const auto bias = DecodePolygonOffset(mode, polygonal,
         poly(10832), poly(10836), poly(10840), poly(10844));
     key.depth_bias = bias.depth_bias;
@@ -774,24 +1141,27 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   }
   timing.Next();
 
-  commands->setGraphicsPipelineLayout(HostDevice::PipelineLayout());
-  if (enable_stencil && (key.depth_control & 1u))
-    static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetStencilRef(
-        reinterpret_cast<const u8*>(device)[10499]);
-  commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 0);
-  commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 1);
-  commands->setGraphicsDescriptorSet(HostDevice::TextureDescriptorSet(), 2);
-  commands->setGraphicsDescriptorSet(HostDevice::SamplerDescriptorSet(), 3);
+  {
+    ConstantTimer constant_timing(ConstantCost::kBindings);
+    BindNativeDrawLayout(commands, draw_device, state_calls);
+    if (enable_stencil && (key.depth_control & 1u))
+      static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetStencilRef(
+          state_bytes[NativeStencilWordOffset(key.raster_control, key.depth_control, polygonal) + 3]);
+    BindNativeDrawDescriptorSets(commands, draw_device, state_calls);
+  }
   auto constants = BindConstants(commands, device, bindings, declaration, count<=6);
   if (!constants) {
     return false;
   }
   // A raw depth texture view may need a conversion draw while binding textures.
   // Restore the guest framebuffer after that helper's temporary target.
-  commands->barriers(plume::RenderBarrierStage::GRAPHICS, texture_barriers.data(), barrier_count);
-  commands->setFramebuffer(framebuffer);
+  {
+    ConstantTimer constant_timing(ConstantCost::kRestore);
+    commands->barriers(plume::RenderBarrierStage::GRAPHICS, texture_barriers.data(), barrier_count);
+    commands->setFramebuffer(framebuffer);
+  }
   timing.Next();
-  commands->setPipeline(pipeline);
+  BindNativeDrawPipeline(commands, pipeline, state_calls);
   // 83FB82F0 writes normalized R,G,B,A blend constants at +10464..10476.
   const auto* guest_blend_factor = reinterpret_cast<const be_f32*>(
       reinterpret_cast<const u8*>(device) + 10464);
@@ -799,28 +1169,34 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
                                guest_blend_factor[2], guest_blend_factor[3]};
   static_cast<plume::D3D12CommandList*>(commands)->d3d->OMSetBlendFactor(blend_factor);
 
-  const float viewport_width = static_cast<u32>(device->viewport.width);
-  const float viewport_height = static_cast<u32>(device->viewport.height);
+  const float viewport_width = device->viewport.width;
+  const float viewport_height = device->viewport.height;
   const bool screen_space = viewport_candidate && u32(*reinterpret_cast<const be_u32*>(
       reinterpret_cast<const u8*>(device) + 10572)) == 0x400;
   commands->setViewports(plume::RenderViewport(
-      screen_space ? 0 : static_cast<u32>(device->viewport.x),
-      screen_space ? 0 : static_cast<u32>(device->viewport.y),
-      screen_space ? float(color.width) : viewport_width > 0 ? viewport_width : float(color.width),
-      screen_space ? float(color.height) : viewport_height > 0 ? viewport_height : float(color.height),
+      screen_space ? 0.0f : float(device->viewport.x),
+      screen_space ? 0.0f : float(device->viewport.y),
+      screen_space ? float(color.width) : viewport_width,
+      screen_space ? float(color.height) : viewport_height,
       screen_space ? 0.0f : static_cast<float>(device->viewport.min_z),
       screen_space ? 1.0f : static_cast<float>(device->viewport.max_z)));
-  const i32 scissor_right = static_cast<i32>(device->scissor.right);
-  const i32 scissor_bottom = static_cast<i32>(device->scissor.bottom);
-  commands->setScissors(plume::RenderRect(
-      static_cast<i32>(device->scissor.left),
-      static_cast<i32>(device->scissor.top),
-      scissor_right > 0 ? scissor_right : static_cast<i32>(color.width),
-      scissor_bottom > 0 ? scissor_bottom : static_cast<i32>(color.height)));
+  const auto effective_scissor = DecodeNativeScissor(
+      float(device->viewport.x), float(device->viewport.y),
+      float(device->viewport.width), float(device->viewport.height),
+      {i32(device->scissor.left), i32(device->scissor.top),
+       i32(device->scissor.right), i32(device->scissor.bottom)},
+      u32(*reinterpret_cast<const be_u32*>(state_bytes +
+          kNativeScissorEnableOffset)) != 0, color.width, color.height);
+  const i32 scissor_right = effective_scissor.right;
+  const i32 scissor_bottom = effective_scissor.bottom;
+  commands->setScissors(CullDrawScissor(plume::RenderRect(
+      effective_scissor.left, effective_scissor.top,
+      scissor_right, scissor_bottom),
+      key.raster_control, polygonal));
 
   std::array<plume::RenderVertexBufferView, kNativeVertexStreams> views;
   std::array<plume::RenderInputSlot, kNativeVertexStreams> slots;
-  auto* null_buffer = HostDevice::NullVertexBuffer();
+  auto* null_buffer = draw_device.null_vertex_buffer;
   std::array<BufferResourceView, kNativeVertexStreams> vertex_buffers;
   static const bool window_uploads = [] {
     const char* value = std::getenv("LEGO_NATIVE_BUFFER_WINDOWS");
@@ -831,18 +1207,15 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   }();
   std::array<VertexBufferWindow, kNativeVertexStreams> vertex_windows{};
   bool use_windows = false;
-  u32 min_index = 0, index_offset = 0, index_bytes = 0;
-  if (window_uploads && indexed && count &&
-      primitive_type != static_cast<u32>(rex::graphics::xenos::PrimitiveType::kQuadList)) {
-    const auto index = InspectBufferResource(bindings.index_buffer, BufferKind::kIndex);
-    const u32 element_size = index.guest_format == 1 ? 2 : 4;
-    if (index.mirror_address && u64(start) * element_size <= index.length &&
-        u64(count) * element_size <= index.length - u64(start) * element_size) {
-      index_offset = start * element_size;
-      index_bytes = count * element_size;
+  u32 min_index = 0;
+  const u32 index_offset = index_window.offset, index_bytes = index_window.length;
+  if (window_uploads && count) {
+    u32 max_index = 0;
+    if (indexed) {
+      const auto& index = index_metadata;
+      const u32 element_size = index.guest_format == 1 ? 2 : 4;
       const auto* source = REX_KERNEL_MEMORY()->TranslateVirtual<const u8*>(index.mirror_address + index_offset);
       min_index = UINT32_MAX;
-      u32 max_index = 0;
       for (u32 i = 0; i < count; ++i) {
         const u32 value = element_size == 2 ?
             u32(reinterpret_cast<const be_u16*>(source)[i]) :
@@ -852,26 +1225,29 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
       }
       // D3D12's signed base vertex must represent -min_index exactly.
       use_windows = min_index <= INT32_MAX;
-      for (u32 i = 0; use_windows && i < kNativeVertexStreams; ++i) {
-        const auto& binding = bindings.vertex_streams[i];
-        if (!binding.buffer) continue;  // Synthetic/optional zero stream.
-        const bool used = std::any_of(declaration.elements,
-            declaration.elements + declaration.element_count,
-            [i](const auto& e) { return e.slotIndex == i; });
-        if (!used) continue;
-        for (u32 e = 0; e < declaration.element_count; ++e) {
-          const auto& element = declaration.elements[e];
-          if (element.slotIndex != i) continue;
-          const u32 width = plume::RenderFormatSize(element.format);
-          if (!width || element.alignedByteOffset > binding.stride ||
-              width > binding.stride - element.alignedByteOffset) use_windows = false;
-        }
-        if (!use_windows) break;
-        const auto metadata = InspectBufferResource(binding.buffer, BufferKind::kVertex);
-        vertex_windows[i] = DrawVertexWindow(min_index, max_index, base_vertex,
-            binding.stride, binding.offset, metadata.length);
-        if (!vertex_windows[i].length) use_windows = false;
+    } else {
+      min_index = start;
+      use_windows = NonIndexedVertexRange(start, count, max_index);
+    }
+    for (u32 i = 0; use_windows && i < kNativeVertexStreams; ++i) {
+      const auto& binding = bindings.vertex_streams[i];
+      if (!binding.buffer) continue;  // Synthetic/optional zero stream.
+      const bool used = std::any_of(declaration.elements,
+          declaration.elements + declaration.element_count,
+          [i](const auto& e) { return e.slotIndex == i; });
+      if (!used) continue;
+      for (u32 e = 0; e < declaration.element_count; ++e) {
+        const auto& element = declaration.elements[e];
+        if (element.slotIndex != i) continue;
+        const u32 width = plume::RenderFormatSize(element.format);
+        if (!width || element.alignedByteOffset > binding.stride ||
+            width > binding.stride - element.alignedByteOffset) use_windows = false;
       }
+      if (!use_windows) break;
+      const auto metadata = InspectBufferResource(binding.buffer, BufferKind::kVertex);
+      vertex_windows[i] = DrawVertexWindow(min_index, max_index, indexed ? base_vertex : 0,
+          binding.stride, binding.offset, metadata.length);
+      if (!vertex_windows[i].length) use_windows = false;
     }
   }
   for (u32 i = 0; i < kNativeVertexStreams; ++i) {
@@ -1001,27 +1377,34 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
   }
 
   if (primitive_type == static_cast<u32>(rex::graphics::xenos::PrimitiveType::kQuadList)) {
-    if (count % 4 != 0) return false;
+    const u32 expanded_count = ExpandedQuadIndexCount(count);
+    u32 nonindexed_last = 0;
+    if (!expanded_count || (!indexed && !NonIndexedVertexRange(start, count, nonindexed_last)))
+      return false;
     const auto source = indexed
-        ? ResolveBufferResourceView(bindings.index_buffer, BufferKind::kIndex)
+        ? (use_windows ?
+            ResolveBufferResourceWindow(bindings.index_buffer, BufferKind::kIndex, index_offset, index_bytes) :
+            ResolveBufferResourceView(bindings.index_buffer, BufferKind::kIndex))
         : BufferResourceView{};
+    const u32 source_start = use_windows ? 0 : start;
     const u32 element_size = source.guest_format == 1 ? 2 : 4;
-    if (indexed && (!source.buffer || u64(start + u64(count)) * element_size > source.length))
+    if (indexed && (!source.buffer || !DrawIndexWindow(source_start, count, element_size, source.length)))
       return false;
     auto expanded = std::shared_ptr<plume::RenderBuffer>(HostDevice::Device()->createBuffer(
-        plume::RenderBufferDesc::IndexBuffer(u64(count / 4) * 6 * sizeof(u32),
+        plume::RenderBufferDesc::IndexBuffer(u64(expanded_count) * sizeof(u32),
                                             plume::RenderHeapType::UPLOAD)).release());
     if (!expanded) return false;
     auto* output = static_cast<u32*>(expanded->map());
     const auto* input = indexed ? static_cast<const u8*>(source.buffer->map()) : nullptr;
     if (!output || (indexed && !input)) {
       if (output) expanded->unmap();
+      if (input) source.buffer->unmap();
       return false;
     }
     constexpr u32 order[] = {0, 1, 2, 0, 2, 3};
     for (u32 quad = 0; quad < count / 4; ++quad) {
       for (u32 corner = 0; corner < 6; ++corner) {
-        const u32 index = start + quad * 4 + order[corner];
+        const u32 index = source_start + quad * 4 + order[corner];
         output[quad * 6 + corner] = !indexed ? index
             : element_size == 2 ? reinterpret_cast<const u16*>(input)[index]
                                 : reinterpret_cast<const u32*>(input)[index];
@@ -1030,18 +1413,22 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     if (indexed) source.buffer->unmap();
     expanded->unmap();
     const plume::RenderIndexBufferView index_view(expanded->at(0),
-        u64(count / 4) * 6 * sizeof(u32), plume::RenderFormat::R32_UINT);
+        u64(expanded_count) * sizeof(u32), plume::RenderFormat::R32_UINT);
     commands->setIndexBuffer(&index_view);
     {
       QueryDrawScope query_scope(commands);
-      commands->drawIndexedInstanced(count / 4 * 6, 1, 0, indexed ? base_vertex : 0, 0);
+      commands->drawIndexedInstanced(expanded_count, 1, 0,
+          use_windows ? (indexed ? -i32(min_index) : 0) : (indexed ? base_vertex : 0), 0);
     }
     HostDevice::RetireResource(std::move(expanded));
   } else if (indexed) {
     const auto index = use_windows ?
         ResolveBufferResourceWindow(bindings.index_buffer, BufferKind::kIndex, index_offset, index_bytes) :
         ResolveBufferResourceView(bindings.index_buffer, BufferKind::kIndex);
-    if (!index.buffer) {
+    // Header adoption can replace metadata; check the view actually bound to
+    // this draw too. A range upload starts at zero in its own index buffer.
+    if (!index.buffer || !DrawIndexWindow(use_windows ? 0 : start, count,
+        index.guest_format == 1 ? 2 : 4, index.length)) {
       return false;
     }
     const plume::RenderFormat index_format =
@@ -1055,7 +1442,9 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
         use_windows ? -i32(min_index) : base_vertex, 0);
   } else {
     QueryDrawScope query_scope(commands);
-    commands->drawInstanced(count, 1, start, 0);
+    // Current native vertex recompilation consumes input attributes, not
+    // SV_VertexID. Each used stream starts at the original first vertex.
+    commands->drawInstanced(count, 1, use_windows ? 0 : start, 0);
   }
   timing.Next();
   static const bool trace_stages = [] {
@@ -1084,9 +1473,9 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
           "view={},{},{},{} scissor={},{},{},{} tex={:08X},{:08X},{:08X},{:08X} "
           "tex4-7={:08X},{:08X},{:08X},{:08X} mask={:X} blend={:08X}",
           key.vertex_shader, key.pixel_shader, bindings.render_targets[0], key.render_target_formats[0],
-          bindings.depth_stencil, key.depth_control, u32(device->viewport.x), u32(device->viewport.y),
-          u32(device->viewport.width), u32(device->viewport.height), i32(device->scissor.left),
-          i32(device->scissor.top), scissor_right, scissor_bottom,
+          bindings.depth_stencil, key.depth_control, float(device->viewport.x), float(device->viewport.y),
+          float(device->viewport.width), float(device->viewport.height), effective_scissor.left,
+          effective_scissor.top, scissor_right, scissor_bottom,
           bindings.textures[0], bindings.textures[1], bindings.textures[2], bindings.textures[3],
           bindings.textures[4], bindings.textures[5], bindings.textures[6], bindings.textures[7],
           key.color_write_mask, u32(*reinterpret_cast<const be_u32*>(
@@ -1102,6 +1491,7 @@ bool DispatchDraw(D3DDevice* device, u32 primitive_type, bool indexed,
     REXLOG_INFO("Native GPU: issued draw primitive={} count={} indexed={} decl=0x{:08X}",
                  primitive_type, count, indexed, bindings.vertex_declaration);
   mesh_result.submitted = true;
+  if (cpu_trace) cpu_trace->submitted = true;
   for (u32 i = 0; i < kNativeRenderTargets; ++i)
     if ((key.color_write_mask >> (i * 4)) & 15u) MarkSurfaceWritten(bindings.render_targets[i]);
   if (DecodeDepthState(key.depth_control, depth.texture != nullptr).write)
@@ -1284,6 +1674,7 @@ u32 SwapHook(D3DDevice* /*device*/, u32 front_buffer, u32 /*parameters*/) {
   HostDevice::PollCompletionCallbacks();
   auto recording = HostDevice::LockRecording();
   const auto texture = ResolveTextureResource(front_buffer);
+  if (auto* capture = NativeStateCalls()) capture->Present(g_probe_frame.load());
   if (!HostDevice::PresentTexture(texture.texture, texture.descriptor_index) &&
       g_unsupported_draw_logs++ < 20) {
     LogUnknownTexture(front_buffer, "present");
@@ -1341,8 +1732,8 @@ u32 BeginTilingHook(D3DDevice* device, u32 flags, u32 count,
   static std::atomic<u32> logs{0};
   if (logs.fetch_add(1) < 8)
     REXLOG_INFO("Native GPU: BeginTiling flags={:X} tiles={} host={}x{} viewport={}x{} guest_count={}",
-        flags, count, extent.width, extent.height, u32(device->viewport.width),
-        u32(device->viewport.height), u32(*reinterpret_cast<const be_u32*>(
+        flags, count, extent.width, extent.height, float(device->viewport.width),
+        float(device->viewport.height), u32(*reinterpret_cast<const be_u32*>(
             reinterpret_cast<const u8*>(device) + 13124)));
   // The TU23 implementation branches past its initial clear when bit 0 is set.
   if (flags & 1) return 0;

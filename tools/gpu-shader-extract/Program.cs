@@ -12,10 +12,20 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        if (args.Length >= 2 && args[0] == "extract" && args[1] == "--embedded")
+        {
+            return EmbeddedShaderExtractor.Run(args[2..]);
+        }
+        if (args.Length >= 2 && args[0] == "extract" && args[1] == "--image")
+        {
+            return ImageShaderExtractor.Run(args[2..]);
+        }
         if (args.Length < 2 || (args[0] != "inventory" && args[0] != "extract"))
         {
             Console.Error.WriteLine(
-                "Usage: gpu-shader-extract <inventory|extract> <game-dir> [output-dir]");
+                "Usage: gpu-shader-extract <inventory|extract> <game-dir> [output-dir]\n" +
+                "       gpu-shader-extract extract --image <mapped-image> <output-dir> --image-base <8hex> [--image-provenance <json>]\n" +
+                "       gpu-shader-extract extract --embedded <archive-or-directory> <fresh-output> [--max-seconds <1..3600>]");
             return 2;
         }
 
@@ -38,10 +48,14 @@ internal static class Program
         int extractedEntries = 0;
         int skippedEntries = 0;
 
-        foreach (string datPath in Directory.EnumerateFiles(gameDir, "*.DAT",
+        foreach (string datPath in Directory.EnumerateFiles(gameDir, "*",
                                                              SearchOption.TopDirectoryOnly)
+                                                .Where(path =>
+                                                    Path.GetExtension(path).Equals(".DAT", StringComparison.OrdinalIgnoreCase) ||
+                                                    Path.GetExtension(path).Equals(".DAT2", StringComparison.OrdinalIgnoreCase))
                                                 .OrderBy(path => path,
-                                                         StringComparer.OrdinalIgnoreCase))
+                                                         StringComparer.OrdinalIgnoreCase)
+                                                .ThenBy(path => path, StringComparer.Ordinal))
         {
             string hdrPath = DatArchive.HdrPathFor(datPath);
             if (!File.Exists(hdrPath))
@@ -58,7 +72,7 @@ internal static class Program
             Console.WriteLine($"{Path.GetFileName(datPath)}: {archive.FileCount} entries, " +
                               $"{names.Length} named");
 
-            foreach ((string internalPath, int entryIndex) in names)
+            foreach ((string internalPath, int nameTreeIndex) in names)
             {
                 string extension = Path.GetExtension(internalPath);
                 extension = string.IsNullOrEmpty(extension) ? "<none>" : extension.ToLowerInvariant();
@@ -70,9 +84,30 @@ internal static class Program
                     continue;
                 }
 
+                string archiveName = Path.GetFileNameWithoutExtension(datPath);
+                string destination;
+                try
+                {
+                    destination = ArchiveOutputPath.Resolve(
+                        Path.Combine(outputDir!, archiveName), internalPath);
+                }
+                catch (InvalidDataException exception)
+                {
+                    Console.Error.WriteLine(
+                        $"skip {Path.GetFileName(datPath)}:{internalPath}: {exception.Message}");
+                    skippedEntries++;
+                    continue;
+                }
+
                 byte[] data;
                 try
                 {
+                    // New-format tree values are sequential name positions,
+                    // not necessarily DAT indices. The shared lookup resolves
+                    // the archive CRC table before its tree fallback.
+                    int entryIndex = archive.FindEntry(internalPath);
+                    if (entryIndex < 0 || entryIndex >= archive.FileCount)
+                        throw new InvalidDataException($"No file-table entry for name-tree index {nameTreeIndex}");
                     data = archive.ReadEntryDataDecompressed(entryIndex);
                 }
                 catch (Exception exception) when (exception is IOException or
@@ -89,11 +124,6 @@ internal static class Program
                     skippedEntries++;
                     continue;
                 }
-                string archiveName = Path.GetFileNameWithoutExtension(datPath);
-                string safeRelative = internalPath.Replace('\\', Path.DirectorySeparatorChar)
-                                                  .Replace('/', Path.DirectorySeparatorChar)
-                                                  .TrimStart(Path.DirectorySeparatorChar);
-                string destination = Path.Combine(outputDir!, archiveName, safeRelative);
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.WriteAllBytes(destination, data);
                 extractedEntries++;
@@ -111,7 +141,7 @@ internal static class Program
         if (args[0] == "extract")
         {
             Console.WriteLine($"extracted shader candidates: {extractedEntries}");
-            Console.WriteLine($"skipped unreadable candidates: {skippedEntries}");
+            Console.WriteLine($"skipped candidates: {skippedEntries}");
             return extractedEntries == 0 ? 1 : 0;
         }
         return 0;

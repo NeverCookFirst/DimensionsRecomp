@@ -10,6 +10,9 @@ namespace legodimensions::gpu_native {
 struct CpuMemorySpan { uint32_t address = 0, length = 0; };
 struct CpuMemoryStamp {
   std::vector<std::pair<uint32_t, uint64_t>> pages;
+  // Page snapshots are immutable after publication. Validation and this cache
+  // are serialized with physical write callbacks by the SDK critical region.
+  mutable uint64_t checked_write_epoch = 0;
 };
 bool CpuMemoryWatchEnabled();
 bool CpuBufferMemoryWatchEnabled();

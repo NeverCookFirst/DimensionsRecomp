@@ -1,0 +1,174 @@
+diff --git a/plume_d3d12.h b/plume_d3d12.h
+--- a/plume_d3d12.h
++++ b/plume_d3d12.h
+@@ -180,6 +180,15 @@
+         const D3D12PipelineLayout *activeComputePipelineLayout = nullptr;
+         const D3D12PipelineLayout *activeGraphicsPipelineLayout = nullptr;
+         const D3D12GraphicsPipeline *activeGraphicsPipeline = nullptr;
++        // Opt-in emission caches use native identities, not last-graphics
++        // metadata: compute and ray tracing share the active pipeline state.
++        const void *cachedPipelineObject = nullptr;
++        uint32_t cachedPipelineType = 0;
++        bool cachedPipelineValid = false;
++        ID3D12RootSignature *cachedGraphicsRootSignature = nullptr;
++        ID3D12RootSignature *cachedComputeRootSignature = nullptr;
++        bool cachedGraphicsRootValid = false;
++        bool cachedComputeRootValid = false;
+         bool descriptorHeapsSet = false;
+         D3D12_PRIMITIVE_TOPOLOGY activeTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+         uint32_t activeStencilRef = 0;
+@@ -226,6 +235,9 @@
+         void writeTimestamp(const RenderQueryPool *queryPool, uint32_t queryIndex) override;
+         void checkDescriptorHeaps();
+         void notifyDescriptorHeapWasChangedExternally();
++        // Invalidate PSO/root-signature emission caches after raw D3D changes.
++        // Rebind the intended pipeline/layout through Plume before draw/dispatch.
++        void notifyCommandStateWasChangedExternally();
+         void checkTopology();
+         void checkStencilRef();
+         void checkFramebufferSamplePositions();
+diff --git a/plume_d3d12.cpp b/plume_d3d12.cpp
+--- a/plume_d3d12.cpp
++++ b/plume_d3d12.cpp
+@@ -7,6 +7,7 @@
+ 
+ #include "plume_d3d12.h"
+ 
++#include <cstdlib>
+ #include <unordered_set>
+ 
+ #include <dxgi1_5.h>
+@@ -44,6 +45,23 @@
+ #endif
+ 
+ namespace plume {
++    static bool D3D12StateCacheEnabled() {
++        static const bool enabled = [] {
++            const char *value = std::getenv("PLUME_D3D12_STATE_CACHE");
++            return value != nullptr && value[0] == '1' && value[1] == '\0';
++        }();
++        return enabled;
++    }
++
++    static void D3D12ReportStateCacheConfiguration() {
++        static const bool reported = [] {
++            fprintf(stderr, "Plume D3D12 command state cache: %s\n",
++                D3D12StateCacheEnabled() ? "enabled" : "disabled");
++            return true;
++        }();
++        (void)reported;
++    }
++
+     static const uint32_t ShaderDescriptorHeapSize = 65536;
+     static const uint32_t SamplerDescriptorHeapSize = 1024;
+     static const uint32_t TargetDescriptorHeapSize = 16384;
+@@ -1896,6 +1914,8 @@
+     void D3D12CommandList::begin() {
+         assert(!open);
+ 
++        D3D12ReportStateCacheConfiguration();
++        notifyCommandStateWasChangedExternally();
+         commandAllocator->Reset();
+         d3d->Reset(commandAllocator, nullptr);
+         open = true;
+@@ -1917,6 +1937,7 @@
+         activeTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+         activeStencilRef = 0;
+         descriptorHeapsSet = false;
++        notifyCommandStateWasChangedExternally();
+     }
+     
+     void D3D12CommandList::barriers(RenderBarrierStages stages, const RenderBufferBarrier *bufferBarriers, uint32_t bufferBarriersCount, const RenderTextureBarrier *textureBarriers, uint32_t textureBarriersCount) {
+@@ -2055,35 +2076,56 @@
+         assert(pipeline != nullptr);
+ 
+         const D3D12Pipeline *interfacePipeline = static_cast<const D3D12Pipeline *>(pipeline);
++        const uint32_t pipelineType = uint32_t(interfacePipeline->type);
++        const bool cacheEnabled = D3D12StateCacheEnabled();
+         switch (interfacePipeline->type) {
+         case D3D12Pipeline::Type::Compute: {
+             const D3D12ComputePipeline *computePipeline = static_cast<const D3D12ComputePipeline *>(interfacePipeline);
+-            d3d->SetPipelineState(computePipeline->d3d);
++            if (!cacheEnabled || !cachedPipelineValid || cachedPipelineType != pipelineType ||
++                cachedPipelineObject != computePipeline->d3d) {
++                d3d->SetPipelineState(computePipeline->d3d);
++            }
++            cachedPipelineObject = computePipeline->d3d;
+             break;
+         }
+         case D3D12Pipeline::Type::Graphics: {
+             const D3D12GraphicsPipeline *graphicsPipeline = static_cast<const D3D12GraphicsPipeline *>(interfacePipeline);
+-            d3d->SetPipelineState(graphicsPipeline->d3d);
++            if (!cacheEnabled || !cachedPipelineValid || cachedPipelineType != pipelineType ||
++                cachedPipelineObject != graphicsPipeline->d3d) {
++                d3d->SetPipelineState(graphicsPipeline->d3d);
++            }
++            cachedPipelineObject = graphicsPipeline->d3d;
+             activeGraphicsPipeline = graphicsPipeline;
+             break;
+         }
+         case D3D12Pipeline::Type::Raytracing: {
+             assert(d3dV4 != nullptr);
+             const D3D12RaytracingPipeline *raytracingPipeline = static_cast<const D3D12RaytracingPipeline *>(interfacePipeline);
+-            d3dV4->SetPipelineState1(raytracingPipeline->stateObject);
++            if (!cacheEnabled || !cachedPipelineValid || cachedPipelineType != pipelineType ||
++                cachedPipelineObject != raytracingPipeline->stateObject) {
++                d3dV4->SetPipelineState1(raytracingPipeline->stateObject);
++            }
++            cachedPipelineObject = raytracingPipeline->stateObject;
+             break;
+         }
+         default:
+             assert(false && "Unknown pipeline type.");
+-            break;
+-        }
++            return;
++        }
++        cachedPipelineType = pipelineType;
++        cachedPipelineValid = true;
+     }
+ 
+     void D3D12CommandList::setComputePipelineLayout(const RenderPipelineLayout *pipelineLayout) {
+         assert(pipelineLayout != nullptr);
+ 
+         const D3D12PipelineLayout *interfacePipelineLayout = static_cast<const D3D12PipelineLayout *>(pipelineLayout);
+-        d3d->SetComputeRootSignature(interfacePipelineLayout->rootSignature);
++        if (!D3D12StateCacheEnabled() || !cachedComputeRootValid ||
++            cachedComputeRootSignature != interfacePipelineLayout->rootSignature) {
++            d3d->SetComputeRootSignature(interfacePipelineLayout->rootSignature);
++        }
++        cachedComputeRootSignature = interfacePipelineLayout->rootSignature;
++        cachedComputeRootValid = true;
+         activeComputePipelineLayout = interfacePipelineLayout;
+     }
+ 
+@@ -2109,7 +2151,12 @@
+         assert(pipelineLayout != nullptr);
+ 
+         const D3D12PipelineLayout *interfacePipelineLayout = static_cast<const D3D12PipelineLayout *>(pipelineLayout);
+-        d3d->SetGraphicsRootSignature(interfacePipelineLayout->rootSignature);
++        if (!D3D12StateCacheEnabled() || !cachedGraphicsRootValid ||
++            cachedGraphicsRootSignature != interfacePipelineLayout->rootSignature) {
++            d3d->SetGraphicsRootSignature(interfacePipelineLayout->rootSignature);
++        }
++        cachedGraphicsRootSignature = interfacePipelineLayout->rootSignature;
++        cachedGraphicsRootValid = true;
+         activeGraphicsPipelineLayout = interfacePipelineLayout;
+     }
+ 
+@@ -2464,6 +2511,15 @@
+ 
+     void D3D12CommandList::notifyDescriptorHeapWasChangedExternally() {
+         descriptorHeapsSet = false;
++    }
++
++    void D3D12CommandList::notifyCommandStateWasChangedExternally() {
++        cachedPipelineObject = nullptr;
++        cachedPipelineValid = false;
++        cachedGraphicsRootSignature = nullptr;
++        cachedComputeRootSignature = nullptr;
++        cachedGraphicsRootValid = false;
++        cachedComputeRootValid = false;
+     }
+ 
+     void D3D12CommandList::checkTopology() {

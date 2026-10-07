@@ -13,26 +13,160 @@
  */
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <fcntl.h>
 #include <map>
+#include <string>
 #include <thread>
 #include <vector>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+#else
+#include <unistd.h>
+#endif
 #define MINIZ_HEADER_FILE_ONLY
 #include <miniz.h>
 #include <zstd.h>
 
 #include "gpu_native/dxc_link.h"
 #include "gpu/shaders/shader_cache.h"
+#include "prelink_jobs.h"
 
 namespace {
 
+// Both prelink targets publish through this transaction. A failed write,
+// flush, close or replacement must leave the previously generated bank intact.
+class PrelinkOutput {
+ public:
+  explicit PrelinkOutput(const char* destination) : destination_(destination) {
+    static std::atomic<uint64_t> serial{0};
+#ifdef _WIN32
+    const auto process = GetCurrentProcessId();
+#else
+    const auto process = getpid();
+#endif
+    for (unsigned attempt = 0; attempt < 64; ++attempt) {
+      temporary_ = destination_;
+      temporary_ += ".tmp." + std::to_string(process) + "." +
+                    std::to_string(serial.fetch_add(1, std::memory_order_relaxed));
+#ifdef _WIN32
+      int descriptor = -1;
+      const auto error = _wsopen_s(&descriptor, temporary_.c_str(),
+          _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _SH_DENYRW,
+          _S_IREAD | _S_IWRITE);
+      if (error) {
+        errno = error;
+        if (error == EEXIST) continue;
+        temporary_.clear();
+        return;
+      }
+      file_ = _wfdopen(descriptor, L"wb");
+      if (!file_) _close(descriptor);
+#else
+      const int descriptor = open(temporary_.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0666);
+      if (descriptor < 0) {
+        if (errno == EEXIST) continue;
+        temporary_.clear();
+        return;
+      }
+      file_ = fdopen(descriptor, "wb");
+      if (!file_) close(descriptor);
+#endif
+      return;
+    }
+    // Every attempted name belonged to another transaction; do not remove it.
+    temporary_.clear();
+  }
+
+  PrelinkOutput(const PrelinkOutput&) = delete;
+  PrelinkOutput& operator=(const PrelinkOutput&) = delete;
+  ~PrelinkOutput() {
+    if (file_) std::fclose(file_);
+    if (!temporary_.empty()) {
+      std::error_code ignored;
+      std::filesystem::remove(temporary_, ignored);
+    }
+  }
+
+  FILE* file() const { return file_; }
+
+  bool commit() {
+    if (!file_) return false;
+    bool success = std::ferror(file_) == 0;
+    if (std::fflush(file_) != 0) success = false;
+#ifdef _WIN32
+    if (success && _commit(_fileno(file_)) != 0) success = false;
+#else
+    if (success && fsync(fileno(file_)) != 0) success = false;
+#endif
+    if (std::fclose(file_) != 0) success = false;
+    file_ = nullptr;
+    if (!success) return false;
+#ifdef _WIN32
+    if (!MoveFileExW(temporary_.c_str(), destination_.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return false;
+#else
+    if (std::rename(temporary_.c_str(), destination_.c_str()) != 0) return false;
+#endif
+    temporary_.clear();
+    return true;
+  }
+
+ private:
+  std::filesystem::path destination_;
+  std::filesystem::path temporary_;
+  FILE* file_ = nullptr;
+};
+
 void EmitBytes(FILE* f, const uint8_t* data, size_t size) {
+  // Integer initializers create one AST node per byte. The linked bank can
+  // contain tens of millions of bytes, so emit a single string initializer
+  // instead. MSVC limits concatenated string length, so retain its original
+  // initializer form. Large banks still require the COFF embedding path to
+  // avoid Clang's per-byte constant-evaluation memory cost. The
+  // recorded compressed size excludes the string form's trailing C++ NUL.
+  std::fputs("#if defined(_MSC_VER) && !defined(__clang__)\n{\n", f);
+  if (!size) std::fputs("0,", f);
   for (size_t i = 0; i < size; ++i) {
     std::fprintf(f, "%u,", data[i]);
     if ((i & 31) == 31) std::fputc('\n', f);
   }
-  std::fputc('\n', f);
+  std::fputs("\n}\n#else\n"
+             "#if defined(__clang__)\n"
+             "#pragma clang diagnostic push\n"
+             "#pragma clang diagnostic ignored \"-Woverlength-strings\"\n"
+             "#endif\n", f);
+  constexpr size_t kLineBytes = 256;
+  constexpr char kHex[] = "0123456789ABCDEF";
+  if (!size) std::fputs("\"\"\n", f);
+  for (size_t begin = 0; begin < size; begin += kLineBytes) {
+    const size_t count = std::min(kLineBytes, size - begin);
+    char line[kLineBytes * 4 + 3];
+    line[0] = '"';
+    for (size_t i = 0; i < count; ++i) {
+      const uint8_t byte = data[begin + i];
+      line[1 + i * 4] = '\\';
+      line[2 + i * 4] = 'x';
+      line[3 + i * 4] = kHex[byte >> 4];
+      line[4 + i * 4] = kHex[byte & 15];
+    }
+    line[1 + count * 4] = '"';
+    line[2 + count * 4] = '\n';
+    std::fwrite(line, 1, count * 4 + 3, f);
+  }
+  std::fputs("#if defined(__clang__)\n"
+             "#pragma clang diagnostic pop\n"
+             "#endif\n#endif\n", f);
 }
 
 }  // namespace
@@ -69,6 +203,14 @@ int main(int argc, char** argv) {
       jobs.push_back({&e, s});
       s = (s - e.specConstantsMask) & e.specConstantsMask;
     } while (s);
+  }
+
+  const auto worker_count = lego_gpu_aot::PrelinkWorkerCount(
+      jobs.size(), std::thread::hardware_concurrency(),
+      std::getenv("LEGO_GPU_PRELINK_JOBS"));
+  if (!worker_count) {
+    std::fprintf(stderr, "prelink: LEGO_GPU_PRELINK_JOBS must be a positive unsigned decimal integer\n");
+    return 1;
   }
 
   std::map<uint32_t, std::vector<uint8_t>> specLibs;
@@ -118,10 +260,8 @@ int main(int argc, char** argv) {
     }
   };
   {
-    unsigned hw = std::thread::hardware_concurrency();
-    if (!hw) hw = 4;
     std::vector<std::thread> pool;
-    for (unsigned t = 0; t < hw; ++t) pool.emplace_back(worker);
+    for (unsigned t = 0; t < *worker_count; ++t) pool.emplace_back(worker);
     for (auto& t : pool) t.join();
   }
   if (failed.load()) return 1;
@@ -165,9 +305,10 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  FILE* f = std::fopen(argv[1], "wb");
+  PrelinkOutput output(argv[1]);
+  FILE* f = output.file();
   if (!f) {
-    std::fprintf(stderr, "prelink: cannot open %s\n", argv[1]);
+    std::fprintf(stderr, "prelink: cannot create temporary output for %s\n", argv[1]);
     return 1;
   }
   std::fprintf(f, "#include \"gpu/shaders/linked_shader_cache.h\"\n");
@@ -181,14 +322,17 @@ int main(int argc, char** argv) {
   std::fprintf(f, "};\n");
   std::fprintf(f, "const size_t g_linkedShaderCacheEntryCount = %zu;\n",
                entries.size());
-  std::fprintf(f, "const uint8_t g_compressedLinkedDxilCache[] = {\n");
+  std::fprintf(f, "const uint8_t g_compressedLinkedDxilCache[] =\n");
   EmitBytes(f, comp.data(), comp_len);
-  std::fprintf(f, "};\n");
+  std::fprintf(f, ";\n");
   std::fprintf(f, "const size_t g_linkedDxilCacheCompressedSize = %zu;\n",
                static_cast<size_t>(comp_len));
   std::fprintf(f, "const size_t g_linkedDxilCacheDecompressedSize = %zu;\n",
                blob.size());
-  std::fclose(f);
+  if (!output.commit()) {
+    std::fprintf(stderr, "prelink: cannot publish %s; previous output preserved\n", argv[1]);
+    return 1;
+  }
 
   std::printf("prelink: %zu variant(s) from %zu spec-constant shader(s), "
               "%zu -> %zu bytes\n",

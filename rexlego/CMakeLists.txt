@@ -42,6 +42,17 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     endif()
 
     enable_language(C)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prepare_plume.py" --check
+        RESULT_VARIABLE LEGO_PLUME_PREPARE_RESULT
+        OUTPUT_VARIABLE LEGO_PLUME_PREPARE_OUTPUT
+        ERROR_VARIABLE LEGO_PLUME_PREPARE_ERROR
+        TIMEOUT 30)
+    if(NOT LEGO_PLUME_PREPARE_RESULT STREQUAL "0")
+        message(FATAL_ERROR "Native Plume dependency needs preparation. Run python tools/gpu-aot/prepare_plume.py.\n${LEGO_PLUME_PREPARE_OUTPUT}${LEGO_PLUME_PREPARE_ERROR}")
+    endif()
     set(PLUME_D3D12_AGILITY_SDK_ENABLED OFF CACHE BOOL "" FORCE)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume"
                      "${CMAKE_CURRENT_BINARY_DIR}/thirdparty/plume"
@@ -107,7 +118,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     target_include_directories(legodimensions PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd")
-    target_link_libraries(legodimensions PRIVATE plume d3d12 dxgi rex::xxhash)
+    target_link_libraries(legodimensions PRIVATE plume d3d12 dxgi rex::xxhash renderdoc)
 
     # Generated locally by tools/gpu-aot. Keeping it out of Git avoids a
     # multi-megabyte generated source file while still making an enabled build
@@ -160,6 +171,29 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_BINARY_DIR}/generated/gpu_native/shaders")
     set(LEGO_NATIVE_DXC
         "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxc.exe")
+    # Both archive prelinkers are built for the Windows target even when
+    # standalone host shader compilation uses a host-native DXC executable.
+    if(CMAKE_CROSSCOMPILING AND NOT CMAKE_CROSSCOMPILING_EMULATOR)
+        message(FATAL_ERROR
+            "Native GPU cross-build prelinkers require CMAKE_CROSSCOMPILING_EMULATOR, including when LEGO_HOST_DXC_EXECUTABLE is set")
+    endif()
+    set(LEGO_HOST_DXC_EXECUTABLE "" CACHE FILEPATH
+        "Host-native DXC executable for build-time host shader compilation")
+    if(LEGO_HOST_DXC_EXECUTABLE)
+        if(NOT EXISTS "${LEGO_HOST_DXC_EXECUTABLE}")
+            message(FATAL_ERROR "Host DXC not found: ${LEGO_HOST_DXC_EXECUTABLE}")
+        endif()
+        set(LEGO_NATIVE_DXC "${LEGO_HOST_DXC_EXECUTABLE}")
+        set(LEGO_NATIVE_DXC_COMMAND "${LEGO_NATIVE_DXC}")
+    elseif(CMAKE_CROSSCOMPILING)
+        if(NOT CMAKE_CROSSCOMPILING_EMULATOR)
+            message(FATAL_ERROR
+                "Cross-building needs LEGO_HOST_DXC_EXECUTABLE or CMAKE_CROSSCOMPILING_EMULATOR for Windows DXC")
+        endif()
+        set(LEGO_NATIVE_DXC_COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${LEGO_NATIVE_DXC}")
+    else()
+        set(LEGO_NATIVE_DXC_COMMAND "${LEGO_NATIVE_DXC}")
+    endif()
     foreach(LEGO_HOST_SHADER IN ITEMS copy_vs copy_color_ps resolve_color_ps depth_pack_ps depth_restore_ps)
         if(LEGO_HOST_SHADER STREQUAL "copy_vs")
             set(LEGO_HOST_SHADER_PROFILE vs_6_6)
@@ -172,7 +206,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
             OUTPUT "${LEGO_HOST_SHADER_HEADER}"
             COMMAND ${CMAKE_COMMAND} -E make_directory
                     "${LEGO_NATIVE_GENERATED_SHADER_DIR}"
-            COMMAND "${LEGO_NATIVE_DXC}"
+            COMMAND ${LEGO_NATIVE_DXC_COMMAND}
                     -T ${LEGO_HOST_SHADER_PROFILE} -E main -HV 2021
                     -all-resources-bound -Wno-ignored-attributes
                     -I "${LEGO_NATIVE_HOST_SHADER_DIR}"
@@ -180,6 +214,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
                     -Vn g_${LEGO_HOST_SHADER}_dxil
                     "${LEGO_NATIVE_HOST_SHADER_DIR}/${LEGO_HOST_SHADER}.hlsl"
             DEPENDS
+                "${LEGO_NATIVE_DXC}"
                 "${LEGO_NATIVE_HOST_SHADER_DIR}/${LEGO_HOST_SHADER}.hlsl"
                 "${LEGO_NATIVE_HOST_SHADER_DIR}/copy_common.hlsli"
             COMMENT "Compiling ${LEGO_HOST_SHADER}.hlsl (DXIL)"
@@ -235,19 +270,84 @@ if(LEGODIMENSIONS_NATIVE_GPU)
 
     add_custom_command(
         OUTPUT "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
-        COMMAND "$<TARGET_FILE:lego_gpu_prelink>"
+        COMMAND lego_gpu_prelink
                 "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
         DEPENDS lego_gpu_prelink
         COMMENT "Pre-linking LEGO specialization-constant shader variants"
         VERBATIM)
-    target_sources(legodimensions PRIVATE "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
-    set_source_files_properties("${LEGO_NATIVE_LINKED_SHADER_CACHE}"
-        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    add_custom_target(lego_main_linked_cache
+        DEPENDS "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
+    add_dependencies(legodimensions lego_main_linked_cache)
+    # Large compressed banks otherwise become millions of C++ initializer
+    # values. Keep their metadata in C++, but embed their unchanged bytes in a
+    # target COFF object when host LLVM tools support the target's MSVC ABI.
+    find_program(LEGO_HOST_LLVM_MC NAMES llvm-mc llvm-mc-22 llvm-mc-21 llvm-mc-20
+        NO_CMAKE_FIND_ROOT_PATH)
+    set(LEGO_NATIVE_BINARY_CACHE_ARCH "")
+    # Windows native generators can retain the host CMAKE_SYSTEM_PROCESSOR
+    # when clang-cl targets another architecture. Use the compiler's proven
+    # architecture and pointer width; ARM64EC/X86/unknown retain C++ embedding.
+    if(CMAKE_CXX_SIZEOF_DATA_PTR EQUAL 8)
+        if(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
+            set(LEGO_NATIVE_BINARY_CACHE_ARCH x86_64)
+        elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64")
+            set(LEGO_NATIVE_BINARY_CACHE_ARCH aarch64)
+        endif()
+    endif()
+    set(LEGO_NATIVE_BINARY_CACHE_SUPPORTED OFF)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+       CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" AND
+       LEGO_NATIVE_BINARY_CACHE_ARCH AND LEGO_HOST_LLVM_MC AND
+       EXISTS "${LEGO_HOST_LLVM_MC}" AND NOT IS_DIRECTORY "${LEGO_HOST_LLVM_MC}" AND
+       Python3_Interpreter_FOUND)
+        set(LEGO_NATIVE_BINARY_CACHE_SUPPORTED ON)
+    endif()
+    option(LEGO_NATIVE_BINARY_CACHE
+        "Embed the main linked DXIL bytes as COFF instead of a C++ initializer"
+        ${LEGO_NATIVE_BINARY_CACHE_SUPPORTED})
+    if(LEGO_NATIVE_BINARY_CACHE)
+        if(NOT LEGO_NATIVE_BINARY_CACHE_SUPPORTED)
+            message(FATAL_ERROR
+                "LEGO_NATIVE_BINARY_CACHE needs x64/ARM64 Windows Clang with the MSVC ABI, Python3, and host llvm-mc; set LEGO_NATIVE_BINARY_CACHE=OFF for C++ embedding")
+        endif()
+        set(LEGO_NATIVE_BINARY_CACHE_SCRIPT
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/embed_linked_bank.py")
+        set(LEGO_NATIVE_BINARY_CACHE_DIR
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/gpu_native/linked-bank")
+        set(LEGO_NATIVE_BINARY_CACHE_METADATA
+            "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank-metadata.cpp")
+        set(LEGO_NATIVE_BINARY_CACHE_OBJECT
+            "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank.obj")
+        add_custom_command(
+            OUTPUT "${LEGO_NATIVE_BINARY_CACHE_METADATA}" "${LEGO_NATIVE_BINARY_CACHE_OBJECT}"
+            BYPRODUCTS
+                "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank.bin"
+                "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank.s"
+                "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank-manifest.json"
+            COMMAND "${Python3_EXECUTABLE}" "${LEGO_NATIVE_BINARY_CACHE_SCRIPT}"
+                    "${LEGO_NATIVE_LINKED_SHADER_CACHE}" "${LEGO_NATIVE_BINARY_CACHE_DIR}"
+                    --llvm-mc "${LEGO_HOST_LLVM_MC}"
+                    --arch "${LEGO_NATIVE_BINARY_CACHE_ARCH}"
+            DEPENDS "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+                    "${LEGO_NATIVE_BINARY_CACHE_SCRIPT}" "${LEGO_HOST_LLVM_MC}"
+            COMMENT "Embedding main linked DXIL bank as ${LEGO_NATIVE_BINARY_CACHE_ARCH} COFF"
+            VERBATIM)
+        target_sources(legodimensions PRIVATE
+            "${LEGO_NATIVE_BINARY_CACHE_METADATA}" "${LEGO_NATIVE_BINARY_CACHE_OBJECT}")
+        set_source_files_properties("${LEGO_NATIVE_BINARY_CACHE_METADATA}"
+            PROPERTIES GENERATED TRUE SKIP_PRECOMPILE_HEADERS ON)
+        set_source_files_properties("${LEGO_NATIVE_BINARY_CACHE_OBJECT}"
+            PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+    else()
+        target_sources(legodimensions PRIVATE "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
+        set_source_files_properties("${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+            PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    endif()
     set(LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE
         "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/runtime-linked-dxil-cache.cpp")
     add_custom_command(
         OUTPUT "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}"
-        COMMAND "$<TARGET_FILE:lego_gpu_prelink_runtime>"
+        COMMAND lego_gpu_prelink_runtime
                 "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}"
         DEPENDS lego_gpu_prelink_runtime
         COMMENT "Pre-linking LEGO runtime shader variants"
@@ -259,11 +359,15 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         src/gpu_native/runtime_linked_shader_cache.cpp
         PROPERTIES OBJECT_DEPENDS "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
 
-    # Fingerprint the exact native renderer inputs. CMAKE_CONFIGURE_DEPENDS
-    # makes a header-only edit trigger reconfigure as well as recompilation,
-    # and the fingerprint printed at startup proves which executable is live.
+    # Fingerprint the exact native renderer inputs after generated shader banks
+    # exist. Hashing the linked cache during configure prevented a fresh build
+    # from reaching the prelink target that creates that same file.
     set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume/plume_d3d12.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume/plume_d3d12.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prepare_plume.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/patches/plume-state-cache.patch"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/patches/plume-vulkan-readback.patch"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_route.h"
@@ -330,26 +434,53 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/runtime_shader_cache.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/runtime_linked_shader_cache.cpp"
         "${LEGO_NATIVE_SHADER_CACHE}"
+        "${LEGO_NATIVE_MICROCODE_INDEX}"
         "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
-        "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        ${LEGO_NATIVE_GPU_FINGERPRINT_INPUTS})
-    set(LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "")
-    foreach(LEGO_NATIVE_GPU_INPUT IN LISTS LEGO_NATIVE_GPU_FINGERPRINT_INPUTS)
-        file(SHA256 "${LEGO_NATIVE_GPU_INPUT}" LEGO_NATIVE_GPU_INPUT_HASH)
-        string(APPEND LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL
-            "${LEGO_NATIVE_GPU_INPUT_HASH}")
-    endforeach()
-    string(SHA256 LEGO_NATIVE_GPU_FINGERPRINT_FULL
-        "${LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL}")
-    string(SUBSTRING "${LEGO_NATIVE_GPU_FINGERPRINT_FULL}" 0 16
-        LEGO_NATIVE_GPU_FINGERPRINT)
-    configure_file(src/gpu_native/build_info.h.in
-        "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h" @ONLY)
+        "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}"
+        "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
+    # Include every native helper header so changes to upload, bounds or
+    # completion logic cannot retain an older executable fingerprint.
+    file(GLOB_RECURSE LEGO_NATIVE_GPU_LOCAL_HEADERS CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/*.h")
+    list(APPEND LEGO_NATIVE_GPU_FINGERPRINT_INPUTS ${LEGO_NATIVE_GPU_LOCAL_HEADERS})
+    list(REMOVE_DUPLICATES LEGO_NATIVE_GPU_FINGERPRINT_INPUTS)
+    set(LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT
+        "${CMAKE_CURRENT_BINARY_DIR}/generate-native-gpu-fingerprint.cmake")
+    file(CONFIGURE OUTPUT "${LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT}" CONTENT [=[
+set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS "@LEGO_NATIVE_GPU_FINGERPRINT_INPUTS@")
+set(LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "")
+foreach(LEGO_NATIVE_GPU_INPUT IN LISTS LEGO_NATIVE_GPU_FINGERPRINT_INPUTS)
+    file(SHA256 "${LEGO_NATIVE_GPU_INPUT}" LEGO_NATIVE_GPU_INPUT_HASH)
+    string(APPEND LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "${LEGO_NATIVE_GPU_INPUT_HASH}")
+endforeach()
+string(SHA256 LEGO_NATIVE_GPU_FINGERPRINT_FULL "${LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL}")
+string(SUBSTRING "${LEGO_NATIVE_GPU_FINGERPRINT_FULL}" 0 16 LEGO_NATIVE_GPU_FINGERPRINT)
+configure_file("@CMAKE_CURRENT_SOURCE_DIR@/src/gpu_native/build_info.h.in"
+    "@CMAKE_CURRENT_BINARY_DIR@/generated/native_gpu_build_info.h" @ONLY)
+file(WRITE "@CMAKE_CURRENT_BINARY_DIR@/native-gpu-build.txt"
+    "LEGO Dimensions native GPU ${LEGO_NATIVE_GPU_FINGERPRINT}\n")
+]=] @ONLY)
+    add_custom_command(
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h"
+               "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
+        COMMAND ${CMAKE_COMMAND} -P "${LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT}"
+        DEPENDS ${LEGO_NATIVE_GPU_FINGERPRINT_INPUTS}
+                "${LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/build_info.h.in"
+        COMMENT "Fingerprinting native renderer sources and generated shader banks"
+        VERBATIM)
+    add_custom_target(lego_native_gpu_fingerprint
+        DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h"
+                "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt")
+    # Make generators must complete both bank producers before the fingerprint
+    # and metadata compilation consume their outputs through separate paths.
+    add_dependencies(lego_native_gpu_fingerprint
+        lego_main_linked_cache lego_runtime_linked_cache)
+    add_dependencies(legodimensions lego_native_gpu_fingerprint)
+    target_sources(legodimensions PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h")
     target_include_directories(legodimensions PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
-        "LEGO Dimensions native GPU ${LEGO_NATIVE_GPU_FINGERPRINT}\n")
     add_custom_command(TARGET legodimensions POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
