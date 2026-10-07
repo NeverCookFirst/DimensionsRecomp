@@ -522,6 +522,82 @@ class PreparationTest(unittest.TestCase):
             m.prepare(self.args('native-rtv', render_target_path_d3d12='rtv'))
         self.assertFalse((self.root / 'runs/native-rtv').exists())
 
+    def test_pm4_correctness_transforms_inherited_fast_policy_before_hashing(self):
+        source = self.install / 'legodimensions.toml'
+        source.write_text(m.config_text(source.read_text(), {
+            'gpu_backend': 'vulkan', 'render_target_path_d3d12': 'rov',
+            'readback_resolve': 'fast', 'readback_resolve_max_kb': 256,
+            'readback_memexport': False, 'd3d12_readback_memexport': False,
+            'd3d12_readback_resolve': False, 'readback_memexport_fast': True,
+            'readback_memexport_batched': True, 'readback_memexport_on_demand': True,
+            'clear_memory_page_state': False, 'async_shader_compilation': True,
+            'd3d12_pipeline_creation_threads': 8, 'invalid_function_nonfatal': True,
+        }))
+        source_before = source.read_bytes()
+        source_identity = m.digest(source)
+        previous = Path(m.prepare(self.args('pm4-existing', renderer='pm4'))['run_root'])
+        previous_config = (previous / 'legodimensions.toml').read_bytes()
+        previous_manifest = (previous / 'regression-manifest.json').read_bytes()
+        report = m.prepare(self.args('pm4-correctness', renderer='pm4', pm4_correctness=True))
+        run = Path(report['run_root'])
+        config = m.tomllib.loads((run / 'legodimensions.toml').read_text())
+        expected = {
+            'gpu_plugin': 'xenos', 'gpu_backend': 'd3d12', 'gpu_native_pm4': True,
+            'render_target_path_d3d12': 'rtv', 'readback_resolve': 'full',
+            'readback_resolve_max_kb': 0, 'readback_memexport': True,
+            'd3d12_readback_memexport': True, 'd3d12_readback_resolve': True,
+            'readback_memexport_fast': False, 'readback_memexport_batched': False,
+            'readback_memexport_on_demand': False, 'clear_memory_page_state': True,
+            'async_shader_compilation': False, 'd3d12_pipeline_creation_threads': 0,
+            'invalid_function_nonfatal': False,
+        }
+        self.assertEqual({key: config[key] for key in expected}, expected)
+        self.assertTrue(report['pm4_correctness'])
+        self.assertEqual(report['pm4_correctness_settings'], expected)
+        manifest = json.loads((run / 'regression-manifest.json').read_text())
+        self.assertEqual(manifest['pm4_correctness_settings'], expected)
+        self.assertEqual(manifest['config_sha256'], m.digest(run / 'legodimensions.toml')['sha256'])
+        self.assertEqual(manifest['source_config_sha256'], source_identity['sha256'])
+        self.assertEqual(source.read_bytes(), source_before)
+        self.assertEqual(m.digest(source), source_identity)
+        self.assertEqual((previous / 'legodimensions.toml').read_bytes(), previous_config)
+        self.assertEqual((previous / 'regression-manifest.json').read_bytes(), previous_manifest)
+        self.assertFalse(m.verify(previous)['pm4_correctness'])
+
+    def test_pm4_correctness_rejects_native_route_and_conflicting_backend(self):
+        for name, options in [('native-correctness', {'renderer': 'native'}),
+                              ('pm4-correctness-rov', {'renderer': 'pm4',
+                                                       'render_target_path_d3d12': 'rov'})]:
+            with self.assertRaisesRegex(ValueError, 'PM4 correctness profile requires'):
+                m.prepare(self.args(name, pm4_correctness=True, **options))
+            self.assertFalse((self.root / 'runs' / name).exists())
+
+    def test_pm4_correctness_verifier_rejects_config_and_profile_tampering(self):
+        run = Path(m.prepare(self.args('pm4-correctness-tamper', renderer='pm4',
+                                       pm4_correctness=True))['run_root'])
+        path = run / 'legodimensions.toml'
+        path.write_text(m.config_text(path.read_text(), {'readback_resolve_max_kb': 256}))
+        with self.assertRaisesRegex(ValueError, 'Prepared configuration changed'):
+            m.verify(run)
+        # Even a rehashed TOML cannot conceal disagreement with the declared
+        # reference profile; the verifier checks actual values and their types.
+        manifest_path = run / 'regression-manifest.json'
+        manifest = json.loads(manifest_path.read_text())
+        manifest['config_sha256'] = m.digest(path)['sha256']
+        manifest_path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'Prepared TOML disagrees'):
+            m.verify(run)
+        path.write_text(m.config_text(path.read_text(), {'readback_resolve_max_kb': 0,
+                                                       'clear_memory_page_state': 1}))
+        manifest['config_sha256'] = m.digest(path)['sha256']
+        manifest_path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'Prepared TOML disagrees'):
+            m.verify(run)
+        manifest['pm4_correctness_settings']['readback_resolve'] = 'fast'
+        manifest_path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'requested settings changed'):
+            m.verify(run)
+
     def test_runner_refuses_invalid_environment_without_spawning(self):
         plan = {'remove_inherited_prefixes': [], 'remove_inherited_keys': [],
                 'environment_overrides': {'REXGLUE_TOYPAD_PORT': '19201\0extra'}}

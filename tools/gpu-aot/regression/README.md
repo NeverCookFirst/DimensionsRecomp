@@ -93,6 +93,23 @@ closure alone does not establish internal ABI compatibility. PM4 cannot use
 native diagnostic flags. Actual runtime route logs and visible rendering are
 still required; a launch descriptor does not prove either.
 
+Add `--pm4-correctness` when preparing a fresh PM4 reference to apply an
+explicit synchronous D3D12 RTV policy. It sets `readback_resolve="full"` and
+`readback_resolve_max_kb=0`, enables shared memexport readback and both D3D12
+readback aliases, disables fast/batched/on-demand memexport, and enables
+`clear_memory_page_state`. It also disables asynchronous shader compilation,
+sets `d3d12_pipeline_creation_threads=0`, and sets
+`invalid_function_nonfatal=false`. Native routes and an explicit conflicting
+`--render-target-path-d3d12 rov` are rejected.
+
+The profile overrides inherited values before the configuration is hashed.
+The manifest records every requested setting; reporting verifies those values
+against the actual TOML as well as its hash. The source configuration and any
+previously prepared runs remain unchanged. Use a new run name and port with
+the same pinned baseline, runtime, plugin and checkpoint inputs. Full readback
+adds synchronization cost, so this reference is not a throughput baseline.
+Actual route, logs and rendering still need validation.
+
 `--state-cache off` (default) or `on` explicitly selects the experimental Plume
 command state cache. The native descriptor writes an exact `0` or `1`; inherited
 cache settings are removed even when an older descriptor omits its sanitizer.

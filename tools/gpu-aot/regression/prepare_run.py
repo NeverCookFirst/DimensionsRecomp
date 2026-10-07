@@ -31,6 +31,19 @@ BINARY_NAMES = ('legodimensions.exe', 'rexruntime.dll', 'dxcompiler.dll', 'dxil.
 SUPPORT_NAMES = ('FiraSans-Regular.ttf', 'achievement_unlocked.wav', 'gamecontrollerdb.txt')
 SLOTS = {'batman': (2, 4), 'gandalf': (2, 0), 'wyldstyle': (3, 6), 'batmobile': (1, 1)}
 SANITIZED_PREFIXES = ('LEGO_NATIVE_', 'LEGO_GPU_', 'LEGO_DUMP_', 'REX_')
+# Explicit synchronous PM4 reference policy. Shared readback settings and
+# D3D12 aliases both participate in the SDK's effective readback mode.
+PM4_CORRECTNESS_SETTINGS = {
+    'gpu_plugin': 'xenos', 'gpu_backend': 'd3d12', 'gpu_native_pm4': True,
+    'render_target_path_d3d12': 'rtv',
+    'readback_resolve': 'full', 'readback_resolve_max_kb': 0,
+    'readback_memexport': True, 'd3d12_readback_memexport': True,
+    'd3d12_readback_resolve': True,
+    'readback_memexport_fast': False, 'readback_memexport_batched': False,
+    'readback_memexport_on_demand': False, 'clear_memory_page_state': True,
+    'async_shader_compilation': False, 'd3d12_pipeline_creation_threads': 0,
+    'invalid_function_nonfatal': False,
+}
 RECIPE = {
     'name': 'operator-confirmed-checkpoint',
     'steps': ['Start the exact verified descriptor after every existing game closes.',
@@ -289,6 +302,11 @@ def config_text(original, replacements):
 
 
 def prepare(args):
+    pm4_correctness = getattr(args, 'pm4_correctness', False)
+    require(not pm4_correctness or args.renderer == 'pm4',
+            'PM4 correctness profile requires PM4 route')
+    require(not pm4_correctness or getattr(args, 'render_target_path_d3d12', None) in (None, 'rtv'),
+            'PM4 correctness profile requires RTV render-target path')
     timer_wait = getattr(args, 'timer_wait', 'spin')
     require(timer_wait in ('spin', 'blocking'), 'Unknown timer wait mode')
     cadence = getattr(args, 'cadence_only', False)
@@ -452,6 +470,8 @@ def prepare(args):
             require(args.renderer == 'pm4', 'Render-target backend experiment requires PM4')
             require(target_path in ('rov', 'rtv'), 'Unsupported render-target backend')
             replacements['render_target_path_d3d12'] = target_path
+        if pm4_correctness:
+            replacements.update(PM4_CORRECTNESS_SETTINGS)
         config = config_text(original_config, replacements)
         (stage / 'legodimensions.toml').write_text(config)
         overrides = {
@@ -520,6 +540,8 @@ def prepare(args):
             'run_root': str(final), 'workspace': str(workspace), 'baseline': str(baseline), 'frozen_build': frozen,
             'dependency_proof': dependency_proof,
             'renderer_requested': args.renderer, 'renderer_verified_by_launch': False,
+            'pm4_correctness': pm4_correctness,
+            'pm4_correctness_settings': dict(PM4_CORRECTNESS_SETTINGS) if pm4_correctness else {},
             'performance_probe': performance,
             'cadence_only_probe': cadence,
             'gpu_timestamp_probe': gpu_timestamps,
@@ -599,6 +621,20 @@ def verify(run, workspace=None):
             'This verifier only accepts a prepared, unlaunched setup')
     renderer = manifest['renderer_requested']
     require(renderer in ('native', 'pm4'), 'Unknown requested renderer')
+    correctness = manifest.get('pm4_correctness', False)
+    requested_settings = manifest.get('pm4_correctness_settings', {})
+    require(type(correctness) is bool, 'Invalid PM4 correctness profile request')
+    if correctness:
+        require(renderer == 'pm4', 'PM4 correctness profile requires PM4 route')
+        require(requested_settings == PM4_CORRECTNESS_SETTINGS and
+                all(type(requested_settings.get(key)) is type(value)
+                    for key, value in PM4_CORRECTNESS_SETTINGS.items()),
+                'PM4 correctness requested settings changed')
+        require(all(type(config.get(key)) is type(value) and config[key] == value
+                    for key, value in PM4_CORRECTNESS_SETTINGS.items()),
+                'Prepared TOML disagrees with PM4 correctness profile')
+    else:
+        require(requested_settings == {}, 'Unrequested PM4 correctness settings')
     env = manifest['launch_plan']['environment_overrides']
     allowed = {'STEAM_COMPAT_CLIENT_INSTALL_PATH', 'STEAM_COMPAT_DATA_PATH', 'PROTON_LOG',
                'PROTON_LOG_DIR', 'SteamAppId', 'SteamGameId', 'WINEDLLOVERRIDES',
@@ -710,6 +746,7 @@ def verify(run, workspace=None):
         'status': 'prepared-identity-verified-not-launched', 'run_root': str(run),
         'build_fingerprint': manifest['frozen_build']['build_fingerprint'],
         'renderer_requested': renderer, 'renderer_verified_by_launch': False,
+        'pm4_correctness': correctness, 'pm4_correctness_settings': requested_settings,
         'route_authority': 'A future actual GPU route log decides renderer identity; embedded native fingerprint alone does not.',
         'executable_sha256': digest(run / 'legodimensions.exe')['sha256'],
         'checkpoint_files_verified': len(manifest['checkpoint_files']),
@@ -758,6 +795,8 @@ def main():
     p.add_argument('--snapshots', action='store_true',
                    help='Explicitly enable bounded native DDS readbacks; changes timing workload')
     p.add_argument('--renderer', choices=('native', 'pm4'), default='native')
+    p.add_argument('--pm4-correctness', action='store_true',
+                   help='PM4-only synchronous D3D12 RTV reference policy; overrides inherited readback/compilation settings')
     p.add_argument('--render-target-path-d3d12', choices=('rov', 'rtv'),
                    help='Explicit PM4 render-target backend experiment; restart required')
     p.add_argument('--pm4-plugin', type=Path)
