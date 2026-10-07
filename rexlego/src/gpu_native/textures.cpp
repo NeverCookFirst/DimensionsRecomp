@@ -1854,6 +1854,18 @@ bool ResolveTextureFromSurface(u32 destination_texture, u32 source_surface,
   return UpdateResolvedSampling(*resolved_destination);
 }
 
+bool NativePromotedSurfaceExtent(u32 guest_address, u32& width, u32& height) {
+  const auto resource = FindTexture(guest_address);
+  if (!resource || !resource->surface || !resource->texture ||
+      !resource->host_width || !resource->host_height ||
+      resource->host_width > 16384 || resource->host_height > 32768 ||
+      (resource->host_width == resource->width &&
+       resource->host_height == resource->height)) return false;
+  width = resource->host_width;
+  height = resource->host_height;
+  return true;
+}
+
 bool PromoteTiledSurface(u32 guest_address, u32 width, u32 height) {
   auto recording = HostDevice::LockRecording();
   if (!guest_address) return true;

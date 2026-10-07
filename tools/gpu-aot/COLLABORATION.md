@@ -14,7 +14,16 @@ viewport audit found integer API bytes copied into a six-float private shadow;
 bulk reset uses a 65,535-pixel sentinel that the original setter clips to the
 active surface. The correction and scissor enable/empty-rectangle semantics
 passed the full 68-check renderer suite and independent review. Older frozen
-builds below predate them.
+builds below predate them. Live fingerprint `73ca236405793015` then exposed a
+missing integration case: Xbox tile surfaces retain physical dimensions while
+the native renderer promotes host storage to the complete image. Calling the
+original viewport writer without that logical extent squashed the menu into
+512 rows on a 720-row target. That run is a confirmed regression, not a visual
+baseline. The shared writer now receives a scoped promoted extent through its
+original CPU clipping branch; guest resource dimensions and persistent tiling
+state remain unchanged. The actual integer, float and bulk setter bodies cover
+this regression, including the unadapted 512-row negative control. Live menu
+recovery and post-promotion setter ordering still require verification.
 
 An isolated native SDK build through local commit `5dc986f` passed its 225
 selected unit and production regressions. Four existing BitStream cases remain
@@ -33,11 +42,23 @@ produces byte-identical output. This establishes the tested ABI and readback
 path, not a complete Vulkan game renderer or a performance gain. Plume stays
 on its public pin with an additional verified `plume-vulkan-readback.patch`.
 
+SDK commit `2897c31` includes compact codegen registration. The genuinely
+rebuilt CLI SHA256 is
+`69dd8b7aeb1715277fed6720dab5b4127234206384d9267b0f2137193d9e00d1`.
+It regenerated all 165,261 game bindings with identical addresses, symbols and
+order; other generated instructions and headers were byte-identical. The
+production registration regression passed after increasing its total deadline
+for five bounded compiler invocations. The complete native game then built
+within a 6 GiB owned-process ceiling, peaking around 2.4 GiB. Its matching
+Windows runtime and PM4 plugin also built; Linux PM4 configuration is being
+prepared in a separate source tree.
+
 The last accepted native checkpoint samples remain 15.84/16.59 FPS with unequal
-draw workloads; no cache speedup is established and the cache stays off. The matching Windows runtime and PM4 plugin have built. The full game
-build exposed a separate 165,000-call generated registration function that
-exceeds the 3 GiB compiler cap; compact registration output is now the build
-gate before the native/PM4 scene comparison. No level or full campaign completion has been verified.
+draw workloads; no cache speedup is established and the cache stays off. A PM4
+correctness reference must use full uncapped resolve readback, coherent
+memexport/page-state refresh and synchronous pipeline creation. Inherited fast
+readback settings are unsuitable for that comparison. No level or full campaign
+completion has been verified.
 
 ## Linux limitations
 

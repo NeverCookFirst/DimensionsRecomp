@@ -123,15 +123,42 @@ bool NativeViewportRange(u32 address, u32 length, bool write) {
   return true;
 }
 
-bool NativeViewportArguments(u32 device_address, u32 viewport_address, u32 stack) {
+bool NativeViewportDeviceArguments(u32 device_address, u32 stack, u32 scratch = 512) {
   if (!NativeViewportRange(device_address, kGuestDeviceSize, true) ||
-      !NativeViewportRange(viewport_address, sizeof(D3DViewport9), false) ||
-      stack < 512 || !NativeViewportRange(stack - 512, 512, true)) return false;
+      stack < scratch || !NativeViewportRange(stack - scratch, scratch, true)) return false;
   const auto* device = REX_KERNEL_MEMORY()->TranslateVirtual<const D3DDevice*>(device_address);
   const u32 surface = device->render_targets[0] ? u32(device->render_targets[0])
                                               : u32(device->depth_stencil);
   return !surface || NativeViewportRange(surface, sizeof(D3DSurface), false);
 }
+
+bool NativeViewportArguments(u32 device_address, u32 viewport_address, u32 stack) {
+  return NativeViewportDeviceArguments(device_address, stack) &&
+      NativeViewportRange(viewport_address, sizeof(D3DViewport9), false);
+}
+
+class ScopedNativeViewportExtent {
+ public:
+  ScopedNativeViewportExtent(D3DDevice* device, u32 width, u32 height)
+      : bytes_(reinterpret_cast<u8*>(device)), flags_(bytes_[11068]),
+        width_(*reinterpret_cast<be_u32*>(bytes_ + 13556)),
+        height_(*reinterpret_cast<be_u32*>(bytes_ + 13560)) {
+    *reinterpret_cast<be_u32*>(bytes_ + 13556) = width;
+    *reinterpret_cast<be_u32*>(bytes_ + 13560) = height;
+    bytes_[11068] = flags_ | 0x10;
+  }
+  ~ScopedNativeViewportExtent() {
+    bytes_[11068] = flags_;
+    *reinterpret_cast<be_u32*>(bytes_ + 13556) = width_;
+    *reinterpret_cast<be_u32*>(bytes_ + 13560) = height_;
+  }
+  ScopedNativeViewportExtent(const ScopedNativeViewportExtent&) = delete;
+  ScopedNativeViewportExtent& operator=(const ScopedNativeViewportExtent&) = delete;
+ private:
+  u8* bytes_;
+  u8 flags_;
+  u32 width_, height_;
+};
 
 void SetScissorRectHook(D3DDevice* device, const D3DRect* rect) {
   if (device && rect) {
@@ -194,6 +221,35 @@ REX_HOOK_RAW(sub_83FBA978) {
   // Actual CPU-only TU23 conversion, surface/tile clipping and RB_VPORT
   // shadows. Its scissor call takes the native hook, without Xbox packets.
   __imp__sub_83FBA978(ctx, base);
+}
+REX_HOOK_RAW(sub_83FBA710) {
+  auto recording = legodimensions::gpu_native::HostDevice::LockRecording();
+  // Shared TU23 writer reserves 160 bytes. Its save-FPR slots are within
+  // that range; API caller has already reserved its separate 112-byte frame.
+  if (!legodimensions::gpu_native::NativeViewportDeviceArguments(
+          ctx.r3.u32, ctx.r1.u32, 160)) return;
+  auto* device = reinterpret_cast<legodimensions::gpu_native::D3DDevice*>(base + ctx.r3.u32);
+  const u32 surface = device->render_targets[0] ? u32(device->render_targets[0])
+                                              : u32(device->depth_stencil);
+  u32 width = 0, height = 0;
+  if (legodimensions::gpu_native::NativePromotedSurfaceExtent(surface, width, height)) {
+    // Native draws cover the whole promoted target, rather than replaying a
+    // physical Xbox tile. Let the original CPU writer clip against that extent.
+    // Only this call sees the extent override; persistent tiling state and
+    // guest surface dimensions remain unchanged.
+    const double requested_width = ctx.f3.f64, requested_height = ctx.f4.f64;
+    {
+      legodimensions::gpu_native::ScopedNativeViewportExtent extent(device, width, height);
+      __imp__sub_83FBA710(ctx, base);
+    }
+    static u32 logs = 0;
+    if (logs++ < 16)
+      REXLOG_INFO("Native GPU: promoted viewport surface={:08X} requested={}x{} host={}x{} effective={}x{}",
+          surface, requested_width, requested_height, width, height,
+          float(device->viewport.width), float(device->viewport.height));
+  } else {
+    __imp__sub_83FBA710(ctx, base);
+  }
 }
 REX_HOOK(sub_83FBA068, legodimensions::gpu_native::SetScissorRectHook);
 REX_HOOK(sub_83FBA968, legodimensions::gpu_native::SetScissorEnableHook);

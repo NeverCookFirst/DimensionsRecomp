@@ -72,6 +72,9 @@ plume::RenderFramebuffer* ResolveFramebuffer(
 // Synchronous BeginTiling allocation, before the pass's clear and geometry.
 // Guest surface dimensions and Xbox tiling/command-queue fields are unchanged.
 bool PromoteTiledSurface(u32 guest_address, u32 width, u32 height);
+// Caller holds HostDevice::LockRecording. Metadata only: never adopts a guest
+// texture or allocates host storage.
+bool NativePromotedSurfaceExtent(u32 guest_address, u32& width, u32& height);
 float SurfaceColorOutputScale(u32 guest_address);
 bool PrepareSurfaceDepthAlias(u32 guest_address);
 void MarkSurfaceWritten(u32 guest_address);
