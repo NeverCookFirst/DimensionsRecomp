@@ -39,6 +39,25 @@ Portable helper and mocked-driver checks remain useful, but they cannot establis
 rendered pixel correctness. Add image checks and real GPU execution to that layer.
 The full campaign is an integration test after this loop is reliable.
 
+The first matched Vorton captures have no confirmed renderer discrepancy. The
+matching PM4 plugin requires the RTV render-target path on this Intel/Proton
+setup; its default ROV path produced grossly incorrect output. Record that
+selection instead of treating either reference configuration as ground truth.
+
+A static unpaused native Vorton sample measured 14.20 FPS across 444 complete
+frame intervals, with 81.50 ms p95 and about 543 draws per frame. LongProbe and
+detailed timing were enabled, so this is a failing instrumented performance
+baseline, not an instrumentation-free benchmark. Paused UI results must never
+substitute for gameplay performance. Trace-disabled and per-present-only probes
+will quantify instrumentation cost before choosing an optimization.
+
+The measured command-slot waits averaged 14.87 ms per frame across 8.34 waits.
+Guest kickoffs reuse the three-slot command ring independently of presentation.
+A bounded larger-pool experiment must preserve every submission, query,
+callback, fence and descriptor-retirement ticket; increasing swap-chain latency
+or removing completion waits is not equivalent. Keep the current default until
+GPU runs demonstrate a useful gain without regressions.
+
 ## Shader coverage
 
 The static extractor filters named archive entries. Its output count does not
@@ -47,9 +66,25 @@ installer archives, or programs constructed by the game at runtime.
 
 An initial audit found no exact physical or instruction-stream matches between
 the static-only index and 169 captured runtime containers. Removing container
-reflection from identity therefore does not fix these misses. Establish whether
-the missing programs exist in unscanned asset entries before designing a new
-runtime shader-generation path.
+reflection from identity therefore does not fix these misses.
+
+A bounded pass visited all 19,000 GAME.DAT entry indices without finding those
+169 programs. Its legacy decoder did not verify actual produced byte counts,
+so the compressed-entry negative result remains provisional. A faithful
+SDK-loaded and TU23-patched executable image contained byte-identical metadata,
+physical sections, and instruction
+streams for 96 of them. Executable-resident shaders were missing from the
+DAT-only input inventory. Include the patched image in offline extraction before
+asking gameplay to discover this coverage again.
+
+The remaining 73 observed programs are exactly the 73 containers without CTAB
+reflection. Their instruction streams did not match the scanned image. A bounded
+PATCH.DAT scan subsequently traced 54 of them to ordinary named shader assets:
+physical sections, instructions, and fixed shader metadata match byte for byte.
+The engine's XDK repacking path removes reflection. The standard extractor was
+reading name-tree positions as entry indices; new-format archives require the
+authoritative CRC-based `FindEntry` lookup. Fix this association before judging
+coverage from an extraction count. Nineteen observed origins remain unproved.
 
 Use bounded scan reports with explicit unreadable, sparse, malformed, and
 unexamined counts. Record exact container and microcode identities. Compile new
