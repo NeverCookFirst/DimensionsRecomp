@@ -2,10 +2,13 @@ cmake_minimum_required(VERSION 3.25)
 project(NativeGpuPortableChecks LANGUAGES CXX)
 include(CTest)
 
+if(BUILD_TESTING)
+    find_package(Python3 3.11 COMPONENTS Interpreter QUIET)
+endif()
+
 # The private-run harness uses Linux /proc, flock and reflinks. No game assets
 # are required by its synthetic preparation, sampling and comparison checks.
-if(BUILD_TESTING AND UNIX)
-    find_package(Python3 3.11 COMPONENTS Interpreter QUIET)
+if(BUILD_TESTING AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(Python3_Interpreter_FOUND)
         add_test(NAME renderer_regression
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/regression/test_regression.py)
@@ -13,11 +16,10 @@ if(BUILD_TESTING AND UNIX)
     endif()
 endif()
 
-
 # No SDK, generated game code, game assets, DXC, or graphics device required.
 set(CHECKS blend_state buffer_header color_resolve_swizzle descriptor_retirement
     pixel_shader_filter polygon_offset pool_copy portrait_identity present_rect
-    resolve_region shader_texture_usage texture_alpha4_upload texture_number
+    resolve_region shader_texture_usage texture_2d_upload texture_alpha4_upload texture_number
     texture_volume_upload tile_extent tonemap_dof vertex_byte_order vertex_upload
     window_mode)
 foreach(check IN LISTS CHECKS)
@@ -33,61 +35,70 @@ foreach(check IN LISTS CHECKS)
     add_test(NAME ${check} COMMAND test_${check})
 endforeach()
 
-# Validate the public native-renderer dependency with real source and fake COM.
-if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_Interpreter_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
-        add_test(NAME plume_command_creation
-            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_plume_command_creation.py
-                ${CMAKE_CURRENT_BINARY_DIR}/fixtures/plume_command_creation
-                --compiler ${CMAKE_CXX_COMPILER})
-        set_tests_properties(plume_command_creation PROPERTIES TIMEOUT 60)
-        add_test(NAME gpu_timestamps
-            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gpu_timestamps.py
-                ${CMAKE_CURRENT_BINARY_DIR}/fixtures/gpu_timestamps
-                --compiler ${CMAKE_CXX_COMPILER})
-        set_tests_properties(gpu_timestamps PROPERTIES TIMEOUT 60)
-        if(UNIX AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/.git")
-            add_test(NAME prepare_plume
-                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_prepare_plume.py
-                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/prepare_plume)
-            set_tests_properties(prepare_plume PROPERTIES TIMEOUT 60)
-        endif()
-    endif()
-endif()
-
-# Compile production bodies with deterministic allocation and fence failures.
-# These use GNU-style compiler arguments and require no SDK or game assets.
-if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
-    find_package(Python3 COMPONENTS Interpreter QUIET)
+# These fixtures compile production function bodies with fake memory and fences.
+# Base fixtures need no SDK, shader archive, generated game code or GPU.
+# Optional fixtures below consume actual dependency sources when initialized.
+# Their compiler flags target the GNU-style drivers (including clang++ on Windows).
+# These Python drivers compile and execute host binaries without CMake's cross
+# flags or emulator; only register them for a native host configuration.
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING
+    AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     if(Python3_Interpreter_FOUND)
-        foreach(check IN ITEMS draw_device_view state_call_diagnostic buffer_alloc_diagnostic native_build_fingerprint command_slots constant_timing frame_cadence cull_state draw_diagnostic prelink_workers prelink_emission
-                frame_ring_transaction submission_waits pipeline_failures
-                completion_callbacks cpu_resource_wait draw_upload query_retirement)
-            add_test(NAME ${check}
-                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_${check}.py
-                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/${check}
-                    --compiler ${CMAKE_CXX_COMPILER})
-            set_tests_properties(${check} PROPERTIES TIMEOUT 60)
-        endforeach()
+        set(PRODUCTION_CHECKS draw_device_view state_call_diagnostic buffer_alloc_diagnostic
+            command_slots completion_callbacks constant_timing cpu_resource_wait cull_state
+            draw_diagnostic draw_index_bounds draw_upload frame_cadence frame_ring_transaction
+            framebuffer_owners memory_watch nonindexed_buffer_windows quad_buffer_windows
+            pipeline_failures shader_binding_failures prelink_emission prelink_workers
+            query_retirement shader_bounds submission_waits texture_binding_failures
+            texture_source_residency texture_authority_probe)
+        find_program(LEGO_GPU_CHECK_NINJA NAMES ninja NO_CMAKE_FIND_ROOT_PATH)
+        find_program(LEGO_GPU_CHECK_MAKE NAMES make gmake NO_CMAKE_FIND_ROOT_PATH)
+        if(LEGO_GPU_CHECK_NINJA)
+            set(LEGO_GPU_CHECK_GENERATOR "Ninja")
+        elseif(LEGO_GPU_CHECK_MAKE)
+            set(LEGO_GPU_CHECK_GENERATOR "Unix Makefiles")
+        endif()
+        if(LEGO_GPU_CHECK_GENERATOR)
+            list(APPEND PRODUCTION_CHECKS native_build_fingerprint)
+        endif()
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/thirdparty/xxHash/xxhash.h")
+            list(APPEND PRODUCTION_CHECKS shader_capture_dedup)
+            if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/thirdparty/xxHash/xxhash.c")
+                list(APPEND PRODUCTION_CHECKS precompiled_pack)
+            endif()
+        endif()
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/shaders/bytecode/d3d12_5_1/texture_load_depth_unorm_cs.h"
             AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/d3d12/texture_cache.cpp"
             AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/pipeline/texture/util.cpp"
             AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/src/graphics/pipeline/texture/cache.cpp")
-            add_test(NAME texture_depth_upload
-                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_texture_depth_upload.py
-                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/texture_depth_upload
-                    --compiler ${CMAKE_CXX_COMPILER})
-            set_tests_properties(texture_depth_upload PROPERTIES TIMEOUT 60)
+            list(APPEND PRODUCTION_CHECKS texture_depth_upload)
         endif()
-        # Verify the actual SDK project template when its submodule is present.
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../research/reblue/thirdparty/XenosRecomp/XenosRecomp/shader_recompiler.cpp"
+            AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../research/reblue/thirdparty/XenosRecomp/thirdparty/fmt/include/fmt/format.h")
+            list(APPEND PRODUCTION_CHECKS unmapped_vertex_fetch)
+        endif()
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
+            list(APPEND PRODUCTION_CHECKS plume_command_creation gpu_timestamps resize_fences)
+        endif()
+        if(UNIX)
+            list(APPEND PRODUCTION_CHECKS prelink_publication)
+        endif()
+        # The cross-build fixture uses Unix host-tool scripts and reads the SDK's
+        # actual generated-project template; an asset-free checkout may lack it.
         if(UNIX AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/resources/templates/init/rexglue_cmake.inja")
-            add_test(NAME cross_build_producers
-                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cross_build_producers.py
-                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/cross_build_producers
-                    --compiler ${CMAKE_CXX_COMPILER})
-            set_tests_properties(cross_build_producers PROPERTIES TIMEOUT 60)
+            list(APPEND PRODUCTION_CHECKS cross_build_producers)
         endif()
+        foreach(check IN LISTS PRODUCTION_CHECKS)
+            set(extra_arguments)
+            if(check STREQUAL "native_build_fingerprint")
+                list(APPEND extra_arguments --generator "${LEGO_GPU_CHECK_GENERATOR}")
+            endif()
+            add_test(NAME ${check}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_${check}.py
+                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/${check}
+                    --compiler ${CMAKE_CXX_COMPILER} ${extra_arguments})
+            set_tests_properties(${check} PROPERTIES TIMEOUT 60)
+        endforeach()
         # This fixture cross-compiles a tiny SDK-free Windows ABI cache and
         # inspects/archives a real COFF blob, rather than linking a host GPU app.
         if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -119,28 +130,28 @@ if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
                 set_tests_properties(binary_cache_build PROPERTIES TIMEOUT 60)
             endif()
         endif()
-        if(UNIX)
-            add_test(NAME prelink_publication
-                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_prelink_publication.py
-                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/prelink_publication
-                    --compiler ${CMAKE_CXX_COMPILER})
-            set_tests_properties(prelink_publication PROPERTIES TIMEOUT 60)
-        endif()
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
-            add_test(NAME resize_fences
-                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_resize_fences.py
-                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/resize_fences
-                    --compiler ${CMAKE_CXX_COMPILER})
-            set_tests_properties(resize_fences PROPERTIES TIMEOUT 60)
-        endif()
+    else()
+        message(STATUS "Python3 unavailable: production-body fixtures are disabled")
     endif()
 endif()
 
-# These fixtures exercise the real extraction CLI with synthetic inputs.
-if(BUILD_TESTING)
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    find_program(LEGO_DOTNET_EXECUTABLE NAMES dotnet)
-    if(Python3_Interpreter_FOUND AND LEGO_DOTNET_EXECUTABLE)
+# This offline Git preparation check invokes no C++ compiler.
+if(BUILD_TESTING AND UNIX AND Python3_Interpreter_FOUND
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/.git"
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/plume_d3d12.cpp")
+    find_package(Git QUIET)
+    if(Git_FOUND)
+        add_test(NAME prepare_plume
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_prepare_plume.py
+                ${CMAKE_CURRENT_BINARY_DIR}/fixtures/prepare_plume)
+        set_tests_properties(prepare_plume PROPERTIES TIMEOUT 60)
+    endif()
+endif()
+
+# Extraction CLI fixtures do not depend on the selected C++ compiler frontend.
+if(BUILD_TESTING AND Python3_Interpreter_FOUND)
+    find_program(LEGO_DOTNET_EXECUTABLE NAMES dotnet NO_CMAKE_FIND_ROOT_PATH)
+    if(LEGO_DOTNET_EXECUTABLE)
         foreach(check IN ITEMS extract_paths image_shader_extract embedded_shader_extract)
             add_test(NAME ${check}
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_${check}.py
