@@ -88,7 +88,13 @@ struct D3D12SwapChain {
 '''+resize+r'''
 }
 struct SwapChain {bool resize_ok=true,empty=false;int resizes=0;bool resize();bool isEmpty(){return empty;}};
+// Disabled optional timestamp boundary; test_gpu_timestamps covers its real enabled implementation.
+struct GpuSubmissionTimestamps {
+ void Begin(auto*,u32,u64){};void End(auto*,u32,const char*,u32=~0u,u32=~0u){};
+ void Submitted(u32,u64){};void Complete(u32,u64,u64,u64){};
+};
 struct State {
+ GpuSubmissionTimestamps* gpu_timestamps=nullptr;u32 present_number=0;
  static constexpr u32 kFramesInFlight=3;u32 command_slot_count=kFramesInFlight;
  Backend backend=Backend::kD3D12;
  std::array<bool,3> frame_submitted{};

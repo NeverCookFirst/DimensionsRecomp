@@ -70,6 +70,14 @@ For a timer comparison keep command slots fixed and pass
 `--vary timer-wait` to `compare_samples.py`. Its default `--vary command-slots`
 requires timer mode to match. Varying both settings rejects comparability.
 
+For a build supporting native GPU timestamps, add `--gpu-timestamps` to write
+`logs/gpu-timestamps.csv` separately from CPU cadence metrics. Query writes and
+readback add diagnostic overhead; comparisons require the same probe presence.
+The spans measure elapsed queue execution within individual command submissions,
+not GPU utilization, CPU command recording or DXGI presentation. A descriptor
+only requests the probe; startup evidence and actual completed rows must confirm
+availability on the selected device. PM4 cannot request this native probe.
+
 For a PM4 reference use `--renderer pm4`, optionally
 `--render-target-path-d3d12 rtv`, and provide `--pm4-plugin`,
 `--pm4-plugin-sha256`, `--pm4-runtime-sha256`, and

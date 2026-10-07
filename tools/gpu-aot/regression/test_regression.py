@@ -187,6 +187,32 @@ class PreparationTest(unittest.TestCase):
             with self.assertRaises(Exception):
                 m.prepare(self.args(name='invalid-cadence', cadence_only=True, **changes))
 
+    def test_gpu_timestamp_probe_is_explicit_private_and_native_only(self):
+        identities = []
+        for enabled in (False, True):
+            run = Path(m.prepare(self.args(name='gpu-timestamps-'+str(enabled).lower(),
+                                          cadence_only=True, gpu_timestamps=enabled))['run_root'])
+            manifest = json.loads((run/'regression-manifest.json').read_text())
+            env = manifest['launch_plan']['environment_overrides']
+            identities.append(m.digest(run/'legodimensions.exe'))
+            self.assertIs(manifest['gpu_timestamp_probe'], enabled)
+            self.assertEqual('LEGO_NATIVE_GPU_TIMESTAMPS' in env, enabled)
+            m.verify(run)
+            if enabled:
+                self.assertEqual(env['LEGO_NATIVE_GPU_TIMESTAMPS'], m.windows(run/'logs/gpu-timestamps.csv'))
+                env['LEGO_NATIVE_GPU_TIMESTAMPS'] = m.windows(self.root/'escaped.csv')
+                (run/'regression-manifest.json').write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(Exception, 'Diagnostic output escaped'):
+                    m.verify(run)
+                env['LEGO_NATIVE_GPU_TIMESTAMPS'] = m.windows(run/'logs/gpu-timestamps.csv')
+                manifest['gpu_timestamp_probe'] = False
+                (run/'regression-manifest.json').write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(Exception, 'GPU timestamp descriptor'):
+                    m.verify(run)
+        self.assertEqual(identities[0], identities[1])
+        with self.assertRaisesRegex(Exception, 'GPU timestamp sidecar requires native'):
+            m.prepare(self.args(name='pm4-timestamps', renderer='pm4', gpu_timestamps=True))
+
     def test_performance_preparation_omits_heavy_diagnostics_and_rejects_tampering(self):
         report = m.prepare(self.args(name='performance', performance=True, buffer_windows=True))
         run = Path(report['run_root'])
@@ -627,6 +653,17 @@ class PreparationTest(unittest.TestCase):
         report['flags']['LEGO_NATIVE_COMMAND_SLOTS']='12';report['slots']=12
         path.write_text(json.dumps(report))
         self.assertFalse(comparer.compare([a,b],varying='timer-wait')['comparable_identity'])
+
+    def test_comparison_preserves_gpu_probe_presence_but_normalizes_private_path(self):
+        a, report_a = self.sample_fixture('gpu-probe-a',3)
+        b, report_b = self.sample_fixture('gpu-probe-b',12)
+        for path, report in ((a,report_a),(b,report_b)):
+            report['flags']['LEGO_NATIVE_GPU_TIMESTAMPS'] = m.windows(path/'gpu-timestamps.csv')
+            (path/'sample.json').write_text(json.dumps(report))
+        self.assertTrue(comparer.compare([a,b])['comparable_identity'])
+        del report_b['flags']['LEGO_NATIVE_GPU_TIMESTAMPS']
+        (b/'sample.json').write_text(json.dumps(report_b))
+        self.assertFalse(comparer.compare([a,b])['comparable_identity'])
 
     def test_inventory_limit_stops_iteration_before_materialization_and_refuses_aliases(self):
         directory=self.root/'bounded-tree';directory.mkdir()

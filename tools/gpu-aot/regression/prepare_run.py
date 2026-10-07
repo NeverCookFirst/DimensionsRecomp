@@ -293,6 +293,9 @@ def prepare(args):
     require(timer_wait in ('spin', 'blocking'), 'Unknown timer wait mode')
     cadence = getattr(args, 'cadence_only', False)
     performance = getattr(args, 'performance', False) or cadence
+    gpu_timestamps = getattr(args, 'gpu_timestamps', False)
+    require(not gpu_timestamps or args.renderer == 'native',
+            'GPU timestamp sidecar requires native route')
     command_slots = getattr(args, 'command_slots', None)
     require(command_slots is None or (cadence and command_slots in (3, 12)),
             'Explicit command slots require native cadence-only mode and count3 or12')
@@ -473,6 +476,8 @@ def prepare(args):
             if cadence:
                 overrides.pop('LEGO_NATIVE_TIMING')
                 overrides['LEGO_NATIVE_COMMAND_SLOTS'] = str(command_slots or 3)
+            if gpu_timestamps:
+                overrides['LEGO_NATIVE_GPU_TIMESTAMPS'] = windows(final / 'logs/gpu-timestamps.csv')
         if args.buffer_windows:
             overrides['LEGO_NATIVE_BUFFER_WINDOWS'] = '1'
         if args.snapshots:
@@ -507,6 +512,7 @@ def prepare(args):
             'renderer_requested': args.renderer, 'renderer_verified_by_launch': False,
             'performance_probe': performance,
             'cadence_only_probe': cadence,
+            'gpu_timestamp_probe': gpu_timestamps,
             'command_slots': (command_slots or 3) if cadence else None,
             'pm4_plugin': plugin_provenance,
             'checkpoint': str(checkpoint), 'checkpoint_files': pinned_saves,
@@ -596,6 +602,7 @@ def verify(run, workspace=None):
         allowed.update({'LEGO_NATIVE_STATIC_TEXTURE_WATCH', 'LEGO_NATIVE_BUFFER_WATCH', 'LEGO_NATIVE_TIMING',
                         'LEGO_NATIVE_STENCIL', 'LEGO_NATIVE_VIEWPORT', 'LEGO_NATIVE_CULL',
                         'LEGO_NATIVE_FRAME_METRICS', 'LEGO_DUMP_MISSING_SHADERS', 'LEGO_NATIVE_SHADER_PACK',
+                        'LEGO_NATIVE_GPU_TIMESTAMPS',
                         'LEGO_NATIVE_SHADER_PACK_TRIGGER', 'LEGO_NATIVE_BUFFER_WINDOWS',
                         'LEGO_NATIVE_COMMAND_SLOTS', 'LEGO_NATIVE_TRACE_DIR',
                         'LEGO_NATIVE_DRAW_TRACE_TRIGGER', 'LEGO_GPU_SNAPSHOT_DIR'})
@@ -603,6 +610,7 @@ def verify(run, workspace=None):
             1024 <= manifest['toypad_port'] <= 65535 and manifest['toypad_port'] != 9191,
             'Unexpected environment override or private Toypad port')
     path_overrides = {'PROTON_LOG_DIR': run/'logs', 'LEGO_NATIVE_FRAME_METRICS': run/'logs/frames.csv',
+                      'LEGO_NATIVE_GPU_TIMESTAMPS': run/'logs/gpu-timestamps.csv',
                       'LEGO_DUMP_MISSING_SHADERS': run/'shader-capture',
                       'LEGO_NATIVE_SHADER_PACK': run/'hotload/next.pack',
                       'LEGO_NATIVE_SHADER_PACK_TRIGGER': run/'hotload/next.trigger',
@@ -613,6 +621,11 @@ def verify(run, workspace=None):
         if key in env:
             require(env[key] == (str(target) if key == 'PROTON_LOG_DIR' else windows(target)),
                     'Diagnostic output escaped the private run: '+key)
+    timestamp_probe = manifest.get('gpu_timestamp_probe', False)
+    require(type(timestamp_probe) is bool and
+            ('LEGO_NATIVE_GPU_TIMESTAMPS' in env) is timestamp_probe and
+            (not timestamp_probe or renderer == 'native'),
+            'GPU timestamp descriptor disagrees with declared probe')
     if manifest.get('performance_probe'):
         require(renderer == 'native' and not any(key in env for key in (
             'LEGO_NATIVE_TRACE_DIR', 'LEGO_NATIVE_DRAW_TRACE_TRIGGER', 'LEGO_GPU_SNAPSHOT_DIR',
@@ -711,6 +724,8 @@ def main():
                    help='Native frame CSV with detailed timing flag absent; implies performance mode')
     p.add_argument('--command-slots', type=int, choices=(3, 12),
                    help='Explicit private cadence experiment slot count (default3)')
+    p.add_argument('--gpu-timestamps', action='store_true',
+                   help='Opt-in native per-submission queue timestamps in a separate private CSV')
     p.add_argument('--snapshots', action='store_true',
                    help='Explicitly enable bounded native DDS readbacks; changes timing workload')
     p.add_argument('--renderer', choices=('native', 'pm4'), default='native')

@@ -42,6 +42,11 @@ if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
                 ${CMAKE_CURRENT_BINARY_DIR}/fixtures/plume_command_creation
                 --compiler ${CMAKE_CXX_COMPILER})
         set_tests_properties(plume_command_creation PROPERTIES TIMEOUT 60)
+        add_test(NAME gpu_timestamps
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gpu_timestamps.py
+                ${CMAKE_CURRENT_BINARY_DIR}/fixtures/gpu_timestamps
+                --compiler ${CMAKE_CXX_COMPILER})
+        set_tests_properties(gpu_timestamps PROPERTIES TIMEOUT 60)
         if(UNIX AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/plume/.git")
             add_test(NAME prepare_plume
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_prepare_plume.py

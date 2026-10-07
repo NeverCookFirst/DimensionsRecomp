@@ -2,6 +2,7 @@
 #include "gpu_native/descriptor_retirement.h"
 #include "gpu_native/completion_queue.h"
 #include "gpu_native/present_rect.h"
+#include "gpu_native/gpu_timestamps.h"
 
 #include "gpu_native/buffers.h"
 #include "gpu_native/queries.h"
@@ -179,6 +180,7 @@ struct State {
   std::array<bool, kMaxCommandSlots> frame_submitted{};
   std::array<u64, kMaxCommandSlots> slot_submission{};
   u64 last_submission = 0, completed_submission = 0;
+  std::unique_ptr<GpuSubmissionTimestamps> gpu_timestamps;
   CompletionQueue completion_callbacks;
   u64 callbacks_enqueued = 0, callbacks_executed = 0;
   std::array<std::vector<std::unique_ptr<DrawUploadPage>>, kMaxCommandSlots> draw_uploads;
@@ -512,6 +514,10 @@ void RefreshCompletedSubmissionsLocked(State& state) {
     if (!state.frame_submitted[slot]) continue;
     auto* fence = static_cast<plume::D3D12CommandFence*>(state.frame_fences[slot].get());
     const u64 completed = fence->d3d->GetCompletedValue();
+    if (state.gpu_timestamps)
+      state.gpu_timestamps->Complete(slot, completed,
+          fence->fenceValue > 1 ? fence->fenceValue - 1 : 0,
+          state.present_number);
     // Plume signals fenceValue, then increments it. UINT64_MAX is removal,
     // never successful completion. Do not consume its auto-reset wait event.
     if (completed != UINT64_MAX && fence->fenceValue > 1 &&
@@ -525,6 +531,8 @@ void RefreshCompletedSubmissionsLocked(State& state) {
 void MarkSubmissionLocked(State& state, u32 slot) {
   state.frame_submitted[slot] = true;
   state.slot_submission[slot] = ++state.last_submission;
+  if (state.gpu_timestamps)
+    state.gpu_timestamps->Submitted(slot, state.slot_submission[slot]);
 }
 
 bool WaitForSubmissionLocked(State& state, u32 slot) {
@@ -532,6 +540,10 @@ bool WaitForSubmissionLocked(State& state, u32 slot) {
   if (state.backend == Backend::kD3D12) {
     auto* fence = static_cast<plume::D3D12CommandFence*>(state.frame_fences[slot].get());
     if (fence->d3d->GetCompletedValue() == UINT64_MAX) {
+      if (state.gpu_timestamps)
+        state.gpu_timestamps->Complete(slot, UINT64_MAX,
+            fence->fenceValue > 1 ? fence->fenceValue - 1 : 0,
+            state.present_number);
       REXLOG_ERROR("Native GPU: cannot wait for submission after device removal");
       return false;
     }
@@ -540,6 +552,10 @@ bool WaitForSubmissionLocked(State& state, u32 slot) {
   if (state.backend == Backend::kD3D12) {
     auto* fence = static_cast<plume::D3D12CommandFence*>(state.frame_fences[slot].get());
     const u64 completed = fence->d3d->GetCompletedValue();
+    if (state.gpu_timestamps)
+      state.gpu_timestamps->Complete(slot, completed,
+          fence->fenceValue > 1 ? fence->fenceValue - 1 : 0,
+          state.present_number);
     if (completed == UINT64_MAX || completed < fence->fenceValue - 1) {
       REXLOG_ERROR("Native GPU: submission GPU wait failed");
       return false;
@@ -610,6 +626,8 @@ plume::RenderCommandList* BeginFrameCommandsLocked(State& state) {
       [&](u32 index) { state.texture_slots[index] = false; });
   auto* commands = state.command_lists[slot].get();
   commands->begin();
+  if (state.gpu_timestamps)
+    state.gpu_timestamps->Begin(commands, slot, u64(state.present_number) + 1);
   InitializeNullTextures(state, commands);
   state.command_list_open = true;
   return commands;
@@ -688,6 +706,19 @@ bool HostDevice::Create(rex::ui::Window* window, Backend backend) {
   }
 
   const auto& description = state->device->getDescription();
+  if (backend == Backend::kD3D12) {
+    const char* path = std::getenv("LEGO_NATIVE_GPU_TIMESTAMPS");
+    if (path && *path) {
+      state->gpu_timestamps = GpuSubmissionTimestamps::Create(
+          state->device.get(), state->queue.get(), state->command_slot_count,
+          path, kNativeGpuBuildFingerprint);
+      if (!state->gpu_timestamps)
+        REXLOG_WARN("Native GPU: timestamp diagnostic unavailable (allocation, frequency or output failure)");
+      else
+        REXLOG_INFO("Native GPU: per-submission GPU timestamps enabled, frequency={} Hz (queue elapsed, not GPU utilization or whole-frame time)",
+                    state->gpu_timestamps->Frequency());
+    }
+  }
   REXLOG_INFO("Native GPU [{}]: {} ready on '{}' ({}x{}, {} images)",
               kNativeGpuBuildFingerprint, NameOf(backend), description.name,
               state->swap_chain->getWidth(), state->swap_chain->getHeight(),
@@ -705,6 +736,8 @@ void HostDevice::Shutdown() {
     return;
   }
   WaitForSubmittedFramesLocked(*g_state);
+  if (g_state->gpu_timestamps)
+    g_state->gpu_timestamps->Shutdown(g_state->present_number);
   if (g_state->completion_callbacks.size())
     REXLOG_INFO("Native GPU: cancelling {} completion callbacks at title shutdown",
                 g_state->completion_callbacks.size());
@@ -878,6 +911,8 @@ bool HostDevice::Synchronize(SyncReason reason) {
   if (state.command_list_open) {
     const u32 slot = state.frame_slot;
     auto* commands = state.command_lists[slot].get();
+    if (state.gpu_timestamps)
+      state.gpu_timestamps->End(commands, slot, "synchronize", static_cast<u32>(reason));
     commands->end();
     state.command_list_open = false;
     state.queue->executeCommandLists(commands, state.frame_fences[slot].get());
@@ -977,6 +1012,8 @@ bool HostDevice::SubmitRecordedWork() {
   }
   const u32 slot = state.frame_slot;
   auto* commands = state.command_lists[slot].get();
+  if (state.gpu_timestamps)
+    state.gpu_timestamps->End(commands, slot, "kickoff");
   commands->end();
   state.command_list_open = false;
   state.queue->executeCommandLists(commands, state.frame_fences[slot].get());
@@ -1215,6 +1252,8 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
   if (!acquired || image_index >= state.framebuffers.size()) {
     // Close and submit any recorded uploads/draws so the allocator remains in
     // a valid state while the window is minimized or the swap chain changes.
+    if (state.gpu_timestamps)
+      state.gpu_timestamps->End(commands, slot, "acquire_failed");
     commands->end();
     state.command_list_open = false;
     state.queue->executeCommandLists(commands, state.frame_fences[slot].get());
@@ -1262,6 +1301,8 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
   commands->barriers(
       plume::RenderBarrierStage::NONE,
       plume::RenderTextureBarrier(back, plume::RenderTextureLayout::PRESENT));
+  if (state.gpu_timestamps)
+    state.gpu_timestamps->End(commands, slot, "present", GpuSubmissionTimestamps::kNoImage, image_index);
   commands->end();
   state.command_list_open = false;
 
@@ -1280,6 +1321,8 @@ bool HostDevice::PresentTexture(plume::RenderTexture* texture,
   const auto swap_start = timing_enabled ? std::chrono::steady_clock::now()
       : std::chrono::steady_clock::time_point{};
   const bool presented = state.swap_chain->present(image_index, signals, 1);
+  if (state.gpu_timestamps)
+    state.gpu_timestamps->PresentResult(slot, presented);
   if (timing_enabled) state.swap_present_cpu_ms += std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - swap_start).count();
   ReportLogoCapture();

@@ -18,6 +18,9 @@ def comparison_identity(sample, varying='command-slots'):
                 'LEGO_NATIVE_SHADER_PACK', 'LEGO_NATIVE_SHADER_PACK_TRIGGER'):
         flags.pop(key, None)  # Private paths differ; sampler verifies their ownership.
     flags.pop('LEGO_NATIVE_COMMAND_SLOTS' if varying == 'command-slots' else 'REX_TIMER_WAIT_BLOCKING', None)
+    if 'LEGO_NATIVE_GPU_TIMESTAMPS' in flags:
+        # Preserve instrumentation presence while normalizing its private path.
+        flags['LEGO_NATIVE_GPU_TIMESTAMPS'] = 'enabled'
     return {'binaries': sample['binaries'], 'checkpoint': sample['checkpoint'], 'criteria': sample['criteria'],
             'normalized_config': sample['normalized_config'], 'shader_packs': sample['shader_packs'],
             'supporting_state': sample['supporting_state'],

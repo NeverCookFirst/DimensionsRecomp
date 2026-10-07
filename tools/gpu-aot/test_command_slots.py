@@ -15,6 +15,8 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     source = (root / "rexlego/src/gpu_native/device.cpp").read_text()
+    # The shared boundary includes a disabled optional timestamp pointer;
+    # test_gpu_timestamps separately executes the enabled production helper.
     # Share the existing fake-device boundary, while executing new production
     # bodies unchanged. These fakes do not measure GPU or presentation speed.
     tree = ast.parse((Path(__file__).with_name("test_frame_ring_transaction.py")).read_text())
