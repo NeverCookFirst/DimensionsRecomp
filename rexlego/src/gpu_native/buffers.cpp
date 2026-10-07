@@ -1,5 +1,7 @@
 #include "gpu_native/buffers.h"
 #include "gpu_native/buffer_header.h"
+#include "gpu_native/buffer_alloc_diagnostic.h"
+#include "gpu_native/long_probe.h"
 #include "gpu_native/memory_watch.h"
 #include "gpu_native/vertex_upload.h"
 
@@ -48,6 +50,7 @@ struct BufferResource {
   u64 window_cache_bytes = 0;
   u64 window_use_serial = 0;
   u64 last_window_use = 0;
+  u32 window_offset = 0;  // Diagnostic origin within the parent buffer.
 };
 
 std::mutex g_buffers_mutex;
@@ -96,6 +99,26 @@ std::shared_ptr<BufferResource> AdoptBuffer(u32 address, BufferKind kind) {
         kind == BufferKind::kIndex ? "index" : "vertex", address,
         info.address, info.size, info.index_format);
   return resource;
+}
+
+void TraceBufferAllocation(const BufferResource& resource, const VertexByteOrder& order,
+    u64 old_hash, u64 new_hash, u64 conversion_hash, size_t previous_variants,
+    bool evicted) {
+  if (!LongProbeEnabled()) return;
+  static BufferAllocationDiagnostic diagnostic = [] {
+    const char* guest = std::getenv("LEGO_NATIVE_BUFFER_ALLOC_GUEST");
+    const char* trigger = std::getenv("LEGO_NATIVE_BUFFER_ALLOC_TRIGGER");
+    return BufferAllocationDiagnostic(guest ? BufferAllocationDiagnostic::ParseGuest(guest) :
+        std::nullopt, trigger ? trigger : "");
+  }();
+  if (!diagnostic.Select(g_probe_frame.load(), resource.guest_address)) return;
+  LongProbeEvent("buffer_allocation", false, "guest=", resource.guest_address,
+      "mirror=", resource.mirror_address, "kind=", u32(resource.kind), "bytes=", resource.length,
+      "window_offset=", resource.window_offset, "stride=", order.stride,
+      "phase=", order.stream_offset, "reversal_hash=", conversion_hash,
+      "old_content=", old_hash, "new_content=", new_hash,
+      "reason=", old_hash != new_hash ? "content_changed" : "variant_miss",
+      "previous_variants=", previous_variants, "evicted=", evicted);
 }
 
 void ByteSwapElements(void* destination, const void* source, size_t size,
@@ -254,6 +277,8 @@ plume::RenderBuffer* ResolveBufferContents(const std::shared_ptr<BufferResource>
     g_buffer_timing.hash_ms += std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - hash_start).count();
   }
+  const u64 previous_content_hash = resource->content_hash;
+  const size_t previous_variants = resource->variants.size();
   if (resource->content_hash != content_hash) {
     for (auto& [key, version] : resource->variants) HostDevice::RetireResource(std::move(version));
     resource->variants.clear();
@@ -317,6 +342,7 @@ plume::RenderBuffer* ResolveBufferContents(const std::shared_ptr<BufferResource>
   }
   if (!converted.empty()) std::memcpy(mapped, converted.data(), converted.size());
   next_buffer->unmap();
+  const bool variant_evicted = resource->variants.size() >= 8;
   if (resource->variants.size() >= 8) {
     auto old = resource->variants.begin();
     HostDevice::RetireResource(std::move(old->second));
@@ -327,6 +353,8 @@ plume::RenderBuffer* ResolveBufferContents(const std::shared_ptr<BufferResource>
   resource->content_hash = content_hash;
   resource->byte_order_hash = byte_order_hash;
   if (!watch_hit || audit_watch) resource->cpu_stamp = std::move(next_stamp);
+  TraceBufferAllocation(*resource, conversion_order, previous_content_hash,
+      content_hash, byte_order_hash, previous_variants, variant_evicted);
   return resource->buffer.get();
 }
 
@@ -363,6 +391,7 @@ BufferResourceView ResolveBufferResourceWindow(u32 guest_address, BufferKind kin
       resource->format = parent->format;
       resource->kind = kind;
       resource->owns_guest_memory = false;
+      resource->window_offset = offset;
       // A shared mesh pool has far more than 64 draw ranges. Evicting begin()
       // repeatedly discarded newly inserted ranges and allocated GPU buffers
       // for them again on every frame. Bound bytes as well as entry count and
