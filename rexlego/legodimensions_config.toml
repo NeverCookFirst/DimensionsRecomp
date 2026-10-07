@@ -22,17 +22,19 @@
 # Same fix as the analysis-time unresolved calls: declare it as an entry point.
 
 [functions]
+# These addresses are callable interior entries. Their body owners preserve
+# backward branches, live registers, and the owner's stack epilogue.
 0x82D73A10 = {}
-0x8307CA78 = {}
+0x8307CA78 = { body = 0x8307C528 }
 0x83803F18 = {}
 0x82888768 = {}
-0x838052D8 = {}
+0x838052D8 = { body = 0x838051D0 }
 0x8381BB80 = {}
-0x839AAE60 = {}
+0x839AAE60 = { body = 0x839AACC0 }
 0x82B68438 = {}
 0x83283438 = {}
 0x82B6B878 = {}
-0x82FD1520 = {}
+0x82FD1520 = { body = 0x82FD1470 }
 0x82B63298 = {}
 0x8361E6E8 = {}
 0x837FE708 = {}
@@ -40,7 +42,7 @@
 0x8379EEF8 = {}
 0x8379EF10 = {}
 0x8379E7D0 = {}
-0x82D41F28 = {}
+0x82D41F28 = { body = 0x82D416A0 }
 0x832A2F88 = {}
 0x8361E6F8 = {}
 0x8361E6D8 = {}
