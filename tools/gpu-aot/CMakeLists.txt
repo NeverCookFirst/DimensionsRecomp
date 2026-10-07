@@ -70,6 +70,14 @@ if(BUILD_TESTING AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
                     --compiler ${CMAKE_CXX_COMPILER})
             set_tests_properties(${check} PROPERTIES TIMEOUT 60)
         endforeach()
+        # Verify the actual SDK project template when its submodule is present.
+        if(UNIX AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../rexglue-sdk/resources/templates/init/rexglue_cmake.inja")
+            add_test(NAME cross_build_producers
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cross_build_producers.py
+                    ${CMAKE_CURRENT_BINARY_DIR}/fixtures/cross_build_producers
+                    --compiler ${CMAKE_CXX_COMPILER})
+            set_tests_properties(cross_build_producers PROPERTIES TIMEOUT 60)
+        endif()
         # This fixture cross-compiles a tiny SDK-free Windows ABI cache and
         # inspects/archives a real COFF blob, rather than linking a host GPU app.
         if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
