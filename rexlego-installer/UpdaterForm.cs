@@ -159,6 +159,31 @@ public sealed class UpdaterForm : Form
             Thread.Sleep(500);
             locked = job.WhatIsLocked(plan);
         }
+        // Still locked: usually a game that never finished exiting, or its
+        // crash-report window. Offer to end them rather than strand the player
+        // half-way (#38).
+        if (locked is not null)
+        {
+            var holders = job.ProcessesHoldingInstall();
+            if (holders.Count > 0)
+            {
+                string names = string.Join(", ", holders.Select(p => p.ProcessName + ".exe").Distinct());
+                bool end = (bool)Invoke(() => MessageBox.Show(this,
+                    $"The game is still running in the background ({names}).\r\n\r\n"
+                    + "End it and continue the update? Unsaved progress in a running game is lost.",
+                    Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes);
+                if (end)
+                {
+                    foreach (var p in holders)
+                    {
+                        try { p.Kill(); p.WaitForExit(5000); }
+                        catch (Exception e) { SetupLog.WriteOnce($"Could not end {p.ProcessName}: {e.Message}"); }
+                    }
+                    locked = job.WhatIsLocked(plan);
+                }
+                foreach (var p in holders) p.Dispose();
+            }
+        }
         if (locked is not null)
             throw new InvalidOperationException($"{locked} is in use. Close the game and try again.");
 

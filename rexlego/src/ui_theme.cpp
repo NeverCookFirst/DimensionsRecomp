@@ -166,6 +166,9 @@ void ConfigureSettings() {
   pres.pages.push_back(SettingsPage{
       "Audio",
       {
+          {"audio_volume", "Volume",
+           "100 is the game's own level. Go above it if the game is too quiet; very loud "
+           "scenes may distort near 200."},
           {"audio_mute", "Mute"},
       }});
 
@@ -215,6 +218,8 @@ void ConfigureSettings() {
            "Use the mouse as the right stick. Off leaves the camera to the keys bound to "
            "it."},
           {"mnk_sensitivity", "Mouse sensitivity"},
+          {"controller_vibration", "Controller vibration",
+           "Off stops the game from rumbling your controllers."},
           {"guide_button", "Pass the Guide button to the game"},
       }});
 

@@ -122,6 +122,29 @@ public sealed class UpdateJob
         return null;
     }
 
+    /// <summary>
+    /// Processes started from the install folder other than this updater: a
+    /// game that hung on its way out, or the crash-report window, which is the
+    /// game exe relaunched with --crash-report and holds the same files (#38).
+    /// </summary>
+    public List<Process> ProcessesHoldingInstall()
+    {
+        string root = Path.GetFullPath(installDir).TrimEnd('\\') + "\\";
+        var found = new List<Process>();
+        foreach (var p in Process.GetProcesses())
+        {
+            if (p.Id == Environment.ProcessId) { p.Dispose(); continue; }
+            string? path = null;
+            try { path = p.MainModule?.FileName; }
+            catch (Exception) { }  // other users' or protected processes
+            if (path is not null && path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                found.Add(p);
+            else
+                p.Dispose();
+        }
+        return found;
+    }
+
     /// <summary>The updater cannot overwrite itself while it runs; that swap is deferred.</summary>
     static bool IsSelf(string path)
     {

@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <string_view>
 
 #pragma comment(lib, "shell32.lib")
 
@@ -69,6 +70,36 @@ std::string Narrow(const std::wstring& wide) {
   return out;
 }
 
+// The adapter the last session ran on, from game.log's "DXGI adapter: <name>
+// (vendor ...)" line, which both renderers write.
+std::string GpuFromLog(const std::wstring& log_path) {
+  std::ifstream in{std::filesystem::path(log_path)};
+  std::string line, gpu;
+  constexpr std::string_view kTag = "DXGI adapter: ";
+  while (std::getline(in, line)) {
+    const size_t at = line.find(kTag);
+    if (at == std::string::npos) continue;
+    std::string name = line.substr(at + kTag.size());
+    const size_t paren = name.find(" (vendor");
+    gpu = paren == std::string::npos ? name : name.substr(0, paren);
+  }
+  return gpu.empty() ? "(unknown - please fill in)" : gpu;
+}
+
+// gpu_backend from the toml next to the exe.
+std::string GraphicsApi(const std::filesystem::path& exe_dir) {
+  std::ifstream in{exe_dir / L"legodimensions.toml"};
+  std::string line;
+  while (std::getline(in, line)) {
+    const size_t key = line.find("gpu_backend");
+    if (key == std::string::npos || line.find_first_not_of(" \t") != key) continue;
+    if (line.find("\"vulkan\"") != std::string::npos) return "Vulkan";
+    if (line.find("\"d3d12\"") != std::string::npos) return "Direct3D 12";
+    return "Automatic (Direct3D 12)";
+  }
+  return "Automatic (Direct3D 12)";
+}
+
 void ShowCrashPopup(int argc, wchar_t** argv) {
   wchar_t exe[MAX_PATH] = {};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -97,16 +128,21 @@ void ShowCrashPopup(int argc, wchar_t** argv) {
   }
 
   const std::string version = InstalledVersion(exe_dir);
+  // Most crash reports arrived with every field blank (#40, #43-#47): the
+  // attach step went unread at the bottom, and players could not say which
+  // GPU or API they used. Fill in what we can and put the attach step first.
+  std::string attach = "`game.log`";
+  if (!dump_name.empty()) {
+    attach += " and `" + Narrow(dump_name) + "`";
+  }
   std::string body =
+      "> [!IMPORTANT]\n"
+      "> **Drag " + attach + " into this box before submitting.** The game folder has just "
+      "opened in Explorer with game.log selected. A report without them can't be fixed.\n\n"
       "**What happened** (what you were doing, which level/world, which button you pressed):\n\n\n"
       "**Version:** " + version + "\n"
-      "**Graphics API** (F4 -> Graphics, Direct3D 12 or Vulkan):\n"
-      "**GPU:**\n\n"
-      "**Attach** your `game.log` (drag it into this box)";
-  if (!dump_name.empty()) {
-    body += " and `" + Narrow(dump_name) + "`";
-  }
-  body += ".\n";
+      "**Graphics API:** " + GraphicsApi(exe_dir) + "\n"
+      "**GPU:** " + GpuFromLog(log) + "\n";
   const std::wstring url = std::wstring(kIssueUrl) + L"?labels=bug&title=" +
                            UrlEncode("Crash: ") + L"&body=" + UrlEncode(body);
   ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
