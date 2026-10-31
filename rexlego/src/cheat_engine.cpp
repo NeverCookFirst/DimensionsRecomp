@@ -126,11 +126,14 @@ CheatEngine::CheatEngine(rex::memory::Memory* memory, std::filesystem::path save
 }
 
 CheatEngine::~CheatEngine() {
-  Join();
+  // Stop the freeze thread first: it runs continuously and touches memory_,
+  // snapshot_ and the mutex, all of which must not be live when Join() runs.
   freeze_running_ = false;
   if (freeze_thread_.joinable()) {
     freeze_thread_.join();
   }
+  // Only once the freeze thread is gone: wait for any in-progress scan.
+  Join();
   Save();
 }
 
