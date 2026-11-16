@@ -1,0 +1,23 @@
+diff --git a/plume_d3d12.cpp b/plume_d3d12.cpp
+--- a/plume_d3d12.cpp
++++ b/plume_d3d12.cpp
+@@ -660,7 +660,8 @@ namespace plume {
+                     return D3D12_RESOURCE_STATE_INDEX_BUFFER;
+                 }
+ 
+-                return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
++                // GRAPHICS includes vertex and geometry shaders, as on Vulkan.
++                return D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+             }
+         }
+ 
+@@ -678,7 +679,8 @@ namespace plume {
+         case RenderTextureLayout::SHADER_READ:
+             switch (stages) {
+             case RenderBarrierStage::GRAPHICS:
+-                return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
++                // Vertex texture fetches require the non-pixel read bit too.
++                return D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+             case RenderBarrierStage::COMPUTE:
+                 return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+             default:

@@ -6,4 +6,7 @@
 #define g_compressedSpirvCache g_runtimeCompressedSpirvCache
 #define g_spirvCacheCompressedSize g_runtimeSpirvCacheCompressedSize
 #define g_spirvCacheDecompressedSize g_runtimeSpirvCacheDecompressedSize
-#include "../../out/native-gpu/runtime-cache.cpp"
+#ifndef LEGO_NATIVE_RUNTIME_LIBRARY_SOURCE
+#define LEGO_NATIVE_RUNTIME_LIBRARY_SOURCE "../../out/native-gpu/runtime-cache.cpp"
+#endif
+#include LEGO_NATIVE_RUNTIME_LIBRARY_SOURCE

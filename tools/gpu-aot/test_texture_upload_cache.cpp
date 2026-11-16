@@ -4,6 +4,12 @@
 #include <array>
 #include <cassert>
 #include <iostream>
+#include <cstdio>
+#include <cstdlib>
+
+#undef assert
+#define assert(condition) do { if (!(condition)) { \
+  std::fprintf(stderr, "check failed: %s\n", #condition); std::exit(23); } } while (0)
 
 int main() {
   using namespace legodimensions::gpu_native;
@@ -32,5 +38,25 @@ int main() {
   assert(base_only == MakeTextureUploadSourceKey(base, {}, fetch));
   assert(initial != MakeTextureUploadSourceKey(
       std::span<const uint8_t>(base).first(base.size() - 1), mips, fetch));
+  std::array<uint32_t, 6> header{2, 0xF4000052u, 0x001FE0FFu,
+                               0xD10u, 0x200u, 0xF4100A00u};
+  const auto header_bytes = [&] {
+    return std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(header.data()), sizeof(header));
+  };
+  const auto placed = MakeRelocatableTextureUploadSourceKey(base, mips, header_bytes());
+  header[1] += 0xC000;
+  header[5] += 0xC000;
+  assert(placed == MakeRelocatableTextureUploadSourceKey(base, mips, header_bytes()));
+  ++base.back();
+  assert(placed != MakeRelocatableTextureUploadSourceKey(base, mips, header_bytes()));
+  --base.back();
+  ++mips.back();
+  assert(placed != MakeRelocatableTextureUploadSourceKey(base, mips, header_bytes()));
+  --mips.back();
+  header[1] ^= 1;  // Format / endian semantics cannot be masked as addresses.
+  assert(placed != MakeRelocatableTextureUploadSourceKey(base, mips, header_bytes()));
+  header[1] ^= 1;
+  header[5] &= 0xFFF;  // Removing mip storage changes interpretation.
+  assert(placed != MakeRelocatableTextureUploadSourceKey(base, mips, header_bytes()));
   std::cout << "Texture upload source-cache regressions passed\n";
 }

@@ -47,6 +47,37 @@ void TestLinearVolume(uint32_t width, uint32_t height) {
 }
 
 int main() {
+  // The residency/hash span must cover every byte actually addressed by XOR,
+  // including the opposite half of a final odd-width half-float texel.
+  for(uint32_t extent=0;extent<257;++extent)for(uint32_t mode=0;mode<4;++mode){
+    const auto endian=legodimensions::gpu_native::TextureEndianXor(mode);
+    const auto span=legodimensions::gpu_native::TextureEndianExtent(extent,endian);
+    assert(span>=extent&&span-extent<=3);
+    for(uint32_t at=0;at<extent;++at)assert((at^endian)<span);
+  }
+  assert(legodimensions::gpu_native::TextureEndianExtent(UINT32_MAX,3)==0);
+  assert(legodimensions::gpu_native::TextureEndianExtent(UINT32_MAX-3,3)==UINT32_MAX-3);
+  // Compare every address-XOR mode against the bytewise oracle, including
+  // unaligned offsets and short extents that must reject without overreading.
+  for (uint32_t bytes : {1u, 2u, 4u, 8u, 16u})
+    for (uint32_t endian = 0; endian < 4; ++endian)
+      for (uint32_t start = 0; start < 8; ++start)
+        for (uint32_t length = 0; length < 40; ++length) {
+          std::vector<uint8_t> source(length), expected(bytes * 3, 0xFE), actual(expected);
+          for (uint32_t i = 0; i < length; ++i) source[i] = uint8_t(i * 37 + 11);
+          auto offset = [=](uint32_t x, auto, auto) { return int64_t(start + x * bytes); };
+          bool valid = true;
+          for (uint32_t x = 0; x < 3 && valid; ++x)
+            for (uint32_t b = 0; b < bytes; ++b) {
+              const size_t at = (size_t(offset(x, 0, 0)) + b) ^ endian;
+              if (at >= source.size()) { valid = false; break; }
+              expected[x * bytes + b] = source[at];
+            }
+          const bool copied = CopyTextureVolumeBlocks(source, actual, 3, 1, 1,
+                                                       bytes, bytes * 3, endian, offset);
+          assert(copied == valid);
+          if (valid) assert(actual == expected);
+        }
   TestLinearVolume(16, 16);
   TestLinearVolume(64, 32);
   // A callback can address a packed mip / non-linear block order too. The

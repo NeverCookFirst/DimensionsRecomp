@@ -19,14 +19,19 @@ inline bool WriteAlignedVertexUpload(uint8_t* destination, const uint8_t* source
   uint32_t previous = 0;
   bool first = true;
   for (uint32_t field : order.reversed_elements) {
-    if (field % 4 || field > order.stride - 4 || (!first && field <= previous)) return false;
+    const uint32_t offset = VertexFieldOffset(field);
+    if (offset % 4 || offset > order.stride - 4 || (!first && field <= previous)) return false;
     previous = field; first = false;
   }
-  const auto packed = [&](size_t offset) {
-    if (offset < order.stream_offset) return false;
+  // 0 = plain DWORD swap, 1 = packed WZYX field (bytes stay), 2 = 16-bit halves.
+  const auto packed = [&](size_t offset) -> int {
+    if (offset < order.stream_offset) return 0;
     const auto field = uint32_t((offset - order.stream_offset) % order.stride);
-    return std::binary_search(order.reversed_elements.begin(), order.reversed_elements.end(), field);
+    const auto& fields = order.reversed_elements;
+    if (std::binary_search(fields.begin(), fields.end(), field)) return 1;
+    return std::binary_search(fields.begin(), fields.end(), field | kHalfSwapField) ? 2 : 0;
   };
+  static constexpr uint8_t kSource[3][4] = {{3, 2, 1, 0}, {0, 1, 2, 3}, {1, 0, 3, 2}};
   size_t offset = 0;
 #if defined(__SSSE3__)
   // The stride and sixteen-byte SIMD chunks repeat after their LCM. Bound
@@ -36,15 +41,15 @@ inline bool WriteAlignedVertexUpload(uint8_t* destination, const uint8_t* source
   const size_t first_vector = (size_t(order.stream_offset) + 15) / 16 * 16;
   for (size_t b = 0; b < blocks; ++b)
     for (size_t lane = 0; lane < 16; lane += 4) {
-      const bool identity = packed(first_vector + b * 16 + lane);
+      const int kind = packed(first_vector + b * 16 + lane);
       for (size_t byte = 0; byte < 4; ++byte)
-        masks[b][lane + byte] = uint8_t(lane + (identity ? byte : 3 - byte));
+        masks[b][lane + byte] = uint8_t(lane + kSource[kind][byte]);
     }
   // A non-canonical caller may leave a long unconverted prefix. Handle it
   // before the repeating phase, without applying packed fields too early.
   for (; offset < std::min(first_vector, size / 4 * 4); offset += 4) {
-    if (packed(offset)) std::memcpy(destination + offset, source + offset, 4);
-    else for (size_t byte = 0; byte < 4; ++byte) destination[offset + byte] = source[offset + 3 - byte];
+    const int kind = packed(offset);
+    for (size_t byte = 0; byte < 4; ++byte) destination[offset + byte] = source[offset + kSource[kind][byte]];
   }
   size_t block = 0;
   for (; size - offset >= 16; offset += 16) {
@@ -55,8 +60,8 @@ inline bool WriteAlignedVertexUpload(uint8_t* destination, const uint8_t* source
   }
 #endif
   for (; size - offset >= 4; offset += 4) {
-    if (packed(offset)) std::memcpy(destination + offset, source + offset, 4);
-    else for (size_t byte = 0; byte < 4; ++byte) destination[offset + byte] = source[offset + 3 - byte];
+    const int kind = packed(offset);
+    for (size_t byte = 0; byte < 4; ++byte) destination[offset + byte] = source[offset + kSource[kind][byte]];
   }
   if (offset != size) std::memcpy(destination + offset, source + offset, size - offset);
   return true;

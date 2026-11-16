@@ -69,17 +69,17 @@ def main():
         source = (hlsl / f'{name}.hlsl').read_text()
         assert 'float textureLod = 0.0;' in source, name
         assert 'textureLod = r7.z;' in source, name
-        assert 'g_FetchLodBiasArr[8] : packoffset(c39)' in source, name
+        assert 'g_FetchLodBias' not in source, name
         computed = opts.get('computed', False) and not opts.get('vertex', False)
         call = re.search(r'r2\.xyzw = (tfetch\w+)\(([^\n]+)', source)
         assert call, name
         if computed:
             assert call.group(1) == 'tfetch2D', name
-            assert 'g_FetchLodBias(3)' not in call.group(2), name
+            assert 'textureLod' not in call.group(2), name
         else:
             assert call.group(1) == 'tfetchLevel2D', name
             lod = 'textureLod' if opts.get('register', True) else '0.0'
-            assert f'{lod} + g_FetchLodBias(3)' in call.group(2), name
+            assert f'{lod} + ' in call.group(2), name
             assert str(opts.get('bias', 0) / 16).rstrip('0').rstrip('.') in call.group(2), name
         if opts.get('predicated'):
             assert re.search(r'if \(p0\)\s*\{\s*textureLod = r7.z;', source), name

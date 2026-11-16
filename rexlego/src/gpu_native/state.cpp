@@ -1,10 +1,13 @@
 #include "gpu_native/state.h"
+#include "gpu_native/d3d.h"
+#include <cstdlib>
 
 namespace legodimensions::gpu_native {
 namespace {
 
 std::mutex g_bindings_mutex;
 DrawBindings g_bindings;
+thread_local const DrawBindings* t_draw_bindings = nullptr;
 
 }  // namespace
 
@@ -84,8 +87,42 @@ u32 BoundDepthStencil() {
 }
 
 DrawBindings SnapshotDrawBindings() {
+  if (t_draw_bindings) return *t_draw_bindings;
   std::lock_guard lock(g_bindings_mutex);
   return g_bindings;
+}
+
+DrawBindingsScope::DrawBindingsScope(const DrawBindings& bindings) : previous_(t_draw_bindings) {
+  t_draw_bindings = &bindings;
+}
+DrawBindingsScope::~DrawBindingsScope() { t_draw_bindings = previous_; }
+
+bool SnapshotStateBindingsEnabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("LEGO_NATIVE_SNAPSHOT_STATE");
+    return value && value[0] == '1';
+  }();
+  return enabled;
+}
+
+DrawBindings ReadDeviceBindings(const D3DDevice* device) {
+  DrawBindings bindings;
+  if (!device) return bindings;
+  for (u32 i = 0; i < bindings.textures.size(); ++i) bindings.textures[i] = device->textures[i];
+  for (u32 i = 0; i < bindings.render_targets.size(); ++i) bindings.render_targets[i] = device->render_targets[i];
+  bindings.depth_stencil = device->depth_stencil;
+  bindings.index_buffer = device->index_buffer;
+  bindings.vertex_declaration = device->vertex_declaration;
+  return bindings;
+}
+
+void PublishDeviceBindings(const DrawBindings& bindings) {
+  std::lock_guard lock(g_bindings_mutex);
+  g_bindings.textures = bindings.textures;
+  g_bindings.render_targets = bindings.render_targets;
+  g_bindings.depth_stencil = bindings.depth_stencil;
+  g_bindings.index_buffer = bindings.index_buffer;
+  g_bindings.vertex_declaration = bindings.vertex_declaration;
 }
 
 }  // namespace legodimensions::gpu_native

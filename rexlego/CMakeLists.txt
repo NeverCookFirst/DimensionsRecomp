@@ -24,16 +24,38 @@ option(LEGODIMENSIONS_NATIVE_GPU "Build the experimental native D3D12 renderer" 
 # Sources
 set(LEGODIMENSIONS_SOURCES
     src/main.cpp
+    src/sample_profiler.cpp
     src/discord_presence.cpp
     src/ui_theme.cpp
     src/mod_menu.cpp
     src/main_menu_extras.cpp
+    src/settings_transaction.cpp
+    src/settings_config.cpp
+    src/settings_registry.cpp
+    src/settings_service.cpp
+    src/settings_revision.cpp
+    src/settings_preferences.cpp
+    src/settings_frontend.cpp
+    src/settings_native_bridge.cpp
+    src/settings_native_hooks.cpp
+    src/native_skin_diagnostics.cpp
+    src/native_slot_growth.cpp
+    src/native_markers.cpp
+    src/native_atomics.cpp
+    src/native_lock_elide.cpp
+    src/native_memops.cpp
+    src/native_saverest.cpp
+    src/native_constants.cpp
     src/skip_cutscenes.cpp
     src/cheat_engine.cpp
     src/cheat_menu.cpp
     src/toypad_app.cpp
     src/updates.cpp
     src/name_trace.cpp
+    src/crash_guards.cpp
+    src/crash_popup.cpp
+    src/scene_distance.cpp
+    src/native_effects.cpp
 )
 
 if(LEGODIMENSIONS_NATIVE_GPU)
@@ -41,7 +63,29 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         message(FATAL_ERROR "LEGODIMENSIONS_NATIVE_GPU currently supports Windows D3D12 only")
     endif()
 
+    # An isolated rollback/source comparison must fingerprint the translation
+    # unit it actually compiles. Replacing target sources later via DEFER left
+    # the marker describing the working-tree file rather than the chosen one.
+    set(LEGO_NATIVE_TEXTURE_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/textures.cpp"
+        CACHE FILEPATH "Texture implementation for an isolated native comparison build")
+    get_filename_component(LEGO_NATIVE_TEXTURE_SOURCE "${LEGO_NATIVE_TEXTURE_SOURCE}" ABSOLUTE
+        BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(NOT EXISTS "${LEGO_NATIVE_TEXTURE_SOURCE}" OR IS_DIRECTORY "${LEGO_NATIVE_TEXTURE_SOURCE}")
+        message(FATAL_ERROR "Native texture implementation is missing: ${LEGO_NATIVE_TEXTURE_SOURCE}")
+    endif()
+
     enable_language(C)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prepare_plume.py" --check
+        RESULT_VARIABLE LEGO_PLUME_PREPARE_RESULT
+        OUTPUT_VARIABLE LEGO_PLUME_PREPARE_OUTPUT
+        ERROR_VARIABLE LEGO_PLUME_PREPARE_ERROR
+        TIMEOUT 30)
+    if(NOT LEGO_PLUME_PREPARE_RESULT STREQUAL "0")
+        message(FATAL_ERROR "Native Plume dependency needs preparation. Run python tools/gpu-aot/prepare_plume.py.\n${LEGO_PLUME_PREPARE_OUTPUT}${LEGO_PLUME_PREPARE_ERROR}")
+    endif()
     set(PLUME_D3D12_AGILITY_SDK_ENABLED OFF CACHE BOOL "" FORCE)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume"
                      "${CMAKE_CURRENT_BINARY_DIR}/thirdparty/plume"
@@ -60,6 +104,22 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         src/gpu_native/memory_watch.cpp
         src/gpu_native/queries.cpp
         src/gpu_native/device.cpp
+        src/gpu_native/pipeline_library.cpp
+        src/gpu_native/native_worker.cpp
+        src/gpu_native/native_recording.cpp
+        src/gpu_native/depth_resample.cpp
+        src/gpu_native/native_overlay.cpp
+        src/gpu_native/native_overlay_gpu.cpp
+        src/gpu_native/fsr3_settings.cpp
+        src/gpu_native/settings_snapshot.cpp
+        src/gpu_native/settings_runtime.cpp
+        src/gpu_native/temporal_shaders.cpp
+        src/gpu_native/float_blend_indices.cpp
+        src/gpu_native/instanced_constants.cpp
+        src/gpu_native/integer_inputs.cpp
+        src/gpu_native/temporal_present.cpp
+        src/gpu_native/fsr3_upscaler.cpp
+        src/gpu_native/temporal_scene_depth.cpp
         src/gpu_native/draw.cpp
         src/gpu_native/format.cpp
         src/gpu_native/hooks_buffer.cpp
@@ -71,13 +131,26 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         src/gpu_native/shader_archive.cpp
         src/gpu_native/shaders.cpp
         src/gpu_native/state.cpp
-        src/gpu_native/textures.cpp
+        "${LEGO_NATIVE_TEXTURE_SOURCE}"
         src/gpu_native/vertex_declarations.cpp
         "${CMAKE_CURRENT_SOURCE_DIR}/../rexglue-sdk/src/graphics/pipeline/texture/util.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../rexglue-sdk/src/graphics/pipeline/texture/info.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz/miniz.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd/zstddeclib.c"
     )
+endif()
+
+# Separate diagnostic only: no hooks or draw-scope branches in a normal build.
+option(LEGODIMENSIONS_TT_LOCK_TRACE "Build TT shared-render-lock timing hooks" OFF)
+if(LEGODIMENSIONS_TT_LOCK_TRACE)
+    if(NOT WIN32)
+        message(FATAL_ERROR "TT lock trace currently requires Windows thread CPU clocks")
+    endif()
+    list(APPEND LEGODIMENSIONS_SOURCES src/tt_lock_trace.cpp)
+    if(LEGODIMENSIONS_NATIVE_GPU)
+        set_property(SOURCE src/gpu_native/draw.cpp APPEND PROPERTY
+            COMPILE_DEFINITIONS LEGODIMENSIONS_TT_LOCK_TRACE=1)
+    endif()
 endif()
 
 # Research probes: a guard-page watchpoint on the area flags and the failed
@@ -100,14 +173,90 @@ else()
 endif()
 
 rexglue_setup_target(legodimensions)
+if(WIN32)
+    # Function map for offline symbolization of sample_profiler.cpp output.
+    target_link_options(legodimensions PRIVATE "LINKER:/MAP:legodimensions.map")
+endif()
 
 if(LEGODIMENSIONS_NATIVE_GPU)
+    set(LEGO_TEMPORAL_SHADER_BANK "" CACHE PATH "Private compiled temporal companion shader bank")
+    if(NOT EXISTS "${LEGO_TEMPORAL_SHADER_BANK}/temporal-bank.obj" OR
+       NOT EXISTS "${LEGO_TEMPORAL_SHADER_BANK}/temporal-bank.cpp")
+        message(FATAL_ERROR "Build a temporal shader bank offline and set LEGO_TEMPORAL_SHADER_BANK")
+    endif()
+    set_source_files_properties("${LEGO_TEMPORAL_SHADER_BANK}/temporal-bank.obj"
+        PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+    target_sources(legodimensions PRIVATE "${LEGO_TEMPORAL_SHADER_BANK}/temporal-bank.obj")
+    target_compile_definitions(legodimensions PRIVATE
+        LEGO_TEMPORAL_SHADER_METADATA="${LEGO_TEMPORAL_SHADER_BANK}/temporal-bank.cpp")
+    set(LEGO_FLOAT_BLEND_INDICES_BANK
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/float-blend-indices-bank"
+        CACHE PATH "AOT float BLENDINDICES variants generated by build_float_blend_indices_bank.py")
+    if(NOT EXISTS "${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.obj" OR
+       NOT EXISTS "${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.cpp")
+        message(FATAL_ERROR "Native GPU needs the float BLENDINDICES bank; run tools/gpu-aot/build_float_blend_indices_bank.py")
+    endif()
+    target_sources(legodimensions PRIVATE "${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.obj")
+    set_source_files_properties("${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.obj"
+        PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+    target_compile_definitions(legodimensions PRIVATE
+        LEGO_FLOAT_BLEND_INDICES_METADATA="${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.cpp")
+    set_source_files_properties(src/gpu_native/float_blend_indices.cpp PROPERTIES
+        OBJECT_DEPENDS "${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.cpp")
+    # Optional: without this bank every instanced lookup misses and draws stay non-instanced.
+    set(LEGO_INSTANCED_CONSTANTS_BANK
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/instanced-constants-bank"
+        CACHE PATH "AOT per-instance VS constant variants generated by build_instanced_constants_bank.py")
+    set(LEGO_INSTANCED_CONSTANTS_BANK_FILES)
+    if(EXISTS "${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.obj" AND
+       EXISTS "${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.cpp")
+        target_sources(legodimensions PRIVATE "${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.obj")
+        set_source_files_properties("${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.obj"
+            PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+        # Source-scoped so toggling the bank does not rebuild the generated CPU sources.
+        set_property(SOURCE src/gpu_native/instanced_constants.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+            LEGO_INSTANCED_CONSTANTS_METADATA="${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.cpp")
+        set_source_files_properties(src/gpu_native/instanced_constants.cpp PROPERTIES
+            OBJECT_DEPENDS "${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.cpp")
+        set(LEGO_INSTANCED_CONSTANTS_BANK_FILES
+            "${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.cpp"
+            "${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.bin"
+            "${LEGO_INSTANCED_CONSTANTS_BANK}/instanced-constants-bank.obj")
+    else()
+        message(STATUS "Native GPU instanced constants bank absent; instanced draws disabled")
+    endif()
     target_compile_definitions(legodimensions PRIVATE LEGODIMENSIONS_NATIVE_GPU=1)
     target_include_directories(legodimensions PRIVATE src)
     target_include_directories(legodimensions PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/miniz"
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/zstd")
     target_link_libraries(legodimensions PRIVATE plume d3d12 dxgi rex::xxhash)
+    # Offline-tested persistent FSR 3 backend. Presentation is connected only
+    # when the native scene pass supplies independent motion/depth snapshots.
+    set(LEGO_FSR3_SDK "${CMAKE_CURRENT_SOURCE_DIR}/../rexglue-sdk")
+    target_include_directories(legodimensions PRIVATE
+        "${LEGO_FSR3_SDK}/thirdparty/FidelityFX-SDK/sdk/include")
+    target_link_libraries(legodimensions PRIVATE
+        "${LEGO_FSR3_SDK}/bin/ffx_sdk/ffx_backend_dx12_x64.lib"
+        "${LEGO_FSR3_SDK}/bin/ffx_sdk/ffx_fsr3upscaler_x64.lib")
+    find_file(LEGO_NATIVE_FIDELITYFX_RUNTIME NAMES amd_fidelityfx_dx12.dll
+        HINTS "${rexglue_DIR}/../../../bin" "${LEGO_FSR3_SDK}/bin"
+              "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime"
+        NO_DEFAULT_PATH)
+    if(NOT LEGO_NATIVE_FIDELITYFX_RUNTIME)
+        message(FATAL_ERROR "Native D3D12 builds need the bundled amd_fidelityfx_dx12.dll; set LEGO_NATIVE_FIDELITYFX_RUNTIME to its path")
+    endif()
+    add_custom_command(TARGET legodimensions POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${LEGO_NATIVE_FIDELITYFX_RUNTIME}" "$<TARGET_FILE_DIR:legodimensions>"
+        VERBATIM)
+    if(TARGET rex::renderdoc)
+        target_link_libraries(legodimensions PRIVATE rex::renderdoc)
+    elseif(TARGET renderdoc)
+        target_link_libraries(legodimensions PRIVATE renderdoc)
+    else()
+        message(FATAL_ERROR "Native renderer requires the SDK RenderDoc header target")
+    endif()
 
     # Generated locally by tools/gpu-aot. Keeping it out of Git avoids a
     # multi-megabyte generated source file while still making an enabled build
@@ -132,7 +281,10 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     set_source_files_properties("${LEGO_NATIVE_MICROCODE_INDEX}"
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
     set(LEGO_NATIVE_RUNTIME_SHADER_CACHE
-        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/runtime-cache.cpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/runtime-cache.cpp"
+        CACHE FILEPATH "Runtime DXIL libraries for isolated shader-bank builds")
+    set(LEGO_NATIVE_RUNTIME_PRELINKED_BANK "" CACHE PATH
+        "Optional verified compact runtime bank paired with selected runtime libraries")
     if(NOT EXISTS "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}")
         message(FATAL_ERROR
             "Native GPU needs ${LEGO_NATIVE_RUNTIME_SHADER_CACHE}; capture and compile runtime shaders first")
@@ -140,6 +292,20 @@ if(LEGODIMENSIONS_NATIVE_GPU)
     target_sources(legodimensions PRIVATE
         src/gpu_native/runtime_shader_cache.cpp
         src/gpu_native/runtime_linked_shader_cache.cpp)
+    set_property(SOURCE src/gpu_native/runtime_shader_cache.cpp APPEND PROPERTY
+        COMPILE_DEFINITIONS "LEGO_NATIVE_RUNTIME_LIBRARY_SOURCE=\"${LEGO_NATIVE_RUNTIME_SHADER_CACHE}\"")
+    set_source_files_properties(src/gpu_native/runtime_shader_cache.cpp
+        PROPERTIES OBJECT_DEPENDS "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}")
+    if(LEGO_NATIVE_RUNTIME_PRELINKED_BANK)
+        if(LEGO_NATIVE_RUNTIME_SHADER_CACHE STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/runtime-cache.cpp")
+            message(FATAL_ERROR "A private prelinked bank requires explicitly selected matching runtime libraries")
+        endif()
+        foreach(LEGO_PRIVATE_BANK_FILE IN ITEMS linked-bank-metadata.cpp linked-bank.obj linked-bank.bin verification.json)
+            if(NOT EXISTS "${LEGO_NATIVE_RUNTIME_PRELINKED_BANK}/${LEGO_PRIVATE_BANK_FILE}")
+                message(FATAL_ERROR "Incomplete private runtime bank: ${LEGO_PRIVATE_BANK_FILE}")
+            endif()
+        endforeach()
+    endif()
 
     # XenosRecomp emits a DXIL library whenever a shader reads one of its two
     # specialization bits. Link every used value at build time; gameplay then
@@ -160,11 +326,35 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_BINARY_DIR}/generated/gpu_native/shaders")
     set(LEGO_NATIVE_DXC
         "${LEGO_DXC_ROOT}/bin/${LEGO_DXC_ARCH}/dxc.exe")
-    foreach(LEGO_HOST_SHADER IN ITEMS copy_vs copy_color_ps resolve_color_ps depth_pack_ps depth_restore_ps)
+    # Both archive prelinkers are built for the Windows target even when
+    # standalone host shader compilation uses a host-native DXC executable.
+    if(CMAKE_CROSSCOMPILING AND NOT CMAKE_CROSSCOMPILING_EMULATOR)
+        message(FATAL_ERROR
+            "Native GPU cross-build prelinkers require CMAKE_CROSSCOMPILING_EMULATOR, including when LEGO_HOST_DXC_EXECUTABLE is set")
+    endif()
+    set(LEGO_HOST_DXC_EXECUTABLE "" CACHE FILEPATH
+        "Host-native DXC executable for build-time host shader compilation")
+    if(LEGO_HOST_DXC_EXECUTABLE)
+        if(NOT EXISTS "${LEGO_HOST_DXC_EXECUTABLE}")
+            message(FATAL_ERROR "Host DXC not found: ${LEGO_HOST_DXC_EXECUTABLE}")
+        endif()
+        set(LEGO_NATIVE_DXC "${LEGO_HOST_DXC_EXECUTABLE}")
+        set(LEGO_NATIVE_DXC_COMMAND "${LEGO_NATIVE_DXC}")
+    elseif(CMAKE_CROSSCOMPILING)
+        if(NOT CMAKE_CROSSCOMPILING_EMULATOR)
+            message(FATAL_ERROR
+                "Cross-building needs LEGO_HOST_DXC_EXECUTABLE or CMAKE_CROSSCOMPILING_EMULATOR for Windows DXC")
+        endif()
+        set(LEGO_NATIVE_DXC_COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${LEGO_NATIVE_DXC}")
+    else()
+        set(LEGO_NATIVE_DXC_COMMAND "${LEGO_NATIVE_DXC}")
+    endif()
+    # Host passes use the game shader bank's SM 6.0 baseline.
+    foreach(LEGO_HOST_SHADER IN ITEMS copy_vs copy_color_ps resolve_color_ps resolve_scaled_ps depth_pack_ps depth_restore_ps depth_resample_ps depth_resample_depth_ps depth_resample_stencil_ps)
         if(LEGO_HOST_SHADER STREQUAL "copy_vs")
-            set(LEGO_HOST_SHADER_PROFILE vs_6_6)
+            set(LEGO_HOST_SHADER_PROFILE vs_6_0)
         else()
-            set(LEGO_HOST_SHADER_PROFILE ps_6_6)
+            set(LEGO_HOST_SHADER_PROFILE ps_6_0)
         endif()
         set(LEGO_HOST_SHADER_HEADER
             "${LEGO_NATIVE_GENERATED_SHADER_DIR}/${LEGO_HOST_SHADER}.h")
@@ -172,7 +362,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
             OUTPUT "${LEGO_HOST_SHADER_HEADER}"
             COMMAND ${CMAKE_COMMAND} -E make_directory
                     "${LEGO_NATIVE_GENERATED_SHADER_DIR}"
-            COMMAND "${LEGO_NATIVE_DXC}"
+            COMMAND ${LEGO_NATIVE_DXC_COMMAND}
                     -T ${LEGO_HOST_SHADER_PROFILE} -E main -HV 2021
                     -all-resources-bound -Wno-ignored-attributes
                     -I "${LEGO_NATIVE_HOST_SHADER_DIR}"
@@ -180,8 +370,10 @@ if(LEGODIMENSIONS_NATIVE_GPU)
                     -Vn g_${LEGO_HOST_SHADER}_dxil
                     "${LEGO_NATIVE_HOST_SHADER_DIR}/${LEGO_HOST_SHADER}.hlsl"
             DEPENDS
+                "${LEGO_NATIVE_DXC}"
                 "${LEGO_NATIVE_HOST_SHADER_DIR}/${LEGO_HOST_SHADER}.hlsl"
                 "${LEGO_NATIVE_HOST_SHADER_DIR}/copy_common.hlsli"
+                "${LEGO_NATIVE_HOST_SHADER_DIR}/depth_resample_common.hlsli"
             COMMENT "Compiling ${LEGO_HOST_SHADER}.hlsl (DXIL)"
             VERBATIM)
         target_sources(legodimensions PRIVATE "${LEGO_HOST_SHADER_HEADER}")
@@ -235,37 +427,227 @@ if(LEGODIMENSIONS_NATIVE_GPU)
 
     add_custom_command(
         OUTPUT "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
-        COMMAND "$<TARGET_FILE:lego_gpu_prelink>"
+        COMMAND lego_gpu_prelink
                 "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
         DEPENDS lego_gpu_prelink
         COMMENT "Pre-linking LEGO specialization-constant shader variants"
         VERBATIM)
-    target_sources(legodimensions PRIVATE "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
-    set_source_files_properties("${LEGO_NATIVE_LINKED_SHADER_CACHE}"
-        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    add_custom_target(lego_main_linked_cache
+        DEPENDS "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
+    add_dependencies(legodimensions lego_main_linked_cache)
+    # Large compressed banks otherwise become millions of C++ initializer
+    # values. Keep their metadata in C++, but embed their unchanged bytes in a
+    # target COFF object when host LLVM tools support the target's MSVC ABI.
+    find_program(LEGO_HOST_LLVM_MC NAMES llvm-mc llvm-mc-22 llvm-mc-21 llvm-mc-20 clang
+        NO_CMAKE_FIND_ROOT_PATH)
+    set(LEGO_NATIVE_BINARY_CACHE_ARCH "")
+    # Windows native generators can retain the host CMAKE_SYSTEM_PROCESSOR
+    # when clang-cl targets another architecture. Use the compiler's proven
+    # architecture and pointer width; ARM64EC/X86/unknown retain C++ embedding.
+    if(CMAKE_CXX_SIZEOF_DATA_PTR EQUAL 8)
+        if(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
+            set(LEGO_NATIVE_BINARY_CACHE_ARCH x86_64)
+        elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64")
+            set(LEGO_NATIVE_BINARY_CACHE_ARCH aarch64)
+        endif()
+    endif()
+    set(LEGO_NATIVE_BINARY_CACHE_SUPPORTED OFF)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+       CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" AND
+       LEGO_NATIVE_BINARY_CACHE_ARCH AND LEGO_HOST_LLVM_MC AND
+       EXISTS "${LEGO_HOST_LLVM_MC}" AND NOT IS_DIRECTORY "${LEGO_HOST_LLVM_MC}" AND
+       Python3_Interpreter_FOUND)
+        set(LEGO_NATIVE_BINARY_CACHE_SUPPORTED ON)
+    endif()
+    option(LEGO_NATIVE_BINARY_CACHE
+        "Embed linked DXIL bytes as COFF instead of C++ initializers"
+        ${LEGO_NATIVE_BINARY_CACHE_SUPPORTED})
+    if(LEGO_NATIVE_BINARY_CACHE)
+        if(NOT LEGO_NATIVE_BINARY_CACHE_SUPPORTED)
+            message(FATAL_ERROR
+                "LEGO_NATIVE_BINARY_CACHE needs x64/ARM64 Windows Clang with the MSVC ABI, Python3, and host llvm-mc or clang; set LEGO_NATIVE_BINARY_CACHE=OFF for C++ embedding")
+        endif()
+        set(LEGO_NATIVE_BINARY_CACHE_SCRIPT
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/embed_linked_bank.py")
+        set(LEGO_NATIVE_BINARY_CACHE_DIR
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/gpu_native/linked-bank")
+        set(LEGO_NATIVE_BINARY_CACHE_METADATA
+            "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank-metadata.cpp")
+        set(LEGO_NATIVE_BINARY_CACHE_OBJECT
+            "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank.obj")
+        add_custom_command(
+            OUTPUT "${LEGO_NATIVE_BINARY_CACHE_METADATA}" "${LEGO_NATIVE_BINARY_CACHE_OBJECT}"
+            BYPRODUCTS
+                "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank.bin"
+                "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank.s"
+                "${LEGO_NATIVE_BINARY_CACHE_DIR}/linked-bank-manifest.json"
+            COMMAND "${Python3_EXECUTABLE}" "${LEGO_NATIVE_BINARY_CACHE_SCRIPT}"
+                    "${LEGO_NATIVE_LINKED_SHADER_CACHE}" "${LEGO_NATIVE_BINARY_CACHE_DIR}"
+                    --llvm-mc "${LEGO_HOST_LLVM_MC}"
+                    --arch "${LEGO_NATIVE_BINARY_CACHE_ARCH}"
+            DEPENDS "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+                    "${LEGO_NATIVE_BINARY_CACHE_SCRIPT}" "${LEGO_HOST_LLVM_MC}"
+            COMMENT "Embedding main linked DXIL bank as ${LEGO_NATIVE_BINARY_CACHE_ARCH} COFF"
+            VERBATIM)
+        target_sources(legodimensions PRIVATE
+            "${LEGO_NATIVE_BINARY_CACHE_METADATA}" "${LEGO_NATIVE_BINARY_CACHE_OBJECT}")
+        set_source_files_properties("${LEGO_NATIVE_BINARY_CACHE_METADATA}"
+            PROPERTIES GENERATED TRUE SKIP_PRECOMPILE_HEADERS ON)
+        set_source_files_properties("${LEGO_NATIVE_BINARY_CACHE_OBJECT}"
+            PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+    else()
+        target_sources(legodimensions PRIVATE "${LEGO_NATIVE_LINKED_SHADER_CACHE}")
+        set_source_files_properties("${LEGO_NATIVE_LINKED_SHADER_CACHE}"
+            PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    endif()
     set(LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE
         "${CMAKE_CURRENT_SOURCE_DIR}/out/native-gpu/runtime-linked-dxil-cache.cpp")
+    if(LEGO_NATIVE_RUNTIME_PRELINKED_BANK)
+        # This is also a fingerprint dependency: leaving it pointed at the
+        # generated default cache would pull its regeneration into this build.
+        set(LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE
+            "${LEGO_NATIVE_RUNTIME_PRELINKED_BANK}/linked-bank-metadata.cpp")
+    else()
     add_custom_command(
         OUTPUT "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}"
-        COMMAND "$<TARGET_FILE:lego_gpu_prelink_runtime>"
+        COMMAND lego_gpu_prelink_runtime
                 "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}"
         DEPENDS lego_gpu_prelink_runtime
         COMMENT "Pre-linking LEGO runtime shader variants"
         VERBATIM)
     add_custom_target(lego_runtime_linked_cache
         DEPENDS "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
-    add_dependencies(legodimensions lego_runtime_linked_cache)
-    set_source_files_properties(
-        src/gpu_native/runtime_linked_shader_cache.cpp
-        PROPERTIES OBJECT_DEPENDS "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
+    endif()
+    if(NOT LEGO_NATIVE_RUNTIME_PRELINKED_BANK)
+        add_dependencies(legodimensions lego_runtime_linked_cache)
+    elseif(NOT LEGO_NATIVE_BINARY_CACHE)
+        message(FATAL_ERROR "Private prelinked runtime bank requires LEGO_NATIVE_BINARY_CACHE")
+    endif()
+    if(LEGO_NATIVE_BINARY_CACHE)
+        set(LEGO_NATIVE_RUNTIME_BINARY_CACHE_DIR
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/gpu_native/runtime-linked-bank")
+        set(LEGO_NATIVE_RUNTIME_BINARY_CACHE_METADATA
+            "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_DIR}/linked-bank-metadata.cpp")
+        set(LEGO_NATIVE_RUNTIME_BINARY_CACHE_OBJECT
+            "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_DIR}/linked-bank.obj")
+        if(LEGO_NATIVE_RUNTIME_PRELINKED_BANK)
+            set(LEGO_NATIVE_RUNTIME_BINARY_CACHE_METADATA "${LEGO_NATIVE_RUNTIME_PRELINKED_BANK}/linked-bank-metadata.cpp")
+            set(LEGO_NATIVE_RUNTIME_BINARY_CACHE_OBJECT "${LEGO_NATIVE_RUNTIME_PRELINKED_BANK}/linked-bank.obj")
+        else()
+        add_custom_command(
+            OUTPUT "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_METADATA}" "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_OBJECT}"
+            BYPRODUCTS
+                "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_DIR}/linked-bank.bin"
+                "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_DIR}/linked-bank.s"
+                "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_DIR}/linked-bank-manifest.json"
+            COMMAND "${Python3_EXECUTABLE}" "${LEGO_NATIVE_BINARY_CACHE_SCRIPT}"
+                    "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}" "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_DIR}"
+                    --llvm-mc "${LEGO_HOST_LLVM_MC}"
+                    --arch "${LEGO_NATIVE_BINARY_CACHE_ARCH}" --runtime
+            DEPENDS "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}"
+                    "${LEGO_NATIVE_BINARY_CACHE_SCRIPT}" "${LEGO_HOST_LLVM_MC}"
+            COMMENT "Embedding runtime linked DXIL bank as ${LEGO_NATIVE_BINARY_CACHE_ARCH} COFF"
+            VERBATIM)
+        endif()
+        target_sources(legodimensions PRIVATE "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_OBJECT}")
+        set_source_files_properties("${LEGO_NATIVE_RUNTIME_BINARY_CACHE_OBJECT}"
+            PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+        set_property(SOURCE src/gpu_native/runtime_linked_shader_cache.cpp
+            APPEND PROPERTY COMPILE_DEFINITIONS
+            "LEGO_NATIVE_RUNTIME_LINKED_METADATA=\"${LEGO_NATIVE_RUNTIME_BINARY_CACHE_METADATA}\"")
+        set_source_files_properties(src/gpu_native/runtime_linked_shader_cache.cpp
+            PROPERTIES OBJECT_DEPENDS "${LEGO_NATIVE_RUNTIME_BINARY_CACHE_METADATA}")
+    else()
+        set_source_files_properties(
+            src/gpu_native/runtime_linked_shader_cache.cpp
+            PROPERTIES OBJECT_DEPENDS "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
+    endif()
 
-    # Fingerprint the exact native renderer inputs. CMAKE_CONFIGURE_DEPENDS
-    # makes a header-only edit trigger reconfigure as well as recompilation,
-    # and the fingerprint printed at startup proves which executable is live.
+    foreach(LEGO_UI_STAGE IN ITEMS vs ps)
+        set(LEGO_UI_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/native_overlay_${LEGO_UI_STAGE}.h")
+        add_custom_command(OUTPUT "${LEGO_UI_HEADER}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
+            COMMAND ${LEGO_NATIVE_DXC_COMMAND} -T ${LEGO_UI_STAGE}_6_0
+                -E ${LEGO_UI_STAGE}_main -HV 2021
+                -Fh "${LEGO_UI_HEADER}" -Vn g_native_overlay_${LEGO_UI_STAGE}
+                "${LEGO_NATIVE_HOST_SHADER_DIR}/native_overlay.hlsl"
+            DEPENDS "${LEGO_NATIVE_HOST_SHADER_DIR}/native_overlay.hlsl" "${LEGO_NATIVE_DXC}"
+            VERBATIM)
+        target_sources(legodimensions PRIVATE "${LEGO_UI_HEADER}")
+    endforeach()
+
+    # Fingerprint the exact native renderer inputs after generated shader banks
+    # exist. Hashing the linked cache during configure prevented a fresh build
+    # from reaching the prelink target that creates that same file.
     set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS
+        "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_distance.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_distance.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_effects.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/visual_effects.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/legodimensions_config.toml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.61.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_funcs.61.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/float_blend_indices.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/build_float_blend_indices_bank.py"
+        "${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.cpp"
+        "${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.bin"
+        "${LEGO_FLOAT_BLEND_INDICES_BANK}/float-blend-indices-bank.obj"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/instanced_constants.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/build_instanced_constants_bank.py"
+        ${LEGO_INSTANCED_CONSTANTS_BANK_FILES}
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume/plume_d3d12.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/plume/plume_d3d12.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/prepare_plume.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/patches/plume-state-cache.patch"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/gpu-aot/patches/plume-vulkan-readback.patch"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/depth_resample.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/native_overlay.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/native_overlay_gpu.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/native_overlay.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/legodimensions_app.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui_theme.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/main_menu_extras.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/main_menu_extras.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_frontend_guest.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_frontend_layout.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_frontend_binding.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_frontend_component.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_transaction.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_transaction.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_config.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_config.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_registry.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_registry.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_service.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_service.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_revision.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_revision.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_preferences.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_preferences.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_frontend.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_frontend.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_native_bridge.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_native_bridge.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_native_hooks.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_skin_diagnostics.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_slot_growth.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/slot_growth.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/heap_shape.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_heap_journal.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/settings_native_hooks.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_process_exit.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/device.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/fsr3_upscaler.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/fsr3_upscaler.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/settings_snapshot.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/settings_snapshot.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/settings_runtime.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/settings_runtime.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/temporal_draw_history.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/temporal_scene_depth.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/temporal_scene_depth.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_route.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_mode.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/renderer_mode.cpp"
@@ -291,8 +673,13 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_vs.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/copy_color_ps.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/resolve_color_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/resolve_scaled_ps.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_pack_ps.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_restore_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_resample_common.hlsli"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_resample_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_resample_depth_ps.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/shaders/depth_resample_stencil_ps.hlsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/depth_alias.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/d3d.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/depth_state.h"
@@ -305,7 +692,7 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/vertex_byte_order.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/format.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/format.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/textures.cpp"
+        "${LEGO_NATIVE_TEXTURE_SOURCE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/textures.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/hooks_texture.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/state.cpp"
@@ -330,26 +717,91 @@ if(LEGODIMENSIONS_NATIVE_GPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/runtime_shader_cache.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/runtime_linked_shader_cache.cpp"
         "${LEGO_NATIVE_SHADER_CACHE}"
+        "${LEGO_NATIVE_MICROCODE_INDEX}"
         "${LEGO_NATIVE_LINKED_SHADER_CACHE}"
-        "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        ${LEGO_NATIVE_GPU_FINGERPRINT_INPUTS})
-    set(LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "")
-    foreach(LEGO_NATIVE_GPU_INPUT IN LISTS LEGO_NATIVE_GPU_FINGERPRINT_INPUTS)
-        file(SHA256 "${LEGO_NATIVE_GPU_INPUT}" LEGO_NATIVE_GPU_INPUT_HASH)
-        string(APPEND LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL
-            "${LEGO_NATIVE_GPU_INPUT_HASH}")
-    endforeach()
-    string(SHA256 LEGO_NATIVE_GPU_FINGERPRINT_FULL
-        "${LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL}")
-    string(SUBSTRING "${LEGO_NATIVE_GPU_FINGERPRINT_FULL}" 0 16
-        LEGO_NATIVE_GPU_FINGERPRINT)
-    configure_file(src/gpu_native/build_info.h.in
-        "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h" @ONLY)
+        "${LEGO_NATIVE_RUNTIME_SHADER_CACHE}"
+        "${LEGO_NATIVE_RUNTIME_LINKED_SHADER_CACHE}")
+    if(LEGO_NATIVE_RUNTIME_PRELINKED_BANK)
+        foreach(LEGO_PRIVATE_BANK_FILE IN ITEMS linked-bank-metadata.cpp linked-bank.obj linked-bank.bin verification.json)
+            list(APPEND LEGO_NATIVE_GPU_FINGERPRINT_INPUTS "${LEGO_NATIVE_RUNTIME_PRELINKED_BANK}/${LEGO_PRIVATE_BANK_FILE}")
+        endforeach()
+    endif()
+    # Include every native helper header so changes to upload, bounds or
+    # completion logic cannot retain an older executable fingerprint.
+    file(GLOB_RECURSE LEGO_NATIVE_GPU_LOCAL_HEADERS CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/*.h")
+    if(LEGODIMENSIONS_TT_LOCK_TRACE)
+        list(APPEND LEGO_NATIVE_GPU_FINGERPRINT_INPUTS
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/tt_lock_trace.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/tt_lock_trace.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/tt_lock_trace_state.h")
+    endif()
+    list(APPEND LEGO_NATIVE_GPU_FINGERPRINT_INPUTS ${LEGO_NATIVE_GPU_LOCAL_HEADERS}
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.106.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.262.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.263.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.162.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.290.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.316.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../rexglue-sdk/src/graphics/shaders/bytecode/d3d12_5_1/apply_gamma_table_cs.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.115.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.397.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.240.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/legodimensions_recomp.292.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_atomics.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_lock_elide.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_memops.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_saverest.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_markers.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_constants.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/native_constants.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/native_worker.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/native_recording.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/fsr3_settings.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/temporal_shaders.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/temporal_present.cpp"
+        "${LEGO_TEMPORAL_SHADER_BANK}/temporal-bank.cpp"
+        "${LEGO_TEMPORAL_SHADER_BANK}/temporal-bank.obj")
+    list(REMOVE_DUPLICATES LEGO_NATIVE_GPU_FINGERPRINT_INPUTS)
+    set(LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT
+        "${CMAKE_CURRENT_BINARY_DIR}/generate-native-gpu-fingerprint.cmake")
+    file(CONFIGURE OUTPUT "${LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT}" CONTENT [=[
+set(LEGO_NATIVE_GPU_FINGERPRINT_INPUTS "@LEGO_NATIVE_GPU_FINGERPRINT_INPUTS@")
+set(LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "")
+foreach(LEGO_NATIVE_GPU_INPUT IN LISTS LEGO_NATIVE_GPU_FINGERPRINT_INPUTS)
+    file(SHA256 "${LEGO_NATIVE_GPU_INPUT}" LEGO_NATIVE_GPU_INPUT_HASH)
+    string(APPEND LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL "${LEGO_NATIVE_GPU_INPUT_HASH}")
+endforeach()
+string(SHA256 LEGO_NATIVE_GPU_FINGERPRINT_FULL "${LEGO_NATIVE_GPU_FINGERPRINT_MATERIAL}")
+string(SUBSTRING "${LEGO_NATIVE_GPU_FINGERPRINT_FULL}" 0 16 LEGO_NATIVE_GPU_FINGERPRINT)
+configure_file("@CMAKE_CURRENT_SOURCE_DIR@/src/gpu_native/build_info.h.in"
+    "@CMAKE_CURRENT_BINARY_DIR@/generated/native_gpu_build_info.h" @ONLY)
+file(WRITE "@CMAKE_CURRENT_BINARY_DIR@/native-gpu-build.txt"
+    "LEGO Dimensions native GPU ${LEGO_NATIVE_GPU_FINGERPRINT}\n")
+]=] @ONLY)
+    add_custom_command(
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h"
+               "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
+        COMMAND ${CMAKE_COMMAND} -P "${LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT}"
+        DEPENDS ${LEGO_NATIVE_GPU_FINGERPRINT_INPUTS}
+                "${LEGO_NATIVE_GPU_FINGERPRINT_SCRIPT}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu_native/build_info.h.in"
+        COMMENT "Fingerprinting native renderer sources and generated shader banks"
+        VERBATIM)
+    add_custom_target(lego_native_gpu_fingerprint
+        DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h"
+                "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt")
+    # Make generators must complete both bank producers before the fingerprint
+    # and metadata compilation consume their outputs through separate paths.
+    add_dependencies(lego_native_gpu_fingerprint lego_main_linked_cache)
+    if(NOT LEGO_NATIVE_RUNTIME_PRELINKED_BANK)
+        add_dependencies(lego_native_gpu_fingerprint lego_runtime_linked_cache)
+    endif()
+    add_dependencies(legodimensions lego_native_gpu_fingerprint)
+    target_sources(legodimensions PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/native_gpu_build_info.h")
     target_include_directories(legodimensions PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
-        "LEGO Dimensions native GPU ${LEGO_NATIVE_GPU_FINGERPRINT}\n")
     add_custom_command(TARGET legodimensions POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_BINARY_DIR}/native-gpu-build.txt"
@@ -401,5 +853,33 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"
             target_compile_options(legodimensions_recomp PRIVATE
                 -march=${LEGODIMENSIONS_X86_BASELINE})
         endif()
+    endif()
+endif()
+
+# Keep compiler experiments separate from the default release until measured
+# against the same in-game scene. This does not change guest register ABI or
+# bypass the code generator's interior-entry validation.
+option(LEGODIMENSIONS_THIN_LTO "Enable experimental Clang ThinLTO in release builds" OFF)
+# Each ThinLTO backend job holds a whole module's optimisation state; 2 keeps the link inside 16 GB.
+set(LEGODIMENSIONS_THIN_LTO_JOBS "2" CACHE STRING "Parallel ThinLTO backend jobs at link time")
+if(LEGODIMENSIONS_THIN_LTO)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        message(FATAL_ERROR "LEGODIMENSIONS_THIN_LTO requires Clang and LLD")
+    endif()
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT LEGO_IPO_SUPPORTED OUTPUT LEGO_IPO_ERROR LANGUAGES CXX)
+    if(NOT LEGO_IPO_SUPPORTED)
+        message(FATAL_ERROR "ThinLTO is unavailable: ${LEGO_IPO_ERROR}")
+    endif()
+    foreach(LEGO_IPO_TARGET IN ITEMS legodimensions legodimensions_recomp plume)
+        if(TARGET ${LEGO_IPO_TARGET})
+            set_property(TARGET ${LEGO_IPO_TARGET} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+            set_property(TARGET ${LEGO_IPO_TARGET} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+        endif()
+    endforeach()
+    if(WIN32)
+        target_link_options(legodimensions PRIVATE
+            "LINKER:/opt:lldltojobs=${LEGODIMENSIONS_THIN_LTO_JOBS}"
+            "LINKER:/lldltocache:${CMAKE_CURRENT_BINARY_DIR}/thinlto-cache")
     endif()
 endif()

@@ -8,6 +8,7 @@ import subprocess
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('output', type=Path)
+p.add_argument('--compiler', default='clang++')
 a = p.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 root = Path(__file__).resolve().parents[2]
@@ -41,7 +42,7 @@ def app_body(name):
         depth += (app_source[end]=='{')-(app_source[end]=='}')
         end += 1
     return app_source[start:end].replace(' override','')
-code = ['#include <cassert>\n#include "gpu_native/renderer_route.h"',
+code = ['#include <cassert>\n#include <cstdlib>\n#include <rex/logging.h>\n#include "gpu_native/renderer_route.h"',
         'bool& FLAGS_gpu_native_pm4_storage_() { static bool setting=std::getenv("TEST_PM4_CONFIG")!=nullptr; return setting; }',
         '#include <memory>\n#include <string>',
         'namespace rex { struct RuntimeConfig { std::unique_ptr<int> graphics; std::string gpu_plugin; }; }',
@@ -53,17 +54,17 @@ code = ['#include <cassert>\n#include "gpu_native/renderer_route.h"',
 for raw,name in hooks:
     code.append(f'extern "C" REX_FUNC(__imp__{name}) {{ assert(base==expected_base); ++originals; ctx.r3=11; }}')
     code.append(f'REX_HOOK_RAW({name}) {{ native_call(ctx,base); }}' if raw else f'REX_HOOK({name},native_call);')
-code.append('int main(int argc,char**) { bool reference=argc>1; u8 memory[8]{}; expected_base=memory; PPCContext ctx;')
+code.append('int main(int argc,char**) { constexpr bool reference=false; u8 memory[8]{}; expected_base=memory; PPCContext ctx;')
 code.append('App app; rex::RuntimeConfig config; config.graphics=std::make_unique<int>(7); config.gpu_plugin="xenos"; app.OnPreSetup(config); assert(bool(config.graphics)==reference); assert(config.gpu_plugin==(reference?"xenos":"")); app.OnPreLaunchModule(); assert(legodimensions::gpu_native::HostDevice::creates==(reference?0:1)); rex::RuntimeConfig empty; app.OnPreSetup(empty); assert(empty.gpu_plugin==(reference?"xenos":""));')
 for _,name in hooks:
     code.append(f'{name}(ctx,memory); assert(ctx.r3==(reference?11:22)); assert(ctx.canary==0x123456789ABCDEF0ull);')
 code.append(f'assert(originals==(reference?{len(hooks)}:0)); assert(natives==(reference?0:{len(hooks)}));')
-# Selection remains locked for resource lifetime, even if the environment changes.
+# Environment changes cannot select packet rendering.
 code.append('_putenv_s("LEGO_NATIVE_PM4_REFERENCE",reference?"0":"1"); assert(legodimensions::gpu_native::UsePm4Reference()==reference); }')
 cpp = a.output/'route.cpp'
 cpp.write_text('\n'.join(code))
 exe = a.output/'route.exe'
-subprocess.run(['clang++','-std=c++20','-I'+str(a.output/'include'),'-I'+str(root/'rexlego/src'),str(cpp),'-o',str(exe)],check=True)
+subprocess.run([a.compiler,'-std=c++20','-D_CRT_SECURE_NO_WARNINGS','-I'+str(a.output/'include'),'-I'+str(root/'rexlego/src'),str(cpp),'-o',str(exe)],check=True)
 for configured in (False,True):
     for value in (None,'0','1','false','yes',''):
         env = dict(os.environ)
@@ -71,13 +72,12 @@ for configured in (False,True):
         env.pop('TEST_PM4_CONFIG',None)
         if configured: env['TEST_PM4_CONFIG']='1'
         if value is not None: env['LEGO_NATIVE_PM4_REFERENCE']=value
-        selected = value=='1' if value in ('0','1') else configured
-        subprocess.run([str(exe.resolve())]+(['reference'] if selected else []),env=env,check=True)
+        subprocess.run([str(exe.resolve()),'reference'],env=env,check=True)
 report = {'passed':True,'hooks':len(hooks),'raw_hooks':sum(raw for raw,_ in hooks),
           'environment_cases':12,'actual_header_macros':True,'mock_ppc_and_marshaler':True,
-          'checks':['all native GPU hook sources covered','original path bypasses native body',
-                    'configured mode and explicit environment override','ctx/base forwarded','register canary preserved',
-                    'route immutable after first use','actual app setup preserves SDK plugin in reference',
-                    'actual app prelaunch bypasses native initialization in reference']}
+          'checks':['all native GPU hook sources covered','original packet route never called',
+                    'legacy config and environment cannot enable packet rendering','ctx/base forwarded','register canary preserved',
+                    'route immutable after environment changes','actual app setup disables SDK GPU plugin',
+                    'actual app prelaunch initializes native device']}
 (a.output/'verification.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))

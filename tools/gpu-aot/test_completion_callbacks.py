@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);p.add_argument('--compiler',default='clang++');a=p.parse_args()
 root=Path(__file__).resolve().parents[2];a.output.mkdir(parents=True,exist_ok=True)
 source=(root/'rexlego/src/gpu_native/device.cpp').read_text()
 def body(sig):
@@ -19,11 +19,16 @@ h.write_text(r'''
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <condition_variable>
+#include <cstdlib>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
+#define LEGO_NATIVE_WORKER_STUB
+#include "gpu_native/native_worker.h"
 #include "gpu_native/completion_queue.h"
 using namespace legodimensions::gpu_native;
 using u32=std::uint32_t;using u64=std::uint64_t;
@@ -32,8 +37,14 @@ namespace plume {
 struct NativeFence {u64 completed=0;u64 GetCompletedValue(){return completed;}};
 struct D3D12CommandFence {NativeFence native;NativeFence* d3d=&native;u64 fenceValue=1;};
 }
+// Disabled optional timestamp boundary; test_gpu_timestamps covers its real enabled implementation.
+struct GpuSubmissionTimestamps {
+ void Begin(auto*,u32,u64){};void End(auto*,u32,const char*,u32=~0u,u32=~0u){};
+ void Submitted(u32,u64){};void Complete(u32,u64,u64,u64){};
+};
 struct State {
- static constexpr u32 kFramesInFlight=3;
+ GpuSubmissionTimestamps* gpu_timestamps=nullptr;u32 present_number=0;
+ static constexpr u32 kFramesInFlight=3;u32 command_slot_count=kFramesInFlight;
  Backend backend=Backend::kD3D12;
  std::array<bool,3> frame_submitted{};
  std::array<std::unique_ptr<plume::D3D12CommandFence>,3> frame_fences;
@@ -48,13 +59,30 @@ std::mutex g_mutex;std::recursive_mutex recording_mutex;std::unique_ptr<State> g
 struct HostDevice {
  static auto LockRecording(){return std::unique_lock(recording_mutex);}
  static bool EnqueueCompletionCallback(std::function<void()>);
- static void PollCompletionCallbacks();
+ static void PollCompletionCallbacks(bool wait_for_recording=true);
 };
 '''+functions+r'''
+struct LockProbe {
+ std::mutex mutex;std::condition_variable cv;
+ bool request=false,done=false,stop=false,unlocked=false;
+ std::thread worker{[this]{
+  std::unique_lock lock(mutex);
+  for(;;){
+   cv.wait(lock,[&]{return request||stop;});if(stop)return;
+   unlocked=recording_mutex.try_lock();if(unlocked)recording_mutex.unlock();
+   request=false;done=true;cv.notify_all();
+  }
+ }};
+ bool Check(){std::unique_lock lock(mutex);done=false;request=true;cv.notify_all();
+  cv.wait(lock,[&]{return done;});return unlocked;}
+ ~LockProbe(){{std::lock_guard lock(mutex);stop=true;cv.notify_all();}worker.join();}
+};
 int main(){
+ _putenv_s("LEGO_NATIVE_BATCH_COMPLETION_CALLBACKS","1");
+ LockProbe probe;
  std::vector<int> ran;
  auto task=[&](int n){return [&,n]{assert(g_mutex.try_lock());g_mutex.unlock();
-  bool unlocked=false;std::thread check([&]{unlocked=recording_mutex.try_lock();if(unlocked)recording_mutex.unlock();});check.join();assert(unlocked);
+  assert(probe.Check());
   ran.push_back(n);};};
  auto submit=[&](u32 slot){auto& s=*g_state;RefreshCompletedSubmissionsLocked(s);
   s.command_list_open=false;++s.frame_fences[slot]->fenceValue;MarkSubmissionLocked(s,slot);};
@@ -90,6 +118,28 @@ int main(){
   submit(slot);HostDevice::PollCompletionCallbacks();assert(ran.size()==before);
   complete(slot);HostDevice::PollCompletionCallbacks();assert(ran.size()==before+1);}
  assert(g_state->completion_callbacks.size()==0);
+ std::promise<void> locked,release;
+ auto release_ready=release.get_future();
+ std::thread holder([&]{std::unique_lock lock(NativeRecordingMutex());locked.set_value();release_ready.wait();});
+ locked.get_future().wait();
+ HostDevice::EnqueueCompletionCallback(task(2000));
+ const auto before_poll=ran.size();
+ HostDevice::PollCompletionCallbacks(false);
+ assert(ran.size()==before_poll);
+ release.set_value();holder.join();
+ HostDevice::PollCompletionCallbacks();assert(ran.back()==2000);
+ // A recorder taking the gate during the first callback cannot strand its ready peers.
+ std::promise<void> callback_started,callback_locked,callback_release;
+ auto started=callback_started.get_future();auto held=callback_locked.get_future();
+ auto released=callback_release.get_future();
+ std::thread racing_recorder([&]{started.wait();std::unique_lock lock(NativeRecordingMutex());
+  callback_locked.set_value();released.wait();});
+ int ready_count=0;
+ HostDevice::EnqueueCompletionCallback([&]{++ready_count;callback_started.set_value();held.wait();});
+ for(int i=1;i<44;++i) HostDevice::EnqueueCompletionCallback([&]{++ready_count;});
+ HostDevice::PollCompletionCallbacks(false);
+ assert(ready_count==44 && g_state->completion_callbacks.size()==0);
+ callback_release.set_value();racing_recorder.join();
  // Teardown discards pending guest callbacks rather than invoking on host UI thread.
  g_state->command_list_open=true;HostDevice::EnqueueCompletionCallback(task(-1));auto count=ran.size();
  g_state.reset();HostDevice::PollCompletionCallbacks();assert(ran.size()==count);
@@ -97,8 +147,8 @@ int main(){
 }
 ''')
 exe=a.output/'completion-callbacks.exe'
-subprocess.run(['clang++','-std=c++20','-DNOMINMAX','-I'+str(root/'rexlego/src'),str(h),'-o',str(exe)],check=True)
-subprocess.run([str(exe.resolve())],check=True)
+subprocess.run([a.compiler,'-std=c++20','-DNOMINMAX','-I'+str(root/'rexlego/src'),str(h),'-o',str(exe)],check=True, timeout=45)
+subprocess.run([str(exe.resolve())],check=True, timeout=45)
 assert source.count('MarkSubmissionLocked(state, slot);')==4
 hook=(root/'rexlego/src/gpu_native/hooks_device.cpp').read_text()
 insert=hook[hook.index('void InsertCallbackHook('):hook.index('}  // namespace',hook.index('void InsertCallbackHook('))]

@@ -843,15 +843,23 @@ The device shadows the register block starting at 0x2200 in order, so the offset
 Don't wire either of them into alpha test.
 
 ## 2. The real alpha-test leaves (RB_COLORCONTROL at +10556, dirty[16] |= 0x200)
+
+**Historical correction (2026-10-07):** this section originally misidentified
+`83FB92B8 / +10620` as ALPHA_REF. That was an unrelated float state (descriptor
+index 59), and reading its default `1.0` discarded the native title-menu button
+icons. The actual TU23 alpha reference is descriptor index 25,
+`83FB8260 / +10500`. The mapped, patched TU23 image verifies its setter words,
+descriptor and normalization constant; see
+[`TU23-alpha-reference-byte-proof.json`](../../.local-testing/reports/TU23-alpha-reference-byte-proof.json).
+
 | Setter / getter | Word | Field |
 |---|---|---|
 | **83FB82C0 / 83FB82E0** | `rlwimi r4,r11,0,0,28` -> bits 0..2 = r4 | **ALPHA_FUNC** |
 | 83FB7E00 / 83FB7E28 | bit 3 = r4&1 (also dirty[16] \|= 0x40000) | **ALPHA_TEST_ENABLE** |
 | 83FB93B8 / 83FB93D8 | bit 4 = r4&1 | ALPHA_TO_MASK_ENABLE |
 | 83FB93E8 / (none found) | bits 24..31 = r4 | ALPHA_TO_MASK_OFFSET0..3 (2 bits each) |
-| **83FB92B8 / 83FB92E0** | `stw r4,tmp; lfs f0,tmp; stfs f0,+10620`; dirty[24] \|= 1<<48 | **ALPHA_REF (float)** |
-(The neighbouring pair 83FB9280/83FB92A8 writes the float at +10616 with dirty bit 47. It's a
-separate float state, which I did not identify.)
+| **83FB8260 / 83FB8298** | unsigned r4 -> float; multiply by float at `0x82005D78`; `stfs f0,+10500`; dirty[16] \|= `0x08000000` | **ALPHA_REF (integer / 255)** |
+| 83FB92B8 / 83FB92E0 | `stw r4,tmp; lfs f0,tmp; stfs f0,+10620`; dirty[24] \|= 1<<48 | Unrelated float state, descriptor index 59 |
 
 Leaf contract:
 - The function value goes into bits 0..2 **raw**, so the enum is the hardware CompareFunction:
@@ -859,21 +867,21 @@ Leaf contract:
   (360 D3DCMP_* use these values, not PC's 1..8). Emit all 8, not only `>=`.
   Xenos semantics: the pixel passes if `alpha FUNC ref` holds, so GEQUAL keeps `oC0.w >= ref` (clip when
   `oC0.w < ref`, which matches your current code). NEVER/ALWAYS = discard all / no-op.
-- The ref leaf does **no conversion**: it copies r4's 32 bits straight into a float slot.
-  So what reaches the leaf is already float bits, and +10620 is the RB_ALPHA_REF shadow value itself.
-  Normalisation (if any) happens in the caller, not here.
-  **Unleashed's value/256 does not apply to this leaf.** Interpreting an integer 0..255 as float
-  bits would give a denormal ~0, i.e. "alpha test never discards".
-  Runtime check to settle it: log r4 in 83FB92B8. Plausible floats (0..1, e.g. 0x3F000000) confirm this reading.
-  Small ints mean a caller path I missed.
+- The actual reference leaf `83FB8260` receives an **unsigned integer**, converts it to
+  float and multiplies by the TU23 constant at `0x82005D78`: bytes `3B 80 80 81`,
+  float32 `1/255`. The normalized float at `+10500` is ready for the shader comparison;
+  do not normalize it again. The gameplay alpha helper `82BCF720` calls this setter
+  with integer references. The previous float-bits/no-conversion claim applied to
+  `83FB92B8`, which is not the alpha-reference setter.
 - Compare in the shader against the value **before** the EDRAM/exp scale (`g_ColorOutputScale`).
   That's where your clip already sits. Xenos tests the shader's oC0.w against RB_ALPHA_REF before the RB format conversion.
 - The alpha-to-mask bits are a separate feature (the A2C spec bit). If bit 4 is set and native ignores it,
   foliage/hair-style cutouts render as solid or vanish depending on blend.
 
-Defaults: I did not read them out of 83FC9450's descriptor table. D3D/Xenos reset values are
-enable=0, func=ALWAYS(7), ref=0.0, alpha-to-mask=0. Because native skips the init, store these in
-your shadow at CreateDevice. They are harmless: enable=0 means nothing is discarded until the game sets it.
+Verified TU23 descriptor defaults: index 24 is enable=0, index 25 is integer ref=0,
+and index 26 is func=ALWAYS(7). Native CreateDevice initializes these through the
+actual leaf setters, including `83FB8260`, after validating the descriptor addresses.
+This does not establish the separate alpha-to-mask state or repair other visual defects.
 
 ## 3. Tonemap PS 3A47E5DDE66B42C6: how sharp, "mip" and slot 3 combine
 Slots from the descriptor table: 0 `fullColor_tex`, **3 `blur_tex`**, 4 `mipColor1_tex`, 6 `noiseTex`,

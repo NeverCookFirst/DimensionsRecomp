@@ -4,6 +4,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <cmath>
 
 #include <plume_render_interface_types.h>
 
@@ -35,6 +36,22 @@ inline TextureFetchWords MergeTextureFetch(const TextureFetchWords& old,
 }
 
 inline void ClearTextureFetch(TextureFetchWords& words) { words[0] &= ~3u; }
+
+// Apply only to scene pixel textures, after the resource/header mip merge.
+// Vertex animation, depth, UI, point-filtered and basemap-only fetches must
+// retain their original sampler. Clamp the signed fixed-point field, never wrap.
+inline void ApplyFsrTextureBias(TextureFetchWords& fetch, float bias) {
+  if (!std::isfinite(bias) || bias == 0 || ((fetch[5] >> 9) & 3u) != 1 ||
+      !((fetch[5] >> 12) & 0x1FFFFu) || ((fetch[3] >> 23) & 3u) == 2 ||
+      (!((fetch[3] >> 25) & 7u) && (((fetch[3] >> 19) & 3u) != 1 ||
+                                  ((fetch[3] >> 21) & 3u) != 1)) ||
+      ((fetch[4] >> 6) & 15u) <= ((fetch[4] >> 2) & 15u)) return;
+  int32_t old = int32_t((fetch[4] >> 12) & 1023u);
+  if (old >= 512) old -= 1024;
+  const int32_t delta = int32_t(std::round(std::clamp(bias,-16.0f,16.0f)*32));
+  const int32_t value = std::clamp(old+delta,-512,511);
+  fetch[4] = (fetch[4] & ~(1023u << 12)) | ((uint32_t(value) & 1023u) << 12);
+}
 
 // Only fields consumed by the desktop sampler are keys. No padding or texture
 // addresses: cached descriptors never change until the host device is idle.
@@ -86,6 +103,21 @@ inline plume::RenderSamplerDesc DecodeTextureSampler(const TextureFetchWords& fe
   desc.maxLOD = float(std::max(min_level, max_level));
   if (mip == 2) desc.maxLOD = desc.minLOD + (aniso ? 0.0f : 0.25f);
   return desc;
+}
+
+// Xenia's anisotropic_override (texture_cache.cpp GetSamplerParameters): 0..5
+// forces 1x..16x on linear, mipmapped, non-basemap samplers; -1 or 6 keeps the
+// fetch constant's value.
+inline void ApplyAnisotropicOverride(plume::RenderSamplerDesc& desc,
+                                     const TextureFetchWords& fetch, int32_t override_level) {
+  if (override_level < 0 || override_level > 5) return;
+  const uint32_t mip = (fetch[3] >> 23) & 3u;
+  const bool has_mips = ((fetch[5] >> 12) & 0x1FFFFu) != 0 && desc.maxLOD > desc.minLOD;
+  const bool min_mag_linear = desc.minFilter == plume::RenderFilter::LINEAR &&
+                              desc.magFilter == plume::RenderFilter::LINEAR;
+  if (!has_mips || mip == 2 || !min_mag_linear) return;
+  desc.anisotropyEnabled = override_level != 0;
+  desc.maxAnisotropy = override_level ? 1u << (override_level - 1) : 1u;
 }
 
 inline NativeSamplerKey TextureSamplerKey(const plume::RenderSamplerDesc& desc) {

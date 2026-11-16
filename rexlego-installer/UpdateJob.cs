@@ -68,6 +68,8 @@ public sealed class UpdateJob
     /// </summary>
     public UpdatePlan Plan(ReleaseManifest release, PayloadSource? pack)
     {
+        if (release.Product != install.Product)
+            throw new InvalidDataException("This update belongs to a different edition.");
         var plan = new UpdatePlan { Install = install, Release = release };
         foreach (var file in release.Files)
         {

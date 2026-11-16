@@ -6,7 +6,8 @@ namespace legodimensions::gpu_native {
 // Hardware BEGIN/END never cross a command-list submission boundary.
 class QueryDrawScope {
  public:
-  explicit QueryDrawScope(plume::RenderCommandList* commands);
+  // sample_scale converts host samples to guest-resolution samples (logical area over host area).
+  QueryDrawScope(plume::RenderCommandList* commands, double sample_scale);
   ~QueryDrawScope();
   QueryDrawScope(const QueryDrawScope&) = delete;
   QueryDrawScope& operator=(const QueryDrawScope&) = delete;

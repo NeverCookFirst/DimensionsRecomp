@@ -532,4 +532,13 @@ void ResolveUpdateRoot(rex::PathConfig& paths) {
   REXLOG_INFO("Mods enabled [{}], update folder: {}", selection, modded);
 }
 
+std::filesystem::path RussianNativeMenuTranslations() {
+  constexpr auto folder = "Lang_Russian_By_koctr113";
+  const auto enabled = SplitList(REXCVAR_GET(mods));
+  if (std::find(enabled.begin(), enabled.end(), folder) == enabled.end()) return {};
+  const auto root = REXCVAR_GET(mods_root);
+  if (root.empty()) return {};
+  return std::filesystem::path(root) / folder / "native-menu-ru.tsv";
+}
+
 }  // namespace legodimensions::mods

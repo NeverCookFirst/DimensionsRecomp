@@ -20,4 +20,15 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }  // extern "C"
 #endif  // _WIN32
 
+#if defined(_WIN32) && defined(LEGODIMENSIONS_NATIVE_GPU)
+#include "native_direct_startup.h"
+
+static std::unique_ptr<rex::ui::WindowedApp> CreateNativeApp(rex::ui::WindowedAppContext& context) {
+  ConfigureNativeDirectStartup();
+  return LegodimensionsApp::Create(context);
+}
+
+REX_DEFINE_APP(legodimensions, CreateNativeApp)
+#else
 REX_DEFINE_APP(legodimensions, LegodimensionsApp::Create)
+#endif

@@ -2,8 +2,10 @@
 #pragma once
 
 #include <rex/types.h>
+#include <memory>
 #include "gpu_native/vertex_byte_order.h"
 #include "gpu_native/pool_copy.h"
+#include "gpu_native/index_snapshot_cache.h"
 
 namespace plume {
 struct RenderBuffer;
@@ -47,6 +49,20 @@ struct BufferResourceView {
   u64 content_hash = 0;
   u64 byte_order_hash = 0;
 };
+struct BufferPreparationSnapshot {
+  std::shared_ptr<void> owner;
+  BufferResourceView metadata;
+};
+struct PreparedBufferVersion {
+  std::shared_ptr<void> owner;
+  std::shared_ptr<plume::RenderBuffer> storage;
+  BufferResourceView view;
+};
+BufferPreparationSnapshot CaptureBufferPreparation(u32 address, BufferKind kind);
+std::shared_ptr<const IndexBoundsSnapshot> CaptureIndexBounds(
+    const BufferPreparationSnapshot& snapshot, u32 offset, u32 length);
+PreparedBufferVersion PrepareCachedBuffer(const BufferPreparationSnapshot& snapshot,
+    u32 offset, u32 length, bool window, const VertexByteOrder& order = {});
 BufferResourceView ResolveBufferResourceView(u32 guest_address,
                                              BufferKind kind,
                                              const VertexByteOrder& byte_order = {});
@@ -55,12 +71,29 @@ BufferResourceView ResolveBufferResourceView(u32 guest_address,
 BufferResourceView InspectBufferResource(u32 guest_address, BufferKind kind);
 BufferResourceView ResolveBufferResourceWindow(u32 guest_address, BufferKind kind,
     u32 offset, u32 length, const VertexByteOrder& byte_order = {});
+BufferResourceView ResolveBufferIndexWindow(u32 guest_address, u32 offset, u32 length);
+BufferResourceView ResolveBufferStreamWindow(u32 stream, u32 guest_address,
+    u32 offset, u32 length, const VertexByteOrder& byte_order);
 
 bool IsNativeBuffer(u32 guest_address);
 u32 NativeBufferType(u32 guest_address);
 u32 AddRefNativeBuffer(u32 guest_address);
 u32 ReleaseNativeBuffer(u32 guest_address);
+// Registry record for capture-time pinning; null when unknown.
+std::shared_ptr<void> FindBufferOwner(u32 guest_address);
+// False when the guest bytes changed since the last upload, so the version must be made in order.
+bool BufferContentCurrent(const BufferPreparationSnapshot& snapshot);
 void ResetBufferResources();
 u32 InvalidatePoolCopyBuffers(PhysicalCopyRange destination);
+// Capture thread: false only when no registered borrowed buffer shares a page with the range.
+bool PoolCopyMayTouchBuffers(PhysicalCopyRange range);
+
+// Moves on every buffer registry insert or erase.
+u64 BufferRegistryGeneration();
+// True when an armed, unchanged write watch holds the buffer's content version (null counts as true).
+bool BufferInputWatched(const std::shared_ptr<void>& owner);
+// True when a window copy of this buffer is the storage `bound` and holds an armed, unchanged watch.
+bool BufferWindowWatched(const std::shared_ptr<void>& owner, u32 offset, u32 length,
+    const plume::RenderBuffer* bound);
 
 }  // namespace legodimensions::gpu_native

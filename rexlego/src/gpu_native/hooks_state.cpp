@@ -1,5 +1,6 @@
 #include "gpu_native/renderer_route.h"
 #include <rex/system/kernel_state.h>
+#include <rex/system/xmemory.h>
 #include <rex/types.h>
 
 #include "gpu_native/d3d.h"
@@ -8,8 +9,15 @@
 #include "gpu_native/vertex_declarations.h"
 #include "gpu_native/sampler_state.h"
 #include "gpu_native/depth_state.h"
+#include "gpu_native/scissor_state.h"
 #include "gpu_native/device.h"
+#include "gpu_native/texture_fetch_history.h"
+#include "gpu_native/stream_source_shadow.h"
 #include <rex/logging.h>
+#include "gpu_native/native_worker.h"
+#include "gpu_native/native_recording.h"
+#include <array>
+#include <mutex>
 
 extern "C" void __imp__sub_83FBB110(PPCContext& __restrict ctx, u8* base);
 
@@ -25,7 +33,7 @@ void SetNativeTexture(D3DDevice* device, u32 sampler, u32 texture, u64 dirty) {
     for (u32 i = 0; i < texture_words.size(); ++i) texture_words[i] = header->format.dword[i];
     const auto* bytes = reinterpret_cast<const u8*>(device);
     words = MergeTextureFetch(words, texture_words, bytes[12356 + sampler], bytes[12382 + sampler]);
-    RefreshTextureHeader(texture);
+    if (!SnapshotStateBindingsEnabled() && !NativeWorkerShouldQueue()) RefreshTextureHeader(texture);
     auto* dirty_mask = reinterpret_cast<be_u64*>(reinterpret_cast<u8*>(device) + 24);
     *dirty_mask = u64(*dirty_mask) | dirty;
   } else {
@@ -34,15 +42,37 @@ void SetNativeTexture(D3DDevice* device, u32 sampler, u32 texture, u64 dirty) {
   }
   for (u32 i = 0; i < words.size(); ++i) device->fetch_constants[sampler].dword[i] = words[i];
   device->textures[sampler] = texture;
+  if (SnapshotStateBindingsEnabled()) return;
+  if (NativeWorkerShouldQueue()) {
+    // Guest-visible fetch/binding writes above stay inline; the host header
+    // check and binding follow the queued draws that used the previous one.
+    NativeWorkerSubmit([sampler, texture] {
+      if (texture) RefreshTextureHeader(texture);
+      BindTexture(sampler, texture);
+    });
+    return;
+  }
   BindTexture(sampler, texture);
 }
 
 namespace {
 
 void SetStreamSourceHook(D3DDevice* device, u32 stream, u32 buffer,
-                         u32 offset, u32 stride) {
-  if (device && stream < 18) {
-    device->vertex_stream_buffers[stream] = buffer;
+                         u32 offset, u32 stride, u64 dirty) {
+  const bool queue = NativeWorkerShouldQueue();
+  decltype(legodimensions::gpu_native::HostDevice::LockRecording()) recording;
+  if (!queue) recording = HostDevice::LockRecording();
+  if (!device || stream >= 18) return;
+  const auto* header = buffer ?
+      REX_KERNEL_MEMORY()->TranslateVirtual<const D3DBuffer*>(buffer) : nullptr;
+  // Publishing only the native binding left the original GetStreamSource
+  // reading stale offset/stride fields, then restoring that corrupt state.
+  WriteStreamSourceShadow({reinterpret_cast<u8*>(device), sizeof(D3DDevice)},
+      stream, buffer, header ? u32(header->fetch_lo) : 0,
+      header ? u32(header->fetch_hi) : 0, offset, stride, dirty);
+  if (queue) {
+    NativeWorkerSubmit([stream, buffer, offset, stride] { BindVertexStream(stream, buffer, offset, stride); }, false, true, NativeFullDrawPreparationEnabled());
+    return;
   }
   BindVertexStream(stream, buffer, offset, stride);
 }
@@ -51,12 +81,22 @@ void SetIndicesHook(D3DDevice* device, u32 buffer) {
   if (device) {
     device->index_buffer = buffer;
   }
+  if (device && SnapshotStateBindingsEnabled()) return;
+  if (NativeWorkerShouldQueue()) {
+    NativeWorkerSubmit([buffer] { BindIndexBuffer(buffer); });
+    return;
+  }
   BindIndexBuffer(buffer);
 }
 
 void SetVertexDeclarationHook(D3DDevice* device, u32 declaration) {
   if (device) {
     device->vertex_declaration = declaration;
+  }
+  if (device && SnapshotStateBindingsEnabled()) return;
+  if (NativeWorkerShouldQueue()) {
+    NativeWorkerSubmit([declaration] { BindVertexDeclaration(declaration); });
+    return;
   }
   BindVertexDeclaration(declaration);
 }
@@ -68,6 +108,11 @@ u32 CreateVertexDeclarationHook(u32 elements) {
 void SetRenderTargetHook(D3DDevice* device, u32 index, u32 surface) {
   if (device && index < kNativeRenderTargets) {
     device->render_targets[index] = surface;
+  }
+  if (device && SnapshotStateBindingsEnabled()) return;
+  if (NativeWorkerShouldQueue()) {
+    NativeWorkerSubmit([index, surface] { BindRenderTarget(index, surface); });
+    return;
   }
   BindRenderTarget(index, surface);
 }
@@ -81,34 +126,114 @@ void SetDepthStencilHook(D3DDevice* device, u32 surface) {
         *reinterpret_cast<const be_u32*>(bytes + 12308),
         *reinterpret_cast<const be_u32*>(bytes + 12312), surface != 0);
   }
+  if (device && SnapshotStateBindingsEnabled()) return;
+  if (NativeWorkerShouldQueue()) {
+    NativeWorkerSubmit([surface] { BindDepthStencil(surface); });
+    return;
+  }
   BindDepthStencil(surface);
 }
 
-u32 GetRenderTargetHook(D3DDevice* /*device*/, u32 index) {
-  const u32 surface = BoundRenderTarget(index);
+// TU23 D3DDevice_GetRenderTarget reads device+12816+4*index, which the Set
+// hooks keep current inline, so the queued publication need not be awaited.
+u32 GetRenderTargetHook(D3DDevice* device, u32 index) {
+  u32 surface;
+  if (device && index < kNativeRenderTargets && (NativeQueuedGetEnabled() || SnapshotStateBindingsEnabled())) {
+    surface = device->render_targets[index];
+  } else {
+    NativeWorkerDrain();
+    surface = BoundRenderTarget(index);
+  }
   if (surface && IsNativeTexture(surface)) {
     AddRefNativeTexture(surface);
   }
   return surface;
 }
 
-u32 GetDepthStencilHook(D3DDevice* /*device*/) {
-  const u32 surface = BoundDepthStencil();
+u32 GetDepthStencilHook(D3DDevice* device) {
+  u32 surface;
+  if (device && (NativeQueuedGetEnabled() || SnapshotStateBindingsEnabled())) {
+    surface = device->depth_stencil;
+  } else {
+    NativeWorkerDrain();
+    surface = BoundDepthStencil();
+  }
   if (surface && IsNativeTexture(surface)) {
     AddRefNativeTexture(surface);
   }
   return surface;
 }
 
-void SetViewportHook(D3DDevice* device, const D3DViewport9* viewport) {
-  if (device && viewport) {
-    device->viewport = *viewport;
+bool NativeViewportRange(u32 address, u32 length, bool write) {
+  auto* memory = REX_KERNEL_MEMORY();
+  if (!memory || !address || !length || u64(address) + length > 0x100000000ull)
+    return false;
+  auto* heap = memory->LookupHeap(address);
+  if (!heap || !heap->IsRangeCommittedReadable(address, length)) return false;
+  if (!write) return true;
+  const u32 page_size = heap->page_size();
+  if (!page_size) return false;
+  for (u64 at = address; at < u64(address) + length;) {
+    u32 protect = 0;
+    if (!heap->QueryProtect(u32(at), &protect) ||
+        !(protect & (rex::memory::kMemoryProtectWrite |
+                     rex::memory::kMemoryProtectWriteCombine))) return false;
+    const u64 next = (at / page_size + 1) * page_size;
+    if (next <= at) return false;
+    at = next;
   }
+  return true;
 }
+
+bool NativeViewportDeviceArguments(u32 device_address, u32 stack, u32 scratch = 512) {
+  if (!NativeViewportRange(device_address, kGuestDeviceSize, true) ||
+      stack < scratch || !NativeViewportRange(stack - scratch, scratch, true)) return false;
+  const auto* device = REX_KERNEL_MEMORY()->TranslateVirtual<const D3DDevice*>(device_address);
+  const u32 surface = device->render_targets[0] ? u32(device->render_targets[0])
+                                              : u32(device->depth_stencil);
+  return !surface || NativeViewportRange(surface, sizeof(D3DSurface), false);
+}
+
+bool NativeViewportArguments(u32 device_address, u32 viewport_address, u32 stack) {
+  return NativeViewportDeviceArguments(device_address, stack) &&
+      NativeViewportRange(viewport_address, sizeof(D3DViewport9), false);
+}
+
+class ScopedNativeViewportExtent {
+ public:
+  ScopedNativeViewportExtent(D3DDevice* device, u32 width, u32 height)
+      : bytes_(reinterpret_cast<u8*>(device)), flags_(bytes_[11068]),
+        width_(*reinterpret_cast<be_u32*>(bytes_ + 13556)),
+        height_(*reinterpret_cast<be_u32*>(bytes_ + 13560)) {
+    *reinterpret_cast<be_u32*>(bytes_ + 13556) = width;
+    *reinterpret_cast<be_u32*>(bytes_ + 13560) = height;
+    bytes_[11068] = flags_ | 0x10;
+  }
+  ~ScopedNativeViewportExtent() {
+    bytes_[11068] = flags_;
+    *reinterpret_cast<be_u32*>(bytes_ + 13556) = width_;
+    *reinterpret_cast<be_u32*>(bytes_ + 13560) = height_;
+  }
+  ScopedNativeViewportExtent(const ScopedNativeViewportExtent&) = delete;
+  ScopedNativeViewportExtent& operator=(const ScopedNativeViewportExtent&) = delete;
+ private:
+  u8* bytes_;
+  u8 flags_;
+  u32 width_, height_;
+};
 
 void SetScissorRectHook(D3DDevice* device, const D3DRect* rect) {
   if (device && rect) {
     device->scissor = *rect;
+  }
+}
+
+void SetScissorEnableHook(D3DDevice* device, u32 enabled) {
+  if (device) {
+    // Keep the requested rectangle intact across disable/re-enable. Native
+    // draws derive the effective intersection; no Xbox packet is emitted.
+    *reinterpret_cast<be_u32*>(reinterpret_cast<u8*>(device) +
+        kNativeScissorEnableOffset) = enabled;
   }
 }
 
@@ -124,7 +249,23 @@ void SetupFormatHook(D3DDevice* /*device*/, u32 /*mode*/) {}
 }  // namespace
 }  // namespace legodimensions::gpu_native
 
-REX_HOOK(sub_83FB58A8, legodimensions::gpu_native::SetNativeTexture);
+REX_HOOK_RAW(sub_83FB58A8) {
+  decltype(legodimensions::gpu_native::HostDevice::LockRecording()) recording;
+  if (!legodimensions::gpu_native::NativeWorkerShouldQueue())
+    recording = legodimensions::gpu_native::HostDevice::LockRecording();
+  const u32 address = ctx.r3.u32, slot = ctx.r4.u32, guest = ctx.r5.u32;
+  const u32 caller = u32(ctx.lr);
+  // Preserve the existing typed argument marshalling, including the 64-bit
+  // dirty mask. Recording serializes binding publication with native draws.
+  rex::ppc::HostToGuestFunction<legodimensions::gpu_native::SetNativeTexture>(ctx, base);
+  if (legodimensions::gpu_native::TextureFetchHistoryEnabled() &&
+      address && slot < legodimensions::gpu_native::kNativeTextureSlots) {
+    const auto* device = reinterpret_cast<const legodimensions::gpu_native::D3DDevice*>(base + address);
+    std::array<u32,6> fetch;
+    for (u32 i=0;i<6;++i) fetch[i]=device->fetch_constants[slot].dword[i];
+    legodimensions::gpu_native::g_texture_fetch_history.Record(address,slot,guest,caller,fetch);
+  }
+}
 REX_HOOK(sub_83FBA160, legodimensions::gpu_native::SetStreamSourceHook);
 REX_HOOK(sub_83FBA308, legodimensions::gpu_native::SetIndicesHook);
 REX_HOOK(sub_83FB6D50,
@@ -137,8 +278,24 @@ REX_HOOK(sub_83FBAE38, legodimensions::gpu_native::SetDepthStencilHook);
 // setters above. Preserve its XDK shadow/viewport updates, then publish all
 // five attachments to the native renderer. Save r3 before the guest call.
 REX_HOOK_RAW(sub_83FBB110) {
-  auto recording = legodimensions::gpu_native::HostDevice::LockRecording();
   auto* device = reinterpret_cast<legodimensions::gpu_native::D3DDevice*>(base + ctx.r3.u32);
+  if (legodimensions::gpu_native::SnapshotStateBindingsEnabled()) {
+    __imp__sub_83FBB110(ctx, base);
+    return;
+  }
+  if (legodimensions::gpu_native::NativeWorkerShouldQueue()) {
+    // The XDK setter only updates guest shadows; publish its result in order.
+    __imp__sub_83FBB110(ctx, base);
+    std::array<u32, legodimensions::gpu_native::kNativeRenderTargets> targets;
+    for (u32 i = 0; i < targets.size(); ++i) targets[i] = device->render_targets[i];
+    const u32 depth = device->depth_stencil;
+    legodimensions::gpu_native::NativeWorkerSubmit([targets, depth] {
+      for (u32 i = 0; i < targets.size(); ++i) legodimensions::gpu_native::BindRenderTarget(i, targets[i]);
+      legodimensions::gpu_native::BindDepthStencil(depth);
+    });
+    return;
+  }
+  auto recording = legodimensions::gpu_native::HostDevice::LockRecording();
   __imp__sub_83FBB110(ctx, base);
   for (u32 i = 0; i < legodimensions::gpu_native::kNativeRenderTargets; ++i)
     legodimensions::gpu_native::BindRenderTarget(i, device->render_targets[i]);
@@ -151,7 +308,44 @@ REX_HOOK_RAW(sub_83FBB110) {
 }
 REX_HOOK(sub_83FBA398, legodimensions::gpu_native::GetRenderTargetHook);
 REX_HOOK(sub_83FBA3E0, legodimensions::gpu_native::GetDepthStencilHook);
-REX_HOOK(sub_83FBA978, legodimensions::gpu_native::SetViewportHook);
+REX_HOOK_RAW(sub_83FBA978) {
+  // Queued draws own snapshots of the guest viewport state.
+  if (!legodimensions::gpu_native::NativeViewportArguments(
+          ctx.r3.u32, ctx.r4.u32, ctx.r1.u32)) return;
+  // Actual CPU-only TU23 conversion, surface/tile clipping and RB_VPORT
+  // shadows. Its scissor call takes the native hook, without Xbox packets.
+  __imp__sub_83FBA978(ctx, base);
+}
+REX_HOOK_RAW(sub_83FBA710) {
+  // Promoted dimensions are read from an atomic metadata snapshot.
+  // Shared TU23 writer reserves 160 bytes. Its save-FPR slots are within
+  // that range; API caller has already reserved its separate 112-byte frame.
+  if (!legodimensions::gpu_native::NativeViewportDeviceArguments(
+          ctx.r3.u32, ctx.r1.u32, 160)) return;
+  auto* device = reinterpret_cast<legodimensions::gpu_native::D3DDevice*>(base + ctx.r3.u32);
+  const u32 surface = device->render_targets[0] ? u32(device->render_targets[0])
+                                              : u32(device->depth_stencil);
+  u32 width = 0, height = 0;
+  if (legodimensions::gpu_native::NativePromotedSurfaceExtent(surface, width, height)) {
+    // Native draws cover the whole promoted target, rather than replaying a
+    // physical Xbox tile. Let the original CPU writer clip against that extent.
+    // Only this call sees the extent override; persistent tiling state and
+    // guest surface dimensions remain unchanged.
+    const double requested_width = ctx.f3.f64, requested_height = ctx.f4.f64;
+    {
+      legodimensions::gpu_native::ScopedNativeViewportExtent extent(device, width, height);
+      __imp__sub_83FBA710(ctx, base);
+    }
+    static u32 logs = 0;
+    if (logs++ < 16)
+      REXLOG_INFO("Native GPU: promoted viewport surface={:08X} requested={}x{} host={}x{} effective={}x{}",
+          surface, requested_width, requested_height, width, height,
+          float(device->viewport.width), float(device->viewport.height));
+  } else {
+    __imp__sub_83FBA710(ctx, base);
+  }
+}
 REX_HOOK(sub_83FBA068, legodimensions::gpu_native::SetScissorRectHook);
+REX_HOOK(sub_83FBA968, legodimensions::gpu_native::SetScissorEnableHook);
 REX_HOOK(sub_83FBCBB8, legodimensions::gpu_native::SetPredicationHook);
 REX_HOOK(sub_83FAF5D8, legodimensions::gpu_native::SetupFormatHook);

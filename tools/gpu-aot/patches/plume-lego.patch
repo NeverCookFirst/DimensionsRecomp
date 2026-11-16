@@ -1,0 +1,110 @@
+diff --git a/plume_d3d12.cpp b/plume_d3d12.cpp
+index dcae4e3..7d7315a 100644
+--- a/plume_d3d12.cpp
++++ b/plume_d3d12.cpp
+@@ -1416,24 +1416,32 @@ namespace plume {
+     }
+ 
+     bool D3D12SwapChain::resize() {
+-        getWindowSize(width, height);
++        uint32_t newWidth = 0, newHeight = 0;
++        getWindowSize(newWidth, newHeight);
+ 
+         // Don't resize the swap chain at all if the window doesn't have a valid size.
+-        if ((width == 0) || (height == 0)) {
++        if ((newWidth == 0) || (newHeight == 0)) {
+             return false;
+         }
+ 
+         for (uint32_t i = 0; i < desc.textureCount; i++) {
+-            textures[i].d3d->Release();
+-            textures[i].d3d = nullptr;
++            if (textures[i].d3d != nullptr) {
++                textures[i].d3d->Release();
++                textures[i].d3d = nullptr;
++            }
+         }
+ 
+         HRESULT res = d3d->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, swapChainFlags);
+         if (FAILED(res)) {
+             fprintf(stderr, "ResizeBuffers failed with error code 0x%lX.\n", res);
++            // DXGI retains the old buffers on a failed resize. Reacquire them
++            // so a retry does not operate on released or null references.
++            setTextures();
+             return false;
+         }
+ 
++        width = newWidth;
++        height = newHeight;
+         setTextures();
+         return true;
+     }
+@@ -2679,7 +2687,11 @@ namespace plume {
+     }
+ 
+     std::unique_ptr<RenderCommandList> D3D12CommandQueue::createCommandList() {
+-        return std::make_unique<D3D12CommandList>(this);
++        auto commandList = std::make_unique<D3D12CommandList>(this);
++        if (commandList->d3d == nullptr || commandList->commandAllocator == nullptr) {
++            return nullptr;
++        }
++        return commandList;
+     }
+ 
+     std::unique_ptr<RenderSwapChain> D3D12CommandQueue::createSwapChain(const RenderSwapChainDesc &desc) {
+@@ -2724,7 +2736,19 @@ namespace plume {
+         assert(fence != nullptr);
+ 
+         D3D12CommandFence *interfaceFence = static_cast<D3D12CommandFence *>(fence);
+-        WaitForSingleObjectEx(interfaceFence->fenceEvent, INFINITE, FALSE);
++        const uint64_t targetValue = interfaceFence->fenceValue - 1;
++        // The auto-reset event may still belong to an earlier submission, or
++        // already have been consumed by another wait. The fence value is the
++        // completion authority; only wait while the submitted value is pending.
++        for (;;) {
++            const uint64_t completed = interfaceFence->d3d->GetCompletedValue();
++            if (completed == UINT64_MAX || completed >= targetValue) {
++                return;
++            }
++            if (WaitForSingleObjectEx(interfaceFence->fenceEvent, INFINITE, FALSE) != WAIT_OBJECT_0) {
++                return;
++            }
++        }
+     }
+ 
+     // D3D12Buffer
+@@ -3939,7 +3963,11 @@ namespace plume {
+     }
+ 
+     std::unique_ptr<RenderCommandQueue> D3D12Device::createCommandQueue(RenderCommandListType type) {
+-        return std::make_unique<D3D12CommandQueue>(this, type);
++        auto commandQueue = std::make_unique<D3D12CommandQueue>(this, type);
++        if (commandQueue->d3d == nullptr) {
++            return nullptr;
++        }
++        return commandQueue;
+     }
+     
+     std::unique_ptr<RenderBuffer> D3D12Device::createBuffer(const RenderBufferDesc &desc) {
+@@ -3968,11 +3996,19 @@ namespace plume {
+     }
+ 
+     std::unique_ptr<RenderCommandFence> D3D12Device::createCommandFence() {
+-        return std::make_unique<D3D12CommandFence>(this);
++        auto fence = std::make_unique<D3D12CommandFence>(this);
++        if (fence->d3d == nullptr || fence->fenceEvent == 0) {
++            return nullptr;
++        }
++        return fence;
+     }
+ 
+     std::unique_ptr<RenderCommandSemaphore> D3D12Device::createCommandSemaphore() {
+-        return std::make_unique<D3D12CommandSemaphore>(this);
++        auto semaphore = std::make_unique<D3D12CommandSemaphore>(this);
++        if (semaphore->d3d == nullptr) {
++            return nullptr;
++        }
++        return semaphore;
+     }
+ 
+     std::unique_ptr<RenderFramebuffer> D3D12Device::createFramebuffer(const RenderFramebufferDesc &desc) {

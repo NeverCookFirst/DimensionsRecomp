@@ -33,7 +33,11 @@ public sealed record ReleaseInfo(
 public static class UpdateFeed
 {
     public const string PackExtension = ".rxp";
+#if NATIVE_GPU_EDITION
+    public const string SetupAssetName = "DimensionsRecompiled-NativeGPU-Setup.exe";
+#else
     public const string SetupAssetName = "DimensionsRecompiled-Setup.exe";
+#endif
 
     static HttpClient NewClient(string? token)
     {

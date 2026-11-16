@@ -26,6 +26,10 @@
 // exists on PC and would leave the entry blank here.
 
 #include "main_menu_extras.h"
+#include "native_frontend_guest.h"
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+#include "settings_native_hooks.h"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -56,6 +60,7 @@ REX_EXTERN(sub_82A435C8);
 REX_EXTERN(sub_82EFEFA0);
 REX_EXTERN(sub_82D70708);
 REX_EXTERN(sub_82EF9560);
+REX_EXTERN(sub_82F0CF40);
 
 namespace legodimensions::main_menu {
 namespace {
@@ -72,7 +77,7 @@ constexpr uint32_t kCodeSwitchProfile = 8;
 
 constexpr uint32_t kMenuPageGlobal = 0x849F5F40;
 
-enum Request : int { kNone = 0, kCredits = 1, kQuit = 2 };
+enum Request : int { kNone = 0, kCredits = 1, kQuit = 2, kNativeQuit = 3 };
 std::atomic<int> g_request{kNone};
 
 uint32_t Load32(uint8_t* base, uint32_t address) {
@@ -107,21 +112,7 @@ uint32_t QuitKey() {
   return address;
 }
 
-// Calls a guest function from inside a hook. Only r3 is ours to hand back, the
-// rest of the volatile state the callee may clobber is restored so the code
-// around the hook sees what it expects.
-template <typename F>
-uint32_t CallGuest(F fn, PPCContext& ctx, uint8_t* base, uint32_t r3, uint32_t r4 = 0,
-                   uint32_t r5 = 0) {
-  const PPCContext saved = ctx;
-  ctx.r3.u64 = r3;
-  ctx.r4.u64 = r4;
-  ctx.r5.u64 = r5;
-  fn(ctx, base);
-  const uint32_t result = ctx.r3.u32;
-  ctx = saved;
-  return result;
-}
+using native_frontend::CallGuest;
 
 }  // namespace
 }  // namespace legodimensions::main_menu
@@ -145,42 +136,38 @@ REX_HOOK_RAW(sub_82FBE7A8) {
   CallGuest(sub_82F0D340, ctx, base, root, kCodeQuit, 0);
   CallGuest(sub_82F0D340, ctx, base, root, kCodeHelp, 1);
   CallGuest(sub_82F0D340, ctx, base, root, kCodeSwitchProfile, 1);
+  // Numeric codes are reused by Options; relabel only these main-menu widgets.
+  static const auto help_name = GuestString("xml_help");
+  static const auto quit_name = GuestString("xml_switchprofile");
+  for (auto [name, key] : {std::pair{help_name, CreditsKey()}, std::pair{quit_name, QuitKey()}}) {
+    const auto element = name ? CallGuest(sub_82F0CF40, ctx, base, root, name) : 0;
+    const auto text = key ? CallGuest(sub_82A435C8, ctx, base, key, 0) : 0;
+    if (element && text) CallGuest(sub_82EFEFA0, ctx, base, element, text);
+  }
 }
 
-// Relabel the two entries as they are built.
+// Keep the existing hook identity, with no global code-based text mutation.
 REX_HOOK_RAW(sub_82F03C40) {
   __imp__sub_82F03C40(ctx, base);
-  const uint32_t element = ctx.r3.u32;
-  if (!element || !REXCVAR_GET(main_menu_extras)) {
-    return;
-  }
-  const uint32_t code = Load32(base, element + 36);
-  uint32_t key = 0;
-  if (code == kCodeHelp) {
-    key = CreditsKey();
-  } else if (code == kCodeSwitchProfile) {
-    key = QuitKey();
-  }
-  if (!key) {
-    return;
-  }
-  const uint32_t text = CallGuest(sub_82A435C8, ctx, base, key, 0);
-  if (text) {
-    CallGuest(sub_82EFEFA0, ctx, base, element, text);
-  }
 }
 
-// Selection: ours go to the overlay, everything else to the title.
+// Native frontend uses title dialogs. Older builds retain their overlay route.
 REX_HOOK_RAW(sub_82FE4A80) {
   const uint32_t page = Load32(base, kMenuPageGlobal);
   if (REXCVAR_GET(main_menu_extras) && page && CallGuest(sub_82D70708, ctx, base, page)) {
     const uint32_t selected = CallGuest(sub_82EF9560, ctx, base, page);
     const uint32_t code = selected ? Load32(base, selected + 36) : 0;
     if (code == kCodeHelp) {
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+      if (legodimensions::settings::ShowNativeMenuExtra(ctx, base, false)) return;
+#endif
       g_request.store(kCredits);
       return;
     }
     if (code == kCodeSwitchProfile) {
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+      if (legodimensions::settings::ShowNativeMenuExtra(ctx, base, true)) return;
+#endif
       g_request.store(kQuit);
       return;
     }
@@ -222,6 +209,11 @@ class MenuExtrasDialog final : public rex::ui::ImGuiDialog {
     }
     if (state_ == State::kIdle) {
       const int request = g_request.exchange(kNone);
+      if (request == kNativeQuit) {
+        if (host_.native_quit) host_.native_quit();
+        else if (host_.quit) host_.quit();
+        return;
+      }
       if (request == kNone) {
         return;
       }
@@ -407,5 +399,6 @@ class MenuExtrasDialog final : public rex::ui::ImGuiDialog {
 std::unique_ptr<rex::ui::ImGuiDialog> CreateOverlay(rex::ui::ImGuiDrawer* drawer, Host host) {
   return std::make_unique<MenuExtrasDialog>(drawer, std::move(host));
 }
+void RequestNativeQuit() { g_request.store(kNativeQuit); }
 
 }  // namespace legodimensions::main_menu

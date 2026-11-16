@@ -1,13 +1,17 @@
 """Execute TU23 stencil leaves and the native decoder without launching a game."""
 import json
+import argparse
 from pathlib import Path
 import re
 import struct
 import subprocess
-import sys
 
 root = Path(__file__).resolve().parents[2]
-out = Path(sys.argv[1]).resolve()
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('output', type=Path)
+parser.add_argument('--image', type=Path, default=root/'xexdump/dump/default.bin')
+args = parser.parse_args()
+out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=True)
 def body(s, sig):
     start = s.index(sig)
@@ -18,12 +22,17 @@ def body(s, sig):
         end += 1
     return s[start:end]
 
-image = (root / 'xexdump/dump/default.bin').read_bytes()
+image = args.image.read_bytes()
 table = [struct.unpack_from('>III', image, 0x847F9B18-0x82000000+12*k)
          for k in range(27, 43)]
 functions = {}
+rebind = None
 for p in (root / 'rexlego/generated/default').glob('*.cpp'):
     s = p.read_text()
+    rebind_sig = 'DEFINE_REX_FUNC(sub_83FBAE38)'
+    if rebind_sig in s:
+        assert rebind is None
+        rebind = body(s, rebind_sig)
     for _, setter, _ in table:
         sig = f'DEFINE_REX_FUNC(sub_{setter:08X})'
         if sig in s:
@@ -39,8 +48,7 @@ for p in (root / 'rexlego/generated/default').glob('*.cpp'):
 assert len(functions) == 16
 initializer = body((root/'rexlego/src/gpu_native/hooks_device.cpp').read_text(),
                    'bool InitializeStencilDefaults(')
-rebind = body((root/'rexlego/generated/default/legodimensions_recomp.324.cpp').read_text(),
-              'DEFINE_REX_FUNC(sub_83FBAE38)')
+assert rebind is not None
 start = rebind.index('\t// lwz r9,12308(r31)')
 end = rebind.index('\t// ld r11,16(r31)', rebind.index('\t// stw r11,10548(r31)', rebind.index('\t// lwz r11,12312(r31)', start)))
 oracle = 'void OriginalRebind(PPCContext& ctx,u8* base) { PPCRegister temp{};\n' + rebind[start:end] + '\n}\n'

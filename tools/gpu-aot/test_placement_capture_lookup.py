@@ -67,6 +67,10 @@ const ShaderCacheEntry* FindShader(uint64_t hash) {
  for (const auto& entry : cache) if (entry.hash == hash) return &entry;
  return nullptr;
 }
+''' + r'''
+// This fixture exposes built-in banks only; no development overlay is loaded.
+const ShaderCacheEntry* FindPrecompiledByMicrocode(const void*,uint32_t,size_t,
+    uint64_t,std::unordered_map<uint32_t,uint64_t>&){return nullptr;}
 ''' + source[start:end] + f'\nconstexpr size_t padding={padding};\n' + r'''
 void Check(const char* path, size_t physical, size_t offset, uint32_t stage) {
  std::ifstream file(path,std::ios::binary);
@@ -76,7 +80,7 @@ void Check(const char* path, size_t physical, size_t offset, uint32_t stage) {
  // readable trailing storage, as the guest committed allocation does.
  bytes.resize(bytes.size()+padding);
  for (auto start : {physical,physical+offset}) {
-  auto* result=FindShaderByMicrocode(bytes.data()+start,stage);
+  auto* result=FindShaderByMicrocode(bytes.data()+start,stage,bytes.size()-start);
   if (!result || result->hash!=expected) {
    std::cerr << path << " section " << start << " failed exact lookup\n";
    std::abort();

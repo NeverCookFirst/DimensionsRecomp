@@ -3,4 +3,8 @@
 #define g_compressedLinkedDxilCache g_runtimeCompressedLinkedDxilCache
 #define g_linkedDxilCacheCompressedSize g_runtimeLinkedDxilCacheCompressedSize
 #define g_linkedDxilCacheDecompressedSize g_runtimeLinkedDxilCacheDecompressedSize
+#ifdef LEGO_NATIVE_RUNTIME_LINKED_METADATA
+#include LEGO_NATIVE_RUNTIME_LINKED_METADATA
+#else
 #include "../../out/native-gpu/runtime-linked-dxil-cache.cpp"
+#endif

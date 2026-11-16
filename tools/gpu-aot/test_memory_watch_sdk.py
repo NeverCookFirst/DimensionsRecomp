@@ -1,76 +1,61 @@
-"""Exercise native texture watches with the installed SDK's real page faults."""
+"""Check production memory watcher with the shipped SDK's real protected maps."""
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
-a.output=a.output.resolve();a.output.mkdir(parents=True,exist_ok=True)
-root=Path(__file__).resolve().parents[2];sdk=root/'rexglue-sdk/out/install/win-amd64'
-stub=a.output/'include/rex/system';stub.mkdir(parents=True,exist_ok=True)
-(stub/'kernel_state.h').write_text('''#pragma once
-#include <rex/system/xmemory.h>
-extern rex::memory::Memory* tested_memory;
-#define REX_KERNEL_MEMORY() tested_memory
-''')
-cpp=a.output/'watch-sdk.cpp';exe=a.output/'watch-sdk.exe'
-cpp.write_text(r'''
-#include <rex/logging.h>
-#include <rex/cvar.h>
-#include <rex/system/xmemory.h>
-#include "gpu_native/memory_watch.h"
-#include <cassert>
-#include <iostream>
-rex::memory::Memory* tested_memory=nullptr;
-using namespace legodimensions::gpu_native;
-REXCVAR_DECLARE(bool, gpu_native_texture_watch);
-REXCVAR_DECLARE(bool, gpu_native_buffer_watch);
-int main(int argc,char**){
- rex::InitLogging();
- if(argc==2) REXCVAR_SET(gpu_native_texture_watch,true);
- if(argc==3) REXCVAR_SET(gpu_native_buffer_watch,true);
- rex::memory::Memory memory;tested_memory=&memory;
- assert(memory.Initialize());
- auto* heap=memory.LookupHeapByType(true,4096);
- uint32_t address=0;
- constexpr uint32_t rw=rex::memory::kMemoryProtectRead|rex::memory::kMemoryProtectWrite;
- assert(heap->Alloc(16384,4096,rex::memory::kMemoryAllocationReserve|
-     rex::memory::kMemoryAllocationCommit,rw,false,&address));
- auto* bytes=memory.TranslateVirtual<volatile uint8_t*>(address);
- CpuMemorySpan spans[]={{address,4096},{address+8192,4096}};
- auto stamp=WatchCpuMemory(spans);assert(CpuMemoryUnchanged(stamp));
- auto* physical=memory.GetPhysicalHeap();
- assert(physical->IsRangeCommittedReadable(memory.GetPhysicalAddress(address),16384));
- // Re-protecting a guest allocation must not silently erase its host watch.
- assert(heap->Protect(address,4096,rw,nullptr));
- bytes[4]=1;assert(!CpuMemoryUnchanged(stamp));
- for(unsigned i=0;i<100;++i){
-   stamp=WatchCpuMemory(spans);assert(CpuMemoryUnchanged(stamp));
-   bytes[(i%2)*8192+17]=uint8_t(i);assert(!CpuMemoryUnchanged(stamp));
- }
- stamp=WatchCpuMemory(spans);
- auto physical_address=memory.GetPhysicalAddress(address);
- InvalidateCpuPhysicalMemory(physical_address,16);
- *memory.TranslatePhysical<uint8_t*>(physical_address)=42;
- assert(!CpuMemoryUnchanged(stamp));
- stamp=WatchCpuMemory(spans);assert(CpuMemoryUnchanged(stamp));
- assert(heap->Decommit(address+8192,4096));assert(!CpuMemoryUnchanged(stamp));
- assert(!physical->IsRangeCommittedReadable(physical_address,16384));
- ShutdownCpuMemoryWatch();
- assert(heap->Release(address,nullptr));
- std::cout<<"PASS real SDK page writes/rearm/protect, physical copies, decommit and bounded commitment check\n";
+
+p=argparse.ArgumentParser(description=__doc__)
+p.add_argument('output',type=Path);p.add_argument('--compiler',default='clang-cl')
+p.add_argument('--runtime-dir',type=Path)
+p.add_argument('--require-all-aliases',action='store_true')
+p.add_argument('--permission-transitions',action='store_true')
+a=p.parse_args()
+out=a.output.resolve();out.mkdir(parents=True,exist_ok=True)
+root=Path(__file__).resolve().parents[2];package=root.parent
+sdk=package/'dev-assets/sdk-install';native=(a.runtime_dir or package/'build/native').resolve()
+include=out/'include/rex/system';include.mkdir(parents=True,exist_ok=True)
+(include.parent/'cvar.h').write_text('''#pragma once
+namespace rex::cvar {
+enum class Lifecycle{kRequiresRestart};
+struct FixtureCvar{FixtureCvar lifecycle(Lifecycle){return *this;}};
 }
+#define REXCVAR_DEFINE_BOOL(name,...) static auto fixture_##name=rex::cvar::FixtureCvar{}
+#define REXCVAR_GET(...) true
 ''')
-subprocess.run(['clang++','-std=c++23','-DNOMINMAX','-fms-runtime-lib=dll','-fuse-ld=lld',
- '-DSPDLOG_COMPILED_LIB','-DSPDLOG_FMT_EXTERNAL','-D_CRT_SECURE_NO_WARNINGS',
- '-Xclang','--dependent-lib=msvcrt','-I'+str(a.output/'include'),'-I'+str(root/'rexlego/src'),
- '-I'+str(sdk/'include'),str(cpp),str(root/'rexlego/src/gpu_native/memory_watch.cpp'),
- str(sdk/'lib/rexruntime.lib'),str(sdk/'lib/fmt.lib'),str(sdk/'lib/spdlog.lib'),'-o',str(exe)],check=True)
-env=dict(os.environ);env['PATH']=str(sdk/'bin')+os.pathsep+env.get('PATH','')
-env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='1';env.pop('LEGO_NATIVE_NO_MEMORY_WATCH',None)
-subprocess.run([str(exe)],cwd=a.output,env=env,check=True,timeout=30)
-env.pop('LEGO_NATIVE_STATIC_TEXTURE_WATCH')
-subprocess.run([str(exe),'configured'],cwd=a.output,env=env,check=True,timeout=30)
-env['LEGO_NATIVE_STATIC_TEXTURE_WATCH']='0';env['LEGO_NATIVE_BUFFER_WATCH']='1'
-subprocess.run([str(exe)],cwd=a.output,env=env,check=True,timeout=30)
-env.pop('LEGO_NATIVE_BUFFER_WATCH')
-subprocess.run([str(exe),'buffer','configured'],cwd=a.output,env=env,check=True,timeout=30)
+(include/'kernel_state.h').write_text('''#pragma once
+#include <rex/system/xmemory.h>
+namespace fixture {extern rex::memory::Memory* memory;}
+#define REX_KERNEL_MEMORY() (fixture::memory)
+''')
+exe=out/'memory-watch-sdk.exe'
+source=root/'rexlego/src/gpu_native/memory_watch.cpp'
+cmd=[a.compiler,str(Path(__file__).with_suffix('.cpp')),str(source),'/std:c++latest','/O2','/MD','/EHsc',
+    '/I'+str(out/'include'),'/I'+str(root/'rexlego/src'),'/I'+str(sdk/'include'),
+    '/Fo'+str(out)+'/', '/Fe'+str(exe),'/link',str(sdk/'lib/rexruntime.lib'),
+    'kernel32.lib','user32.lib']
+r=subprocess.run(cmd,capture_output=True,text=True,timeout=90)
+(out/'compile.log').write_text(r.stdout+r.stderr);r.check_returncode()
+records=[]
+for regions in ['0','1']:
+    env=dict(os.environ,PATH=str(native)+os.pathsep+os.environ['PATH'],
+        LEGO_TEST_RUNTIME_EXPECTED=str(native/'rexruntime.dll'),LEGO_NATIVE_WATCH_REGIONS=regions,
+        LEGO_NATIVE_STATIC_TEXTURE_WATCH='1',LEGO_NATIVE_BUFFER_WATCH='1',
+        LEGO_TEST_REQUIRE_ALL_ALIASES='1' if a.require_all_aliases else '0')
+    if a.permission_transitions:env['LEGO_TEST_PERMISSION_TRANSITIONS']='1'
+    else:env.pop('LEGO_TEST_PERMISSION_TRANSITIONS',None)
+    env.pop('LEGO_NATIVE_NO_MEMORY_WATCH',None)
+    r=subprocess.run([str(exe)],env=env,capture_output=True,text=True,timeout=30)
+    (out/('regions-'+regions+'.log')).write_text(r.stdout+r.stderr)
+    r.check_returncode();records.append(dict(regions=regions,exit=r.returncode,stdout=r.stdout.strip(),
+        unallocated_alias_notified='UNALLOCATED_ALIAS_NOTIFIED=1' in r.stdout))
+(out/'verification.json').write_text(json.dumps(dict(game_launched=False,window_opened=False,
+    actual_production_watcher=True,real_sdk_memory=True,real_protected_fault_callbacks=True,
+    runtime_sha256=hashlib.sha256((native/'rexruntime.dll').read_bytes()).hexdigest(),
+    production_source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),records=records,
+    unallocated_alias_visibility_proven=all(record['unallocated_alias_notified'] for record in records),
+    all_aliases_required=a.require_all_aliases,
+    protection_transitions_tested=a.permission_transitions,
+    scope='real protected aliases and metadata/protection guards; fixture CVars/kernel accessor'),indent=2)+'\n')
+for record in records:print(record['stdout'])

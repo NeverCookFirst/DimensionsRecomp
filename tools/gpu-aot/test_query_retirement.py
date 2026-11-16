@@ -6,6 +6,7 @@ import subprocess
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('output', type=Path)
+p.add_argument('--compiler', default='clang++')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 a.output.mkdir(parents=True, exist_ok=True)
@@ -22,7 +23,7 @@ def body(path, signature):
 
 query_path = 'rexlego/src/gpu_native/queries.cpp'
 functions = '\n'.join(body(query_path, sig) for sig in
-                      ['u32 IssueQuery(', 'u32 GetQueryData(', 'u32 ReleaseQuery('])
+                      ['u32 IssueQuery(', 'u32 IssueQueryQueued(', 'u32 GetQueryData(', 'u32 ReleaseQuery('])
 assert 'Synchronize' not in functions
 retire = body('rexlego/src/gpu_native/device.cpp', 'void HostDevice::RetireResource(')
 harness = r'''
@@ -31,6 +32,7 @@ harness = r'''
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -59,25 +61,36 @@ struct Query {
  bool active=false,ended=false,failed=false;
  std::vector<std::shared_ptr<Samples>> draws;
  ComPtr<ID3D12Fence> completion;
+ u64 completion_value=0;
 };
 std::mutex mutex,g_mutex;
 std::unordered_map<u32,std::shared_ptr<Query>> queries;
+std::unordered_map<u32,unsigned> pending_issues;
+bool full_mode=true, queue_mode=false;
+bool NativeFullDrawPreparationEnabled(){return full_mode;}
+bool NativeWorkerShouldQueue(){return queue_mode;}
+std::vector<std::function<void()>> queued;
+void NativeWorkerSubmit(std::function<void()> task){queued.push_back(std::move(task));}
+struct Preparation { std::vector<std::shared_ptr<void>> retired; };
+Preparation* t_draw_preparation=nullptr;
 std::atomic<u32> diagnostics{100};
+u64 query_completion_value=0;
 std::array<u32,256> header{};
 be_u32* Header(u32 a){return header.data()+a;}
 u32 Unsupported(const char*,u32){return kUnsupported;}
+void TraceQueryValue(u32,size_t,u64){}
 struct Memory {int frees=0;void SystemHeapFree(u32 a){assert(a==1);++frees;}} memory;
 #define REX_KERNEL_MEMORY() (&memory)
 struct DeviceImpl {
  bool fail=false;
  int CreateFence(int,int,ComPtr<ID3D12Fence>* out){if(fail)return 1;out->p=std::make_shared<ID3D12Fence>();return 0;}
 };
-struct QueueImpl {bool fail=false;int Signal(ID3D12Fence* f,int value){assert(f&&value==1);return fail?1:0;}};
+struct QueueImpl {bool fail=false;u64 last=0;int Signal(ID3D12Fence* f,u64 value){assert(f&&value>last);last=value;return fail?1:0;}};
 namespace plume {struct D3D12Device {DeviceImpl* d3d;};struct D3D12CommandQueue {QueueImpl* d3d;};}
 DeviceImpl device_impl;QueueImpl queue_impl;
 plume::D3D12Device device{&device_impl};plume::D3D12CommandQueue queue{&queue_impl};
 struct State {
- static constexpr u32 kFramesInFlight=3;
+ static constexpr u32 kFramesInFlight=3;u32 command_slot_count=kFramesInFlight;
  std::array<bool,3> frame_submitted{true,false,false};
  bool command_list_open=true;u32 frame_slot=1;
  std::array<std::vector<std::shared_ptr<void>>,3> retired_resources;
@@ -91,6 +104,7 @@ struct HostDevice {
  static bool SubmitRecordedWork(){return submit_ok;}
  static void RetireResource(std::shared_ptr<void>);
 };
+auto& NativeRecordingMutex(){return HostDevice::recording;}
 '''
 tests = r'''
 std::shared_ptr<Samples> sample(u64 value){auto s=std::make_shared<Samples>();s->readback->value=value;return s;}
@@ -116,10 +130,15 @@ int main(){
  current->draws[0]->readback->fail=false;
  current->draws={sample(UINT32_MAX),sample(5)};
  assert(GetQueryData(1,100,4,0)==0&&*Header(100)==UINT32_MAX);
- device_impl.fail=true;assert(IssueQuery(1,2)==kFailure&&queries[1]==current&&current->ended);
- device_impl.fail=false;
+ assert(current->completion_value==1);
  std::weak_ptr<Query> ended=current;current.reset();
  assert(IssueQuery(1,2)==0);assert(!ended.expired());empty_slots();assert(ended.expired());
+ // A new generation shares the fence but cannot inherit an old ready value.
+ current=queries[1];assert(current->completion->completed==1);
+ assert(IssueQuery(1,1)==0&&current->completion_value==2);
+ assert(GetQueryData(1,100,4,0)==1);
+ current->completion->completed=2;assert(GetQueryData(1,100,4,0)==0);
+ current.reset();assert(IssueQuery(1,2)==0);empty_slots();
  auto active=queries[1];active->draws={sample(19)};std::weak_ptr<Query> releasing=active;
  Header(1)[3]=2;assert(ReleaseQuery(1)==1&&queries.contains(1)&&active->active&&memory.frees==0);
  active.reset();assert(ReleaseQuery(1)==0); // Release before END is safe.
@@ -134,17 +153,31 @@ int main(){
  queue_impl.fail=true;assert(IssueQuery(1,1)==kFailure&&next->failed);
  assert(GetQueryData(1,100,4,0)==kFailure);
  std::weak_ptr<Query> done=next;next.reset();assert(ReleaseQuery(1)==0&&done.expired());
+ queue_impl.fail=false;queue_mode=true;
+ auto ready=std::make_shared<Query>();ready->completion.p=std::make_shared<ID3D12Fence>();
+ ready->completion->completed=query_completion_value;ready->completion_value=query_completion_value;
+ ready->ended=true;ready->draws={sample(123)};queries[1]=ready;
+ *Header(100)=456;
+ assert(IssueQueryQueued(1,2)==0 && pending_issues[1]==1);
+ assert(GetQueryData(1,100,4,0)==1 && *Header(100)==456);
+ assert(IssueQueryQueued(1,1)==0 && pending_issues[1]==2);
+ queued[0]();assert(pending_issues[1]==1);
+ assert(GetQueryData(1,100,4,0)==1);
+ queued[1]();assert(!pending_issues.contains(1));
+ assert(GetQueryData(1,100,4,0)==1);
+ queries[1]->completion->completed=queries[1]->completion_value;
+ assert(GetQueryData(1,100,4,0)==0 && *Header(100)==0);
 }
 '''
 source = a.output / 'query-retirement.cpp'
 source.write_text(harness + retire + '\n' + functions + '\n' + tests)
 exe = a.output / 'query-retirement-test.exe'
-subprocess.run(['clang++', '-std=c++20', '-DNOMINMAX', str(source), '-o', str(exe)], check=True)
-subprocess.run([str(exe.resolve())], check=True)
+subprocess.run([a.compiler, '-std=c++20', '-DNOMINMAX', str(source), '-o', str(exe)], check=True, timeout=45)
+subprocess.run([str(exe.resolve())], check=True, timeout=45)
 report = {'passed': True, 'actual_native_functions': ['IssueQuery','GetQueryData','ReleaseQuery','HostDevice::RetireResource'],
           'checks': ['no query drain', 'fresh generations', 'retain at every submitted/open slot',
                      'release before END', 'guest header reuse', 'nonfinal refcount', 'fence readiness',
                      'no fabricated result', 'removal failure', 'readback failure', 'saturating sum',
-                     'allocation/signal failures'], 'real_GPU_gameplay_not_proven': True}
+                     'shared monotonic fence generations', 'signal failures'], 'real_GPU_gameplay_not_proven': True}
 (a.output / 'verification.json').write_text(json.dumps(report, indent=2))
 print('PASS: native query generations, fence-gated results and all-live-slot retirement.')

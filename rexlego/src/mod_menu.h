@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <memory>
 
 namespace rex {
@@ -30,5 +31,6 @@ std::unique_ptr<rex::ui::ImGuiDialog> CreateMenu(rex::ui::ImGuiDrawer* drawer);
 // Points the update folder at the modded copy when any mod is enabled. Call
 // from ReXApp::OnConfigurePaths, which runs before the runtime is built.
 void ResolveUpdateRoot(rex::PathConfig& paths);
+std::filesystem::path RussianNativeMenuTranslations();
 
 }  // namespace legodimensions::mods

@@ -1,0 +1,51 @@
+diff --git a/plume_d3d12.h b/plume_d3d12.h
+index f496685..3b87595 100644
+--- a/plume_d3d12.h
++++ b/plume_d3d12.h
+@@ -310,6 +310,7 @@ namespace plume {
+ 
+     struct D3D12Buffer : RenderBuffer {
+         ID3D12Resource *d3d = nullptr;
++        D3D12_GPU_VIRTUAL_ADDRESS gpuVA = 0;
+         D3D12_RESOURCE_STATES resourceStates = D3D12_RESOURCE_STATE_COMMON;
+         D3D12Device *device = nullptr;
+         D3D12MA::Allocation *allocation = nullptr;
+diff --git a/plume_d3d12.cpp b/plume_d3d12.cpp
+index 55214af..70324e8 100644
+--- a/plume_d3d12.cpp
++++ b/plume_d3d12.cpp
+@@ -2206,7 +2206,7 @@ namespace plume {
+         if (view != nullptr) {
+             const D3D12Buffer *interfaceBuffer = static_cast<const D3D12Buffer *>(view->buffer.ref);
+             D3D12_INDEX_BUFFER_VIEW bufferView;
+-            bufferView.BufferLocation = (interfaceBuffer != nullptr) ? (interfaceBuffer->d3d->GetGPUVirtualAddress() + view->buffer.offset) : 0;
++            bufferView.BufferLocation = (interfaceBuffer != nullptr) ? (interfaceBuffer->gpuVA + view->buffer.offset) : 0;
+             bufferView.Format = toDXGI(view->format);
+             bufferView.SizeInBytes = view->size;
+             d3d->IASetIndexBuffer(&bufferView);
+@@ -2225,9 +2225,15 @@ namespace plume {
+             for (uint32_t i = 0; i < viewCount; i++) {
+                 const RenderVertexBufferView &renderView = views[i];
+                 const D3D12Buffer *interfaceBuffer = static_cast<const D3D12Buffer *>(renderView.buffer.ref);
+-                bufferViewVector[i].BufferLocation = (interfaceBuffer != nullptr) ? (interfaceBuffer->d3d->GetGPUVirtualAddress() + renderView.buffer.offset) : 0;
++                bufferViewVector[i].BufferLocation = (interfaceBuffer != nullptr) ? (interfaceBuffer->gpuVA + renderView.buffer.offset) : 0;
+                 bufferViewVector[i].SizeInBytes = renderView.size;
+ 
++                // Slots usually arrive in view order.
++                if (inputSlots[i].index == (startSlot + i)) {
++                    bufferViewVector[i].StrideInBytes = inputSlots[i].stride;
++                    continue;
++                }
++
+                 bool slotFound = false;
+                 for (uint32_t j = 0; j < viewCount; j++) {
+                     if (inputSlots[j].index == (startSlot + i)) {
+@@ -2912,6 +2918,8 @@ namespace plume {
+             fprintf(stderr, "CreateResource failed with error code 0x%lX.\n", res);
+             return;
+         }
++
++        gpuVA = d3d->GetGPUVirtualAddress();
+     }
+ 
+     D3D12Buffer::~D3D12Buffer() {

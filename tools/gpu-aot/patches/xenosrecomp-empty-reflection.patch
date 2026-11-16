@@ -1,0 +1,50 @@
+--- a/XenosRecomp/shader_recompiler.cpp
++++ b/XenosRecomp/shader_recompiler.cpp
+@@ -1272,3 +1272,2 @@
+     assert((shaderContainer->flags & 0xFFFFFF00) == 0x102A1100);
+-    assert(shaderContainer->constantTableOffset != NULL);
+ 
+@@ -1279,4 +1278,14 @@
+ 
+-    const auto constantTableContainer = reinterpret_cast<const ConstantTableContainer*>(shaderData + shaderContainer->constantTableOffset);
+-    constantTableData = reinterpret_cast<const uint8_t*>(&constantTableContainer->constantTable);
++    // CTAB is optional reflection. Without it, retain the register-based
++    // constant/sampler paths and the shader's own vertex/interpolator metadata.
++    // Do not reinterpret the container header as an accidental empty CTAB.
++    static const ConstantTable emptyConstantTable{};
++    const ConstantTable* constantTable = &emptyConstantTable;
++    if (shaderContainer->constantTableOffset != 0)
++    {
++        const auto constantTableContainer = reinterpret_cast<const ConstantTableContainer*>(
++            shaderData + shaderContainer->constantTableOffset);
++        constantTable = &constantTableContainer->constantTable;
++    }
++    constantTableData = reinterpret_cast<const uint8_t*>(constantTable);
+ 
+@@ -1289,6 +1298,6 @@
+ 
+-    for (uint32_t i = 0; i < constantTableContainer->constantTable.constants; i++)
++    for (uint32_t i = 0; i < constantTable->constants; i++)
+     {
+         const auto constantInfo = reinterpret_cast<const ConstantInfo*>(
+-            constantTableData + constantTableContainer->constantTable.constantInfo + i * sizeof(ConstantInfo));
++            constantTableData + constantTable->constantInfo + i * sizeof(ConstantInfo));
+ 
+@@ -1402,6 +1411,6 @@
+ 
+-    for (uint32_t i = 0; i < constantTableContainer->constantTable.constants; i++)
++    for (uint32_t i = 0; i < constantTable->constants; i++)
+     {
+         const auto constantInfo = reinterpret_cast<const ConstantInfo*>(
+-            constantTableData + constantTableContainer->constantTable.constantInfo + i * sizeof(ConstantInfo));
++            constantTableData + constantTable->constantInfo + i * sizeof(ConstantInfo));
+ 
+@@ -1449,6 +1458,6 @@
+ 
+-    for (uint32_t i = 0; i < constantTableContainer->constantTable.constants; i++)
++    for (uint32_t i = 0; i < constantTable->constants; i++)
+     {
+         const auto constantInfo = reinterpret_cast<const ConstantInfo*>(
+-            constantTableData + constantTableContainer->constantTable.constantInfo + i * sizeof(ConstantInfo));
++            constantTableData + constantTable->constantInfo + i * sizeof(ConstantInfo));
+ 

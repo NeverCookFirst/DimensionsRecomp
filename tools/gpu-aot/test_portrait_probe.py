@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);p.add_argument('--compiler',default='clang++');a=p.parse_args()
 a.output.mkdir(parents=True,exist_ok=True)
 root=Path(__file__).resolve().parents[2];inc=a.output/'include/rex'
 (inc/'system').mkdir(parents=True,exist_ok=True)
@@ -75,19 +75,16 @@ int main(int argc,char**){
 }
 ''')
 exe=a.output/'portrait-probe-test.exe'
-subprocess.run(['clang++','-std=c++20','-D_CRT_SECURE_NO_WARNINGS','-I'+str(a.output/'include'),
+subprocess.run([a.compiler,'-std=c++20','-D_CRT_SECURE_NO_WARNINGS','-I'+str(a.output/'include'),
  '-I'+str(root/'rexlego/src'),str(root/'rexlego/src/gpu_native/hooks_portrait.cpp'),str(cpp),'-o',str(exe)],check=True)
 for name,trace,reference,enabled in [('disabled',None,'0',False),('zero','0','0',False),
-                                  ('enabled','1','0',True),('reference','1','1',False)]:
+                                  ('enabled','1','0',True),('legacy_reference_ignored','1','1',True)]:
  env=dict(os.environ);directory=a.output/name;directory.mkdir(exist_ok=True)
  events=directory/'events.tsv'
  if events.exists():events.unlink()
  env['LEGO_NATIVE_TRACE_DIR']=str(directory.resolve());env['LEGO_NATIVE_PM4_REFERENCE']=reference
  env.pop('LEGO_NATIVE_PORTRAIT_TRACE',None)
  if trace is not None:env['LEGO_NATIVE_PORTRAIT_TRACE']=trace
- # The reference bypasses hooks; the standalone enable predicate still sees
- # trace settings. Leave its flag off here; routing itself is covered separately.
- if reference=='1':env.pop('LEGO_NATIVE_PORTRAIT_TRACE',None)
  subprocess.run([str(exe.resolve())]+(['enabled'] if enabled else []),env=env,check=True)
  if enabled:
   text=events.read_text();assert text.count('\tportrait_setup\t')==1

@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);p.add_argument('--compiler',default='clang++');a=p.parse_args()
 root=Path(__file__).resolve().parents[2];a.output.mkdir(parents=True,exist_ok=True)
 source=(root/'rexlego/src/gpu_native/buffers.cpp').read_text()
 def body(signature):
@@ -22,16 +22,21 @@ h.write_text(r'''
 #include <cstring>
 #include <cstdlib>
 #include <memory>
+#include <list>
 #include <mutex>
 #include <random>
 #include <span>
 #include <unordered_map>
 #include <vector>
+#include <immintrin.h>
 #define XXH_INLINE_ALL
 #include <xxhash.h>
 #include "gpu_native/vertex_byte_order.h"
 #include "gpu_native/vertex_upload.h"
+#include "gpu_native/upload_buffer_pool.h"
+#include "gpu_native/geometry_content_cache.h"
 #include "gpu_native/memory_watch.h"
+#include "gpu_native/index_snapshot_cache.h"
 #include "gpu_native/buffer_header.h"
 #include "gpu_native/buffer_window.h"
 using namespace legodimensions::gpu_native;
@@ -62,6 +67,7 @@ struct HostDevice {
  static auto Device(){return &device;}
  static void RetireResource(std::shared_ptr<void> r){held.push_back(std::move(r));}
 };
+std::shared_ptr<GeometryPublication> PromoteImmutableGeometry(std::shared_ptr<plume::RenderBuffer>&,BufferKind,u32,bool=false){return {};}
 struct Memory {
  std::array<u8,65536> bytes{};
  template<class T>T TranslateVirtual(u32 at){return reinterpret_cast<T>(bytes.data()+at);}
@@ -69,8 +75,11 @@ struct Memory {
 Memory memory;
 #define REX_KERNEL_MEMORY() (&memory)
 bool NativeTextureTimingEnabled(){return true;}
+bool LongProbeEnabled(){return false;}
 struct BufferUploadTiming {u64 calls=0,hashed_bytes=0,converted_bytes=0,watch_hits=0,watch_audits=0,watch_mismatches=0;double hash_ms=0;};
 BufferUploadTiming g_buffer_timing;
+std::mutex g_buffer_timing_mutex;
+std::atomic<u32> g_probe_frame{0};
 bool watch_enabled=false,watchable=true;
 std::array<u64,16> versions{};
 bool legodimensions::gpu_native::CpuBufferMemoryWatchEnabled(){return watch_enabled;}
@@ -86,13 +95,19 @@ bool legodimensions::gpu_native::CpuMemoryUnchanged(const CpuMemoryStamp& stamp)
  return true;
 }
 '''+resource+r'''
+struct AllocationRecord {u64 old_hash,new_hash,conversion;size_t previous;bool evicted;};
+std::vector<AllocationRecord> allocation_records;
+void TraceBufferAllocation(const BufferResource&,const VertexByteOrder&,u64 old_hash,
+ u64 new_hash,u64 conversion,size_t previous,bool evicted){
+ allocation_records.push_back({old_hash,new_hash,conversion,previous,evicted});
+}
 std::shared_ptr<BufferResource> resource;
 auto AdoptBuffer(u32,BufferKind)->std::shared_ptr<BufferResource>{return resource;}
 struct BufferResourceView {
  plume::RenderBuffer* buffer=nullptr;u32 length=0,guest_format=0,mirror_address=0;
  u64 content_hash=0,byte_order_hash=0;
 };
-'''+body('void ByteSwapElements(')+'\n'+body('plume::RenderBuffer* ResolveBufferContents(')+'\n'+body('plume::RenderBuffer* ResolveBufferResource(')+'\n'+body('BufferResourceView ResolveBufferResourceWindow(')+r'''
+'''+body('void ByteSwapElements(')+'\n'+body('std::shared_ptr<plume::RenderBuffer> CreateImmutableUploadBuffer(')+'\n'+body('plume::RenderBuffer* ResolveBufferContents(')+'\n'+body('plume::RenderBuffer* ResolveBufferResource(')+'\n'+body('BufferResourceView ResolveBufferResourceWindow(')+r'''
 // Exercise placement-header adoption too: the conversion tests above use a
 // fixed resource and cannot detect selecting the wrong half of a pool owner.
 struct D3DBuffer {struct {u32 common;u32 rest[5];} resource;u32 fetch_lo,fetch_hi;};
@@ -123,17 +138,25 @@ int main() {
  auto* first=ResolveBufferResource(1,BufferKind::kVertex,order);assert(first);
  const auto original_bytes=first->data;
  assert(HostDevice::device.allocations==1);
+ assert(allocation_records.size()==1&&allocation_records.back().old_hash==0&&
+   allocation_records.back().new_hash!=0&&allocation_records.back().previous==0);
  order.stream_offset=160;assert(ResolveBufferResource(1,BufferKind::kVertex,order)==first);
  assert(HostDevice::device.allocations==1);
+ assert(allocation_records.size()==1); // A reused conversion is not an allocation.
  auto* plain=ResolveBufferResource(1,BufferKind::kVertex,{});assert(plain&&plain!=first);
  assert(ResolveBufferResource(1,BufferKind::kVertex,order)==first);
  assert(HostDevice::device.allocations==2);
+ assert(allocation_records.size()==2&&allocation_records.back().previous==1&&
+   allocation_records.back().old_hash==allocation_records.back().new_hash);
  memory.bytes[32+164]^=0xFF; // CPU update between draws in the same frame.
  auto* changed=ResolveBufferResource(1,BufferKind::kVertex,order);assert(changed&&changed!=first);
  assert(changed->data!=original_bytes&&first->data==original_bytes);
  assert(resource->variants.size()==1&&HostDevice::held.size()==2);
+ assert(allocation_records.size()==3&&allocation_records.back().previous==2&&
+   allocation_records.back().old_hash!=allocation_records.back().new_hash);
  for(u32 phase=0;phase<16;++phase){order.stream_offset=phase;assert(ResolveBufferResource(1,BufferKind::kVertex,order));}
  assert(resource->variants.size()==8); // Evicted versions survive their fence.
+ assert(allocation_records.back().evicted&&allocation_records.back().previous==8);
  assert(first->data==original_bytes);
  order.stream_offset=2048;assert(!ResolveBufferResource(1,BufferKind::kVertex,order));
  resource->kind=BufferKind::kIndex;resource->variants.clear();resource->buffer.reset();resource->format=1;
@@ -183,7 +206,7 @@ int main() {
   const auto* full=ResolveBufferResource(1,BufferKind::kVertex,{stride,stream_offset,packed});
   auto slice=ResolveBufferResourceWindow(1,BufferKind::kVertex,window.offset,window.length,{stride,0,packed});
   assert(slice.buffer&&slice.mirror_address==16000+window.offset&&slice.length==window.length);
-  assert(std::equal(slice.buffer->data.begin(),slice.buffer->data.end(),full->data.begin()+window.offset));
+  assert(std::equal(slice.buffer->data.begin(),slice.buffer->data.begin()+slice.length,full->data.begin()+window.offset));
   for(u32 index=low;index<=high;++index){
    const u32 old_offset=stream_offset+(index+base)*stride;
    const u32 new_offset=(index-low)*stride;
@@ -216,6 +239,9 @@ int main() {
  assert(!ResolveBufferResourceWindow(1,BufferKind::kVertex,32760,16,{}).buffer);
  // Buffer watches retain every-use invalidation and immutable conversions.
  // Unknown virtual storage must hash even when the candidate is selected.
+ // The current renderer hashes recently rewritten geometry for eight frames.
+ // Advance beyond that interval before testing stationary watch reuse.
+ g_probe_frame=100;
  watch_enabled=true;
  auto warm=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
  assert(!resource->windows.at((u64(128)<<32)|256)->cpu_stamp.pages.empty());
@@ -236,6 +262,10 @@ int main() {
  assert(dirty_again.buffer!=dirty.buffer&&dirty.buffer->data==dirty_bytes);
  if(audit){
   // Simulate a writer missing notification: audit must catch and repair it.
+  // First leave the volatile interval and arm the current byte version;
+  // volatile geometry hashes unconditionally and has no clean-watch claim.
+  g_probe_frame+=20;
+  assert(ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{}).buffer==dirty_again.buffer);
   memory.bytes[16000+128+9]^=0x20;
   auto repaired=ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{});
   assert(repaired.buffer!=dirty_again.buffer&&g_buffer_timing.watch_mismatches==1);
@@ -252,15 +282,48 @@ int main() {
  auto reset_hash_before=g_buffer_timing.hashed_bytes;
  assert(ResolveBufferResourceWindow(1,BufferKind::kVertex,128,256,{}).buffer==before_reset.buffer);
  assert(g_buffer_timing.hashed_bytes-reset_hash_before==256);
+ // A TU23 placement move keeps the same bytes under another header backing.
+ // The actual adoption body must pick the new mirror while the immutable
+ // upload can be shared. Every relocation still validates guest memory.
+ g_geometry_content_cache.Reset();g_upload_pool.Reset();g_buffers.clear();g_probe_frame=400;
+ constexpr u32 relocation_header=256;
+ auto* placement=GuestBuffer(relocation_header);
+ placement->resource.common=1;placement->fetch_hi=1024;
+ for(u32 i=0;i<1024;++i)memory.bytes[4096+i]=memory.bytes[8192+i]=u8(i*19+7);
+ const auto allocations_at_move=HostDevice::device.allocations;
+ const auto converted_at_move=g_buffer_timing.converted_bytes;
+ const bool reuse=!(std::getenv("LEGO_NATIVE_GEOMETRY_REUSE") && std::getenv("LEGO_NATIVE_GEOMETRY_REUSE")[0]=='0');
+ std::shared_ptr<plume::RenderBuffer> moved_version;
+ std::vector<u8> moved_bytes;
+ for(u32 relocation=0;relocation<1000;++relocation){
+  placement->fetch_lo=relocation%2?8192:4096;
+  auto adopted=ActualAdoptBuffer(relocation_header,BufferKind::kVertex);
+  assert(adopted->mirror_address==placement->fetch_lo);
+  auto* version=ResolveAdoptedBuffer(relocation_header,BufferKind::kVertex,{});assert(version);
+  if(!relocation){moved_version=adopted->buffer;moved_bytes=version->data;}
+  assert(version->data==moved_bytes);
+  if(reuse)assert(version==moved_version.get());
+ }
+ assert(HostDevice::device.allocations-allocations_at_move==(reuse?1:1000));
+ assert(g_buffer_timing.converted_bytes-converted_at_move==(reuse?1024:1024*1000));
+ std::printf("PASS 1000 actual placement moves: reuse=%u allocations=%u converted=%llu bytes\n",reuse,
+   HostDevice::device.allocations-allocations_at_move,
+   static_cast<unsigned long long>(g_buffer_timing.converted_bytes-converted_at_move));
+ // A newer write at the destination must produce a different immutable view.
+ memory.bytes[8192+7]^=0x80;++versions[8192/4096];
+ auto* modified=ResolveAdoptedBuffer(relocation_header,BufferKind::kVertex,{});
+ assert(modified && modified!=moved_version.get() && moved_version->data==moved_bytes);
 }
 ''')
 exe=a.output/'buffer-variants-test.exe'
-subprocess.run(['clang++','-std=c++20','-O2','-mssse3','-DNOMINMAX','-I'+str(root/'rexlego/src'),
+subprocess.run([a.compiler,'-std=c++20','-O2','-mssse3','-DNOMINMAX','-I'+str(root/'rexlego/src'),
  '-I'+str(root/'rexglue-sdk/thirdparty/xxHash'),str(h),'-o',str(exe)],check=True)
-env=dict(os.environ);env.pop('LEGO_NATIVE_AUDIT_BUFFER_WATCH',None)
-subprocess.run([str(exe.resolve())],env=env,check=True)
-env['LEGO_NATIVE_AUDIT_BUFFER_WATCH']='1'
-subprocess.run([str(exe.resolve())],env=env,check=True)
+for reuse in ('0','1'):
+ for audit in (False,True):
+  env=dict(os.environ,LEGO_NATIVE_GEOMETRY_REUSE=reuse)
+  env.pop('LEGO_NATIVE_AUDIT_BUFFER_WATCH',None)
+  if audit:env['LEGO_NATIVE_AUDIT_BUFFER_WATCH']='1'
+  subprocess.run([str(exe.resolve())],env=env,check=True)
 (a.output/'verification.json').write_text(json.dumps({'actual_buffer_resolve_body':True,'fake_driver':True,
  'canonical_equivalence_cases':10000,'checks':['same-phase reuse','alternating declarations','same-frame CPU update',
  'immutable old versions','8-version bound','invalid offset','index endian','every-use content hashing',
@@ -269,6 +332,7 @@ subprocess.run([str(exe.resolve())],env=env,check=True)
  '1000 window rebasing/conversion cases','byte/entry cache bound','256-range working set reused without allocations','immutable rewritten windows',
  'every-use hashing restricted to requested window','invalid window/overflow rejection',
  'opt-in generation reuse eliminates 100 unchanged hashes','same-frame watched rewrites',
- 'audit detects and repairs false clean stamp','unknown memory hashes every use','shutdown generation invalidation'],
+ 'audit detects and repairs false clean stamp','unknown memory hashes every use','shutdown generation invalidation',
+ '1000 placement relocations retain bytes and reuse one immutable upload when enabled','relocated destination rewrite preserves prior GPU version'],
  'actual_buffer_adoption_body':True,'passed':True},indent=2))
 print('Passed 10000 fetched-byte equivalence cases and actual conversion-cache body, including same-frame writes and old-version lifetime.')

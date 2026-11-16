@@ -1,5 +1,6 @@
 """Run TU23 viewport setter and emitted HLSL math offline, without a game."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -15,14 +16,29 @@ def body(s, signature):
     return s[start:end]
 
 
+def generated_definition(directory, signature):
+    # Code generation repartitions translation units as the function graph
+    # changes. Locate the actual definition, never a guessed TU number or call.
+    matches = []
+    for path in sorted(directory.glob('*.cpp')):
+        with path.open() as source:
+            if any(line.startswith(signature + ' {') for line in source):
+                matches.append(path)
+    if len(matches) != 1:
+        raise RuntimeError(f'Expected one {signature} in {directory}; found {matches}')
+    return matches[0]
+
+
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('common', type=Path)
 p.add_argument('output', type=Path)
+p.add_argument('--compiler', default='clang++')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 a.output.mkdir(parents=True, exist_ok=True)
-original = body((root/'rexlego/generated/default/legodimensions_recomp.70.cpp').read_text(),
-                'DEFINE_REX_FUNC(sub_83FB8FD0)')
+signature = 'DEFINE_REX_FUNC(sub_83FB8FD0)'
+setter_path = generated_definition(root/'rexlego/generated/default', signature)
+original = body(setter_path.read_text(), signature)
 helper = body(a.common.read_text(), 'float4 LegoViewportPosition(')
 draw = (root/'rexlego/src/gpu_native/draw.cpp').read_text()
 key = body(draw, 'struct PipelineKey {')+';\n'+body(draw, 'struct PipelineKeyHash {')+';\n'
@@ -33,7 +49,7 @@ cpp.write_text(r'''
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
-using u8=uint8_t;using u32=uint32_t;using u64=uint64_t;using uint=uint32_t;
+using u8=uint8_t;using u32=uint32_t;using u64=uint64_t;using uint=uint32_t;using i32=int32_t;
 constexpr u32 kNativeRenderTargets=4,kNativeVertexStreams=16;
 union PPCRegister {u64 u64;int64_t s64;u32 u32;int32_t s32;};
 struct CR {bool eq=false;template<class T>void compare(T a,T b,int){eq=a==b;}};
@@ -81,16 +97,22 @@ int main(){
   assert(unchanged.xy.x==input.xy.x&&unchanged.xy.y==input.xy.y);
  }
  PipelineKey a,b;b.clip_disable=1;
+ assert(!(a==b));assert(PipelineKeyHash{}(a)!=PipelineKeyHash{}(b));
  std::unordered_map<PipelineKey,int,PipelineKeyHash> cache;
  cache[a]=1;cache[b]=2;assert(cache.size()==2&&cache[a]==1&&cache[b]==2);
 }
 ''')
 exe = a.output/'test.exe'
-subprocess.run(['clang++','-std=c++20','-O2',str(cpp),'-o',str(exe)],check=True)
-subprocess.run([str(exe)],check=True)
+subprocess.run([a.compiler,'-std=c++20','-O2','-UNDEBUG',str(cpp),'-o',str(exe)],
+               check=True,timeout=45)
+subprocess.run([str(exe)],check=True,timeout=10)
 proof = {'passed': True, 'original_setter_cases': 16, 'pixel_mapping_cases': 900,
          'modes': ['TU23 0x43F', 'TU23 0x400'], 'shared_bytes': 752 if 'fetch_lod_bias[32]' in draw else 624,
          'depth_clip_pipeline_cache': True, 'game_launched': False,
+         'setter_source': str(setter_path),
+         'setter_body_sha256': hashlib.sha256(original.encode()).hexdigest(),
+         'common_source': str(a.common.resolve()),
+         'viewport_helper_sha256': hashlib.sha256(helper.encode()).hexdigest(),
          'scope': 'CPU setter, exact emitted HLSL arithmetic, host viewport mapping and PSO identity; no pixel/character repair claim'}
 (a.output/'verification.json').write_text(json.dumps(proof,indent=2)+'\n')
 print('PASS: TU23 viewport setter, 900 screen coordinates, unchanged normal mode and distinct clip PSOs')

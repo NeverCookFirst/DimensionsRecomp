@@ -1,7 +1,7 @@
 #pragma once
-#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 namespace legodimensions::gpu_native {
@@ -9,7 +9,11 @@ namespace legodimensions::gpu_native {
 // still being recorded. Each ticket must finish before its slot is reusable.
 class DescriptorRetirement {
  public:
-  explicit DescriptorRetirement(std::size_t count = 0) : pending_(count, 0) {}
+  explicit DescriptorRetirement(std::size_t count = 0, uint32_t slots = 3)
+      : pending_(count, 0) {
+    if (!slots || slots > 32) throw std::invalid_argument("descriptor retirement slots outside 1..32");
+    tickets_.resize(slots);
+  }
   bool Retire(uint32_t index, uint32_t live_frames) {
     if (pending_[index]) return false;
     for (uint32_t frame = 0; frame < tickets_.size(); ++frame) {
@@ -26,6 +30,6 @@ class DescriptorRetirement {
   }
  private:
   std::vector<uint8_t> pending_;
-  std::array<std::vector<uint32_t>, 3> tickets_;
+  std::vector<std::vector<uint32_t>> tickets_;
 };
 }  // namespace legodimensions::gpu_native

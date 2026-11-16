@@ -23,6 +23,13 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(NativeGpuEdition)' == 'true'">
+    <DefineConstants>$(DefineConstants);NATIVE_GPU_EDITION</DefineConstants>
+    <AssemblyName>DimensionsRecompiled-NativeGPU-Setup</AssemblyName>
+    <Product>Dimensions Recompiled Native GPU</Product>
+    <AssemblyTitle>Dimensions Recompiled Native GPU Setup</AssemblyTitle>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- tools\Probe is its own project; keep its sources and obj\ out of this one. -->
     <Compile Remove="tools\**" />

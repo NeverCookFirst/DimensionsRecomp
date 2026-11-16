@@ -2,6 +2,7 @@
 #include <array>
 #include <cstring>
 #include <cstdlib>
+#include <iterator>
 #include <unordered_set>
 
 #include "gpu_native/renderer_route.h"
@@ -12,10 +13,15 @@
 
 #include "gpu_native/d3d.h"
 #include "gpu_native/device.h"
+#include "gpu_native/native_worker.h"
+#include "gpu_native/native_recording.h"
+#include "gpu_native/draw_batch.h"
 #include "gpu_native/state.h"
 #include "gpu_native/buffers.h"
 #include "gpu_native/textures.h"
 #include "gpu_native/shaders.h"
+#include "gpu_native/display_gamma_lut.h"
+#include "gpu_native/guest_metadata.h"
 
 namespace legodimensions::gpu_native {
 namespace {
@@ -37,24 +43,24 @@ void CopyStateDispatch(D3DDevice* device, u8* membase) {
 }
 
 bool InitializeRenderDefaults(u32 guest_address, u8* membase) {
-  // Only statically audited leaf alpha/blend/write-mask setters. Use the actual
+  // Only statically audited leaf alpha/blend/write-mask/float setters. Use the actual
   // TU23 descriptor defaults, not guessed reset values or full queue init.
-  constexpr u32 indices[] = {15,16,18,19,20,21,22,23,24,26,53,54,55,56,59};
+  constexpr u32 indices[] = {15,16,18,19,20,21,22,23,24,25,26,53,54,55,56,59};
   constexpr u32 setters[] = {0x83FB7E38,0x83FB81C8,0x83FB7F58,0x83FB7FE8,
-      0x83FB7EC8,0x83FB80E8,0x83FB8158,0x83FB8078,0x83FB7E00,0x83FB82C0,
+      0x83FB7EC8,0x83FB80E8,0x83FB8158,0x83FB8078,0x83FB7E00,0x83FB8260,0x83FB82C0,
       0x83FB8A68,0x83FB8AA8,0x83FB8AE8,0x83FB8B28,0x83FB92B8};
   const auto* table = reinterpret_cast<const be_u32*>(membase + kRenderStateTable);
   auto* kernel_state = REX_KERNEL_STATE();
   auto* dispatcher = kernel_state ? kernel_state->function_dispatcher() : nullptr;
   if (!dispatcher) return false;
-  for (u32 i = 0; i < 15; ++i) {
+  for (u32 i = 0; i < std::size(indices); ++i) {
     const u32 address = table[indices[i] * 3 + 1];
     if (address != setters[i] || !dispatcher->GetFunction(address)) {
       REXLOG_ERROR("Native GPU: unexpected render default setter {:08X}", address);
       return false;
     }
   }
-  for (u32 i = 0; i < 15; ++i) {
+  for (u32 i = 0; i < std::size(indices); ++i) {
     const u32 address = table[indices[i] * 3 + 1];
     const u32 value = table[indices[i] * 3 + 2];
     rex::ppc::GuestToHostFunction<void>(dispatcher->GetFunction(address), guest_address, value);
@@ -117,7 +123,7 @@ bool InitializeStencilDefaults(u32 guest_address, u8* membase) {
     rex::ppc::GuestToHostFunction<void>(dispatcher->GetFunction(address), guest_address,
                                      u32(table[(27 + i) * 3 + 2]));
   }
-  REXLOG_INFO("Native GPU: initialized isolated stencil candidate defaults");
+  REXLOG_INFO("Native GPU: initialized stencil defaults");
   return true;
 }
 
@@ -148,13 +154,13 @@ u32 Direct3DCreateDeviceHook(u32 /*adapter*/, u32 /*device_type*/, u32 /*focus_w
   }
   if (!InitializeRenderDefaults(guest_address, memory->virtual_membase()) ||
       !InitializeSamplerDefaults(device, guest_address, memory->virtual_membase()) ||
-      (std::getenv("LEGO_NATIVE_STENCIL") &&
+      (!std::getenv("LEGO_NATIVE_NO_STENCIL") &&
        !InitializeStencilDefaults(guest_address, memory->virtual_membase()))) {
     memory->SystemHeapFree(guest_address);
     return 0x80004005u;
   }
-  device->viewport.width = 1280;
-  device->viewport.height = 720;
+  device->viewport.width = 1280.0f;
+  device->viewport.height = 720.0f;
   device->viewport.max_z = 1.0f;
   device->scissor.right = 1280;
   device->scissor.bottom = 720;
@@ -194,17 +200,63 @@ void BlockOnFenceHook(u32 /*fence_marker*/) {
 }
 
 void BlockUntilNotBusyHook(u32 resource) {
+  static const bool asynchronous_cpu = std::getenv("LEGO_NATIVE_ASYNC_CPU_RESOURCES") != nullptr;
+  static const bool wait_unknown = std::getenv("LEGO_NATIVE_WAIT_UNKNOWN_RESOURCES") != nullptr;
+  if (NativeFullDrawPreparationEnabled() && NativeWorkerShouldQueue()) {
+    // Buffer and shader versions are made at capture, in order, so capture
+    // completion is the whole guarantee; a CPU texture uploads at preparation.
+    enum { kUnknown, kBufferOrShader, kCpuTexture, kGpuTexture } kind = kUnknown;
+    {
+      struct RegistryOnly {
+        RegistryOnly() { NativeRecordingGate::EnterPreparation(); }
+        ~RegistryOnly() { NativeRecordingGate::LeavePreparation(); }
+      } registry_only;
+      if (IsNativeBuffer(resource) || IsNativeShader(resource)) kind = kBufferOrShader;
+      else if (IsCpuUploadedTexture(resource)) kind = kCpuTexture;
+      else if (NativeTextureExtent(resource).width) kind = kGpuTexture;
+    }
+    if (kind == kUnknown && !wait_unknown) { HostDevice::RecordCpuResourceWaitSkip(); return; }
+    if (asynchronous_cpu && kind == kBufferOrShader) {
+      NativeWorkerDrainCapture();
+      HostDevice::RecordCpuResourceWaitSkip();
+      HostDevice::PollCompletionCallbacks();
+      return;
+    }
+    if (asynchronous_cpu && kind == kCpuTexture) {
+      NativeWorkerDrainCapture([] { WaitAllPreparation(); });
+      HostDevice::RecordCpuResourceWaitSkip();
+      HostDevice::PollCompletionCallbacks();
+      return;
+    }
+  }
   auto recording = HostDevice::LockRecording();
   // Opt-in until the controlled cutscene/title test passes. Native uploads
   // copy CPU data into GPU-owned storage and retain that storage at fences.
   // Updating those guest bytes cannot overwrite an earlier GPU draw.
-  static const bool asynchronous_cpu = std::getenv("LEGO_NATIVE_ASYNC_CPU_RESOURCES") != nullptr;
   if (asynchronous_cpu && (IsNativeBuffer(resource) || IsNativeShader(resource) ||
                            IsCpuUploadedTexture(resource))) {
     HostDevice::RecordCpuResourceWaitSkip();
     return;
   }
-  // Unknown resources and host-resolved textures keep the full wait.
+  // A resource the native renderer never registered cannot be referenced by
+  // recorded or in-flight GPU work, so waiting for the GPU protects nothing.
+  // Measured 2026-10-10: every logged wait was such a resource (game-side
+  // textures/VBs/IBs before first use), costing ~14 ms/frame in cutscenes.
+  if (!wait_unknown && !IsNativeBuffer(resource) && !IsNativeShader(resource) &&
+      NativeTextureExtent(resource).width == 0) {
+    HostDevice::RecordCpuResourceWaitSkip();
+    return;
+  }
+  // Host-resolved textures and known resources keep the full wait.
+  static std::atomic<u32> wait_logs{0};
+  if (std::getenv("LEGO_NATIVE_LOG_RESOURCE_WAITS") && wait_logs.fetch_add(1) < 400) {
+    const auto* header = reinterpret_cast<const be_u32*>(
+        REX_KERNEL_MEMORY()->virtual_membase() + resource);
+    REXLOG_INFO("Native GPU: resource wait guest={:08X} common={:08X} "
+        "buffer={} shader={} cpu_texture={} texture={}", resource, u32(header[0]),
+        IsNativeBuffer(resource), IsNativeShader(resource),
+        IsCpuUploadedTexture(resource), NativeTextureExtent(resource).width != 0);
+  }
   if (!HostDevice::Synchronize(SyncReason::kResource))
     REXLOG_ERROR("Native GPU: BlockUntilNotBusy failed; host device unavailable");
   recording.unlock();
@@ -212,13 +264,18 @@ void BlockUntilNotBusyHook(u32 resource) {
 }
 
 void KickOffSegmentHook(D3DDevice* /*device*/) {
-  HostDevice::SubmitRecordedWork();
-  HostDevice::PollCompletionCallbacks();
+  static const bool enabled = [] {
+    const char* value = std::getenv("LEGO_NATIVE_QUEUED_KICKOFF");
+    return !value || value[0] != '0';
+  }();
+  const bool queued = enabled && NativeWorkerShouldQueue();
+  if (queued) NativeWorkerSubmit([] { HostDevice::SubmitRecordedWork(); }, false, false, false, NativeTaskStage::kRecorder);
+  else HostDevice::SubmitRecordedWork();
+  HostDevice::PollCompletionCallbacks(!queued);
 }
 
 u32 KickOffHook(D3DDevice* device) {
-  HostDevice::SubmitRecordedWork();
-  HostDevice::PollCompletionCallbacks();
+  KickOffSegmentHook(device);
   if (!device) {
     return 0;
   }
@@ -234,6 +291,13 @@ u32 KickOffHook(D3DDevice* device) {
 // thread. No early timestamp shortcut or worker-thread guest invocation.
 void InsertCallbackHook(D3DDevice* /*device*/, u32 flags,
                         u32 callback, u32 callback_data) {
+  if (!callback) return;
+  if (NativeWorkerShouldQueue()) {
+    NativeWorkerSubmit([flags, callback, callback_data] {
+      InsertCallbackHook(nullptr, flags, callback, callback_data);
+    }, false, false, false, NativeTaskStage::kRecorder);
+    return;
+  }
   auto recording = HostDevice::LockRecording();
   if (!callback) {
     return;
@@ -275,3 +339,31 @@ REX_HOOK(sub_83FBF900, legodimensions::gpu_native::BlockUntilNotBusyHook);
 REX_HOOK(sub_83FC08D0, legodimensions::gpu_native::KickOffSegmentHook);
 REX_HOOK(sub_83FC0C10, legodimensions::gpu_native::KickOffHook);
 REX_HOOK(sub_83FC0F38, legodimensions::gpu_native::InsertCallbackHook);
+
+// SetGammaRamp performs the real title/display conversion and updates the
+// CPU device cache. Native presentation bypasses its later PM4 submission,
+// so snapshot the converted table and publish it in recorder order.
+REX_HOOK_RAW(sub_83FBA420) {
+  using namespace legodimensions::gpu_native;
+  const u32 device = ctx.r3.u32;
+  __imp__sub_83FBA420(ctx, base);
+  std::array<u8, 1536> converted{};
+  DisplayGammaTable table;
+  auto* memory = REX_KERNEL_MEMORY();
+  if (!memory || u64(device) + 15408 + converted.size() > 0x100000000ull ||
+      !CopyNativeGuestMetadata(*memory, device + 15408, converted.data(), converted.size()) ||
+      !DecodeDisplayGamma(converted, table)) {
+    REXLOG_ERROR("Native GPU: converted display gamma unavailable device={:08X}", device);
+    return;
+  }
+  if (NativeWorkerShouldQueue()) {
+    if (NativeFullDrawPreparationEnabled()) {
+      NativeWorkerSubmit([table] {
+        QueueNativeReplayTask([table] { HostDevice::SetDisplayGamma(table); });
+      }, false, true, true);
+    } else {
+      NativeWorkerSubmit([table] { HostDevice::SetDisplayGamma(table); }, false, false, false,
+                         NativeTaskStage::kRecorder);
+    }
+  } else HostDevice::SetDisplayGamma(table);
+}

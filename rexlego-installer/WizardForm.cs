@@ -9,7 +9,11 @@ namespace RecompSetup;
 /// </summary>
 public sealed class WizardForm : Form
 {
+#if NATIVE_GPU_EDITION
+    public const string AppName = "Dimensions Recompiled Native GPU";
+#else
     public const string AppName = "Dimensions Recompiled";
+#endif
 
     enum Page { Welcome, Game, Update, Dlc, Components, Location, Installing, Done }
 

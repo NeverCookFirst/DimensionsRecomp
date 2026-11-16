@@ -16,6 +16,7 @@
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/logging.h>
+#include <rex/rex_app.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -98,7 +99,7 @@ void LogInstalledVersion() {
 
 }  // namespace
 
-void CheckAtStartup() {
+void CheckAtStartup(std::function<void()> close_game) {
   LogInstalledVersion();
   if (!REXCVAR_GET(updates_check)) {
     REXLOG_INFO("Update check disabled (updates_check = false)");
@@ -124,7 +125,7 @@ void CheckAtStartup() {
   // Letting the updater raise its own window at startup proved unreliable -
   // players saw nothing and only found the update by running the tool by hand -
   // so the game now tells them itself, and names the file that does the work.
-  std::thread([updater, target, repo] {
+  std::thread([updater, target, repo, close_game = std::move(close_game)] {
     std::wstring command_line = L"\"" + updater.wstring() + L"\" --check --console" + target;
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
@@ -149,7 +150,8 @@ void CheckAtStartup() {
 
     const std::wstring text =
         L"A new version of Dimensions Recompiled is available.\n\n"
-        L"Install it now? The updater will open:\n" + updater.wstring();
+        L"Install it now? The game will close and the updater will open.\n"
+        L"Progress since your last save will be lost.";
     if (MessageBoxW(nullptr, text.c_str(), L"Dimensions Recompiled - Update available",
                     MB_YESNO | MB_ICONINFORMATION | MB_SETFOREGROUND) != IDYES) {
       REXLOG_INFO("Update declined by the player");
@@ -158,6 +160,12 @@ void CheckAtStartup() {
     std::wstring launch = L"\"" + updater.wstring() + L"\"" + target;
     if (StartDetached(updater, launch)) {
       REXLOG_INFO("Updater launched");
+      // Only once the updater is really running: closing first and then failing
+      // to start it would leave the player with neither.
+      if (close_game) {
+        REXLOG_INFO("Closing the game so the updater can replace its files");
+        close_game();
+      }
     } else {
       REXLOG_WARN("Could not launch the updater at {} (error {})", updater.string(),
                   GetLastError());
@@ -166,6 +174,64 @@ void CheckAtStartup() {
 #else
   REXLOG_INFO("Update checks are Windows-only for now");
 #endif
+}
+
+void RelocateMovedInstall(rex::PathConfig& paths) {
+  std::error_code ec;
+  const std::filesystem::path old_game = paths.game_data_root;
+  if (old_game.empty() || std::filesystem::exists(old_game, ec)) {
+    return;
+  }
+  const std::filesystem::path exe_dir = rex::filesystem::GetExecutableFolder();
+  if (!std::filesystem::is_directory(exe_dir / "game", ec)) {
+    return;
+  }
+  // The folder the installer installed into, as it was written down.
+  const std::wstring old_root = old_game.parent_path().wstring();
+  if (old_root.empty()) {
+    return;
+  }
+  auto starts_with = [&](const std::wstring& value) {
+    if (value.size() < old_root.size()) {
+      return false;
+    }
+    if (_wcsnicmp(value.c_str(), old_root.c_str(), old_root.size()) != 0) {
+      return false;
+    }
+    return value.size() == old_root.size() || value[old_root.size()] == L'\\' ||
+           value[old_root.size()] == L'/';
+  };
+  auto move = [&](const std::filesystem::path& value) -> std::filesystem::path {
+    const std::wstring text = value.wstring();
+    if (!starts_with(text)) {
+      return value;
+    }
+    std::wstring rest = text.substr(old_root.size());
+    while (!rest.empty() && (rest.front() == L'\\' || rest.front() == L'/')) {
+      rest.erase(rest.begin());
+    }
+    return rest.empty() ? exe_dir : exe_dir / rest;
+  };
+  REXLOG_WARN("Install folder {} does not exist; using {} instead (moved install or another Wine prefix)",
+              old_game.parent_path().string(), exe_dir.string());
+  paths.game_data_root = move(paths.game_data_root);
+  paths.user_data_root = move(paths.user_data_root);
+  paths.update_data_root = move(paths.update_data_root);
+  paths.cache_root = move(paths.cache_root);
+  paths.metadata_root = move(paths.metadata_root);
+  for (const char* name : {"game_data_root", "user_data_root", "update_data_root", "cache_root",
+                           "log_file", "hid_mappings_file", "mods_root", "mods_update_root",
+                           "mods_content_root", "mods_game_root", "modcli_path", "updater_path",
+                           "toypad_app_path"}) {
+    const std::string value = rex::cvar::GetFlagByName(name);
+    if (value.empty()) {
+      continue;
+    }
+    const std::filesystem::path moved = move(std::filesystem::path(value));
+    if (moved != std::filesystem::path(value)) {
+      rex::cvar::SetFlagByName(name, moved.string());
+    }
+  }
 }
 
 }  // namespace legodimensions::updates

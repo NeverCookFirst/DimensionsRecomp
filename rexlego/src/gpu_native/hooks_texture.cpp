@@ -29,13 +29,14 @@ REX_HOOK(sub_83FB5570, legodimensions::gpu_native::CreateTextureHook);
 REX_HOOK(sub_83FB5690, legodimensions::gpu_native::CreateSurfaceHook);
 
 REX_HOOK_RAW(sub_83FB5540) {
+  legodimensions::gpu_native::MaterializeTextureForCpuRead(ctx.r3.u32);
   if (legodimensions::gpu_native::LockTextureResource(
           ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32)) {
     return;
   }
   // A malformed request for one of our zero-fetch-constant textures must not
   // enter the SDK body: it decodes that absent constant and can divide by zero.
-  if (legodimensions::gpu_native::IsNativeTexture(ctx.r3.u32)) {
+  if (legodimensions::gpu_native::OwnsNativeTextureHeader(ctx.r3.u32)) {
     return;
   }
   __imp__sub_83FB5540(ctx, base);
@@ -46,7 +47,7 @@ REX_HOOK_RAW(sub_83FB5560) {
           ctx.r3.u32, ctx.r4.u32, ctx.r5.u32)) {
     return;
   }
-  if (legodimensions::gpu_native::IsNativeTexture(ctx.r3.u32)) {
+  if (legodimensions::gpu_native::OwnsNativeTextureHeader(ctx.r3.u32)) {
     return;
   }
   __imp__sub_83FB5560(ctx, base);
@@ -57,7 +58,7 @@ REX_HOOK_RAW(sub_83FB57C8) {
                                                           ctx.r4.u32)) {
     return;
   }
-  if (legodimensions::gpu_native::IsNativeTexture(ctx.r3.u32)) {
+  if (legodimensions::gpu_native::OwnsNativeTextureHeader(ctx.r3.u32)) {
     return;
   }
   __imp__sub_83FB57C8(ctx, base);

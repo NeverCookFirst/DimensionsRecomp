@@ -7,6 +7,66 @@ shader pipeline. Generated archives, HLSL, DXIL, and build trees stay under
 Start with [the contributor handoff](COLLABORATION.md) for clone instructions,
 the Linux restrictions, asset-free checks and current compiler reconstruction.
 
+## October 17 guarded vertex-texture temporal history
+
+`inventory_temporal_fallbacks.py` inventories the original draws behind actual
+fallback replays in a saved RenderDoc capture. Shader names come from exact
+executed DXIL matching against the main/runtime banks. The intro capture exposed
+63 depth-tested draws using B8D5551806386C1B/6339999C7F428E7F without companions.
+Six variants were appended privately, preserving all943 existing bank entries.
+
+Previous vertex constants may now sample current CPU texture uploads only when
+their complete content hashes and immutable binding identity match across frames.
+Missing verification, GPU/depth authority and changed animation bytes reject
+history. UploadTextureResource already hashes every vertex use; this introduces
+no additional texture readback/hash. Native rendering allocates no temporal
+texture snapshot. Existing camera, geometry, duplicate-instance, noncamera
+constant and unsupported-variant checks remain. The new program has not been
+granted world-transform relaxation or camera ownership. Startup control
+`LEGO_NATIVE_VERTEX_TEXTURE_HISTORY=0` restores the blanket vertex-texture guard.
+
+The new pixel variants pass576 controlled material GPU cases. Both exact bank
+vertex variants pass controlled texture/camera/object/depth cases and reject
+previous=current mutations;16 actual production PSOs pass driver creation.
+These fixtures do not establish that final in-game FSR inputs retain history,
+that animated texture data has previous-frame storage, or that FPS improved.
+
+## October 8 offline installation coverage
+
+The Windows PR28 validation candidate now inventories the installed disc, TU23,
+all30 installed DLC directories and the previously SDK-loaded TU23 image without
+starting gameplay. Use `gpu-shader-extract extract --embedded <archive-or-dir>
+<fresh-output> --max-seconds 3600` for each archive directory, and the documented
+`--image` mode for a verified patched image. Read each extraction ledger:
+sparse installer ranges are failures even when every entry index was visited.
+The filename-based extractor's old counts did not establish this coverage.
+
+Compile complete source containers with the current native pixel-position
+compiler and624-byte common header. Retain captured runtime inputs and existing
+main coverage. Filter the placement index against actual successful compiled
+identities; failed containers must not become valid binds. Preserve old index
+records and lookup choices when exact stage/length/physical signatures duplicate
+existing records. Source reflection is retained; no approximate shader matching
+or inferred material substitution is used.
+
+The local runtime batch compiles30080/30145 containers, preserving all383 prior
+payloads/masks, with index75372 preserving all19249 prior records. All116 recent
+captured misses have exact offline physical/instruction origins and retain
+their exact production lookup. Main9290 is unchanged. Counts refer to container
+identities, including reflection variants, rather than distinct visible materials.
+The65 refusals are14 unsupported memexport cases and51 missing semantic vertex
+input mappings. They remain explicit gaps. Compilation does not establish visual
+correctness, crash freedom, full campaign coverage or60FPS.
+
+`LEGO_NATIVE_BINARY_CACHE=ON` now embeds both main and runtime linked DXIL bytes
+as COFF on its supported Windows Clang/MSVC ABI targets. Runtime metadata retains
+the existing wrapper's symbol renames; `embed_linked_bank.py --runtime` emits the
+distinct runtime payload symbol. Other configurations retain C++ embedding.
+This avoids compiling the larger linked payload as millions of C++ initializer
+bytes. The runtime fixture links the actual wrapper and separately assembled
+payload, checks exact object bytes, and rejects a missing-payload negative
+control. No GPU execution is implied by that fixture.
+
 ## Current compiler and constants ABI (October 4, after owner visual test)
 
 The owner rejected the combined explicit-LOD build: LOTR looked worse, with
@@ -138,6 +198,21 @@ color resolves and float sampling views. Keep capture runs separate from FPS run
 
 The 2026-09-30 fixed16 bank additionally requires
 `XENOS_RECOMP_LEGO_NATIVE_SCALE=1` during both main and runtime DXIL generation.
+The tracked `prepare_native_compiler.py` workflow now pins `LEGO_NATIVE_GPU`
+in its isolated DXC compiler, so its native-only binary does not depend on this
+environment variable. Older compiler binaries still require it.
+Native1080 also requires freshly regenerated main/runtime banks from this
+preparation workflow. `prepare_pixel_position_candidate.py` adds guest pixel
+position scaling at SharedConstants byte588 (formerly unused padding); the
+layout remains624 bytes. The native host uploads logical/physical raster width
+there. The pixel shader removes the host half pixel, reverts raster scale, then
+applies its existing face sign. A zero value retains legacy scale1. CPU assets,
+portraits, shadow atlases and half/quarter effect passes keep scale1. Keeping old
+banks with1080p allocations misaligns screen-position-based sampling. Rebuild
+both raw banks and their prelinked variants together. The synthetic
+`test_texture_gradients.py` output can be passed to `test_pixel_position_scale.py`
+for emitted-coordinate checks and an unscaled negative control.
+
 Its pixel-shader epilogue reads four output scales at SharedConstants byte 608
 (total host layout 624 bytes), after alpha testing. These scales come from
 each surface's RB_COLOR_INFO format and signed exponent, including the fixed16

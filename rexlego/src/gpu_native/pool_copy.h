@@ -29,9 +29,15 @@ struct PoolCopyDraws {
 // Includes the SDK's +0x1000 adjustment for E/F physical aliases.
 bool GuestRangeOverlapsPoolCopy(uint32_t address, uint32_t size,
                                PhysicalCopyRange copy);
+bool PoolCopyPhysicalRange(uint32_t address, uint32_t size, PhysicalCopyRange& result);
+bool PoolCopyRangeWritable(PhysicalCopyRange range);
+bool PoolCopyRangeReadable(PhysicalCopyRange range);
 
 // Only active inside the original TU23 82BD2868 copy helper, after its bytes
 // have been copied by the CPU. Ordinary memexport shaders aren't suppressed.
 bool ConsumeCpuPoolCopyDraw(uint32_t primitive, uint32_t start, uint32_t count);
+
+// Capture thread: applies the cache invalidation of every pool copy queued since the last flush.
+void FlushPoolCopyBatch();
 
 }  // namespace legodimensions::gpu_native

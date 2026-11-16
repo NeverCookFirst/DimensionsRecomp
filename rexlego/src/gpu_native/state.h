@@ -44,5 +44,15 @@ void EndExportBinding(u32 index, u32 resource, u32 format);
 u32 BoundRenderTarget(u32 index);
 u32 BoundDepthStencil();
 DrawBindings SnapshotDrawBindings();
+class DrawBindingsScope {
+  const DrawBindings* previous_;
+ public:
+  explicit DrawBindingsScope(const DrawBindings& bindings);
+  ~DrawBindingsScope();
+};
+struct D3DDevice;
+bool SnapshotStateBindingsEnabled();
+DrawBindings ReadDeviceBindings(const D3DDevice* device);
+void PublishDeviceBindings(const DrawBindings& bindings);
 
 }  // namespace legodimensions::gpu_native

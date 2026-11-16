@@ -1,6 +1,13 @@
 #include "gpu_native/vertex_declarations.h"
+#include "gpu_native/native_worker.h"
+#include <atomic>
+#include "gpu_native/native_recording.h"
+#include "gpu_native/draw_batch.h"
+#include <unordered_set>
+#include "gpu_native/resource_registry.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -55,6 +62,8 @@ struct VertexDeclarationResource {
   u32 guest_address = 0;
   u64 content_hash = 0;
   bool owns_guest_memory = true;
+  // Set once another record owns this address; pinned lookups then fall through.
+  std::atomic<bool> replaced{false};
   std::vector<plume::RenderInputElement> inputs;
   bool supported = true;
   u32 swapped_texcoords = 0;
@@ -66,10 +75,14 @@ struct VertexDeclarationResource {
   u32 sint_texcoords = 0;
   bool has_r11g11b10_normal = false;
   u64 reversed_byte_elements = 0;
+  std::vector<u32> guest_types;
+  u64 signed_integer_elements = 0;
+  u64 half_swapped_elements = 0;
+  u64 half_swapped_wide_elements = 0;
 };
 
 std::mutex g_declarations_mutex;
-std::unordered_map<u32, std::shared_ptr<VertexDeclarationResource>>
+ResourceRegistry<VertexDeclarationResource>
     g_declarations;
 
 const char* UsageName(DeclUsage usage) {
@@ -113,9 +126,10 @@ plume::RenderFormat ConvertDeclFormat(u32 type) {
     case 0x001A2386: return RF::R8G8B8A8_UINT;
     case 0x002C2359: return RF::R16G16_SINT;
     case 0x001A235A: return RF::R16G16B16A16_SNORM;
-    case 0x001A225A: return RF::R16G16B16A16_SINT;
-    case 0x001A2086:
-    case 0x001A2186: return RF::R8G8B8A8_UNORM;
+    // Decl bit 8 = signed, bit 9 = integer (non-normalized).
+    case 0x001A225A: return RF::R16G16B16A16_UINT;  // USHORT4
+    case 0x001A2086: return RF::R8G8B8A8_UNORM;     // UBYTE4N
+    case 0x001A2186: return RF::R8G8B8A8_SNORM;     // BYTE4N
     // TT UBYTE4[N] with WZYX component swizzle (bits 10..21 = 0x053).
     // Sign bit 8 is CLEAR; bit 9 selects integer vs normalized conversion.
     // Apply the component reversal to the host vertex upload, separately
@@ -152,9 +166,11 @@ bool NeedsPairSwap(u32 type) {
 }
 
 std::shared_ptr<VertexDeclarationResource> FindDeclaration(u32 address) {
-  std::lock_guard lock(g_declarations_mutex);
-  const auto it = g_declarations.find(address);
-  return it == g_declarations.end() ? nullptr : it->second;
+  if (auto pinned = FindPinnedOwner(kPinDeclaration, address)) {
+    auto record = std::static_pointer_cast<VertexDeclarationResource>(std::move(pinned));
+    if (!record->replaced.load(std::memory_order_acquire)) return record;
+  }
+  return g_declarations.Lookup(address, g_declarations_mutex);
 }
 
 D3DResource* GuestHeader(u32 address) {
@@ -197,6 +213,9 @@ static u32 BuildVertexDeclaration(u32 elements_address, u32 existing_address = 0
     input.alignedByteOffset = element.offset;
     if (u32(element.type) == 0x00014C86 || u32(element.type) == 0x00014E86)
       resource->reversed_byte_elements |= u64{1} << i;
+    resource->guest_types.push_back(u32(element.type));
+    if (u32(element.type) == 0x001A2386 && i < 64)
+      resource->signed_integer_elements |= u64{1} << i;
     if (input.format == plume::RenderFormat::UNKNOWN) {
       resource->supported = false;
       REXLOG_WARN("Native GPU: unsupported vertex element usage={} index={} "
@@ -225,6 +244,20 @@ static u32 BuildVertexDeclaration(u32 elements_address, u32 existing_address = 0
           resource->swapped_texcoords |= usage_index_bit;
           break;
         default:
+          // No swapFloats() in the translated shader for this usage (COLOR1
+          // FLOAT16_4 in Chima VS 500E11F5871DD2AA arrived as yxwz). TU23
+          // D3D's vfetch patcher (sub_83FD1470) flips x/y, z/w for 8in16.
+          static const bool half_swap = [] {
+            const char* value = std::getenv("LEGO_NATIVE_COLOR_HALF_SWAP");
+            return !value || std::strcmp(value, "0") != 0;
+          }();
+          if (half_swap && i < 64) {
+            resource->half_swapped_elements |= u64{1} << i;
+            const u32 type = u32(element.type);
+            if (type != 0x002C2359 && type != 0x002C2159 && type != 0x002C2059 &&
+                type != 0x002C235F)
+              resource->half_swapped_wide_elements |= u64{1} << i;
+          }
           break;
       }
     }
@@ -297,6 +330,7 @@ static u32 BuildVertexDeclaration(u32 elements_address, u32 existing_address = 0
     auto& entry = g_declarations[guest_address];
     previous = std::exchange(entry, resource);
   }
+  if (previous) previous->replaced.store(true, std::memory_order_release);
   if (previous) HostDevice::RetireResource(std::move(previous));
   return guest_address;
 }
@@ -306,6 +340,7 @@ u32 CreateVertexDeclarationResource(u32 elements_address) {
 }
 
 VertexDeclarationView ResolveVertexDeclaration(u32 guest_address) {
+  std::unique_lock<NativeRecordingGate> recording;
   auto resource = FindDeclaration(guest_address);
   if (guest_address && (!resource || !resource->owns_guest_memory)) {
     const auto* words = REX_KERNEL_MEMORY()->TranslateVirtual<const be_u32*>(guest_address);
@@ -314,10 +349,15 @@ VertexDeclarationView ResolveVertexDeclaration(u32 guest_address) {
       const auto* elements = REX_KERNEL_MEMORY()->TranslateVirtual<const u8*>(guest_address + 52);
       const u64 hash = XXH3_64bits(elements, u32(words[6]) * sizeof(GuestVertexElement));
       if (!resource || resource->content_hash != hash) {
-        if (resource)
-          REXLOG_INFO("Native GPU: placement declaration contents changed at {:08X}", guest_address);
-        BuildVertexDeclaration(guest_address + 52, guest_address, words[6]);
+        // Only a rebuild takes the gate; the lookup repeats under it.
+        recording = HostDevice::LockRecording();
         resource = FindDeclaration(guest_address);
+        if (!resource || resource->content_hash != hash) {
+          if (resource)
+            REXLOG_INFO("Native GPU: placement declaration contents changed at {:08X}", guest_address);
+          BuildVertexDeclaration(guest_address + 52, guest_address, words[6]);
+          resource = FindDeclaration(guest_address);
+        }
       }
     } else {
       return {};
@@ -338,7 +378,11 @@ VertexDeclarationView ResolveVertexDeclaration(u32 guest_address) {
           resource->sint_texcoords,
           resource->has_r11g11b10_normal,
           resource->reversed_byte_elements,
-          resource->content_hash};
+          resource->content_hash,
+          resource->guest_types.data(),
+          resource->signed_integer_elements,
+          resource->half_swapped_elements,
+          resource->half_swapped_wide_elements};
 }
 
 bool IsNativeVertexDeclaration(u32 guest_address) {
@@ -347,12 +391,33 @@ bool IsNativeVertexDeclaration(u32 guest_address) {
 }
 
 u32 AddRefNativeVertexDeclaration(u32 guest_address) {
-  const auto resource = FindDeclaration(guest_address);
-  if (!resource) return 0;
+  // Match ReleaseNativeVertexDeclaration's registry lock across the complete RMW.
+  // A pinned draw owner is not an authorization to change a retired header.
+  std::lock_guard lock(g_declarations_mutex);
+  if (!g_declarations.contains(guest_address)) return 0;
   auto* header = GuestHeader(guest_address);
   const u32 count = static_cast<u32>(header->reference_count) + 1;
   header->reference_count = count;
   return count;
+}
+
+// Resources whose final release is queued but not yet run; guarded by g_declarations_mutex.
+std::unordered_set<const void*> g_destroying_declarations;
+
+void DestroyNativeVertexDeclaration(u32 guest_address,
+                                    const std::shared_ptr<VertexDeclarationResource>& released) {
+  {
+    std::lock_guard lock(g_declarations_mutex);
+    g_destroying_declarations.erase(released.get());
+    const auto it = g_declarations.find(guest_address);
+    if (it != g_declarations.end() && it->second == released) g_declarations.erase(it);
+  }
+  HostDevice::RetireResource(released);
+  if (released->owns_guest_memory) REX_KERNEL_MEMORY()->SystemHeapFree(guest_address);
+}
+
+std::shared_ptr<void> FindDeclarationOwner(u32 guest_address) {
+  return guest_address ? g_declarations.Lookup(guest_address, g_declarations_mutex) : nullptr;
 }
 
 u32 ReleaseNativeVertexDeclaration(u32 guest_address) {
@@ -366,11 +431,26 @@ u32 ReleaseNativeVertexDeclaration(u32 guest_address) {
     const u32 count = old_count ? old_count - 1 : 0;
     header->reference_count = count;
     if (count) return count;
-    released = std::move(it->second);
-    g_declarations.erase(it);
+    released = it->second;
+    if (!g_destroying_declarations.insert(released.get()).second) return 0;
   }
-  HostDevice::RetireResource(released);
-  if (released->owns_guest_memory) REX_KERNEL_MEMORY()->SystemHeapFree(guest_address);
+  // Queued draws may still use it, so destruction runs behind them.
+  if (NativeWorkerShouldQueue() && NativeDeferredReleaseEnabled()) {
+    if (NativeFullDrawPreparationEnabled()) {
+      NativeWorkerSubmit([guest_address, released] {
+        {
+          std::lock_guard lock(g_declarations_mutex);
+          const auto it = g_declarations.find(guest_address);
+          if (it != g_declarations.end() && it->second == released) g_declarations.erase(it);
+        }
+        QueueNativeReplayTask([guest_address, released] { DestroyNativeVertexDeclaration(guest_address, released); });
+      }, false, true, true);
+      return 0;
+    }
+    NativeWorkerSubmit([guest_address, released] { DestroyNativeVertexDeclaration(guest_address, released); }, false, false, false, NativeTaskStage::kRecorder);
+    return 0;
+  }
+  DestroyNativeVertexDeclaration(guest_address, released);
   return 0;
 }
 
@@ -388,5 +468,7 @@ void ResetVertexDeclarations() {
     REX_KERNEL_MEMORY()->SystemHeapFree(address);
   }
 }
+
+u64 DeclarationRegistryGeneration() { return g_declarations.Generation(); }
 
 }  // namespace legodimensions::gpu_native

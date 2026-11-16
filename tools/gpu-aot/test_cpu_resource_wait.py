@@ -4,7 +4,10 @@ import json
 import os
 from pathlib import Path
 import subprocess
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('output',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__)
+p.add_argument('output',type=Path)
+p.add_argument('--compiler', default='clang++')
+a=p.parse_args()
 root=Path(__file__).resolve().parents[2];a.output.mkdir(parents=True,exist_ok=True)
 def body(path,sig):
  text=(root/path).read_text();start=text.index(sig);end=text.index('{',start)+1;depth=1
@@ -15,17 +18,22 @@ hooks='\n'.join(body('rexlego/src/gpu_native/hooks_device.cpp',x) for x in [
  'void BlockUntilNotBusyHook(', 'void BlockUntilIdleHook(', 'void BlockOnFenceHook(', 'void InsertCallbackHook('])
 h=a.output/'cpu-resource-wait.cpp';h.write_text(r'''
 #include <cassert>
+#include <atomic>
 #include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <functional>
 #include <vector>
 #include <unordered_set>
-using u32=unsigned;
+using u32=unsigned;using be_u32=unsigned;
+struct Memory {unsigned char bytes[4096]{};auto virtual_membase(){return bytes;}} memory;
+#define REX_KERNEL_MEMORY() (&memory)
 #define REXLOG_ERROR(...) ((void)0)
 #define REXLOG_WARN(...) ((void)0)
 #define REXLOG_INFO(...) ((void)0)
 struct D3DDevice{};
+bool NativeWorkerShouldQueue(){return false;}
+void NativeWorkerSubmit(std::function<void()> task){task();}
 enum class SyncReason { kOther, kIdle, kFence, kResource, kCallback };
 struct HostDevice {
  static inline std::recursive_mutex lock;
@@ -44,6 +52,8 @@ std::shared_ptr<Texture> texture=std::make_shared<Texture>();
 auto FindTexture(u32 address){return address==3?texture:nullptr;}
 bool IsNativeBuffer(u32 address){return address==1;}
 bool IsNativeShader(u32 address){return address==2;}
+struct Extent {u32 width;};
+Extent NativeTextureExtent(u32 address){return {address==3?1u:0u};}
 void Callback(u32 data){assert(HostDevice::syncs==0&&data==77);++HostDevice::callbacks;}
 struct Dispatcher {auto GetFunction(u32 addr){return addr==9?&Callback:nullptr;}};
 struct Kernel {Dispatcher d;auto function_dispatcher(){return &d;}};
@@ -53,8 +63,10 @@ namespace rex {namespace system {auto kernel_state(){static Kernel k;return &k;}
 int main(){
  const bool enabled=std::getenv("LEGO_NATIVE_ASYNC_CPU_RESOURCES")!=nullptr;
  auto check=[&](u32 resource,bool safe){HostDevice::syncs=HostDevice::skips=0;
-  BlockUntilNotBusyHook(resource);assert(HostDevice::skips==u32(enabled&&safe));
-  assert(HostDevice::syncs==u32(!enabled||!safe));};
+  const bool unknown=resource==0||resource==100;
+  const bool skip=(enabled&&safe)||(unknown&&!std::getenv("LEGO_NATIVE_WAIT_UNKNOWN_RESOURCES"));
+  BlockUntilNotBusyHook(resource);assert(HostDevice::skips==u32(skip));
+  assert(HostDevice::syncs==u32(!skip));};
  check(0,false);check(100,false);check(1,true);check(2,true);
  for(u32 bits=0;bits<16;++bits){texture->surface=bits&1;texture->resolved_on_host=bits&2;texture->owns_guest_memory=bits&4;texture->depth_alias_generation=bits&8;
   check(3,bits==0);}
@@ -67,11 +79,15 @@ int main(){
 }
 ''')
 exe=a.output/'cpu-resource-wait.exe'
-subprocess.run(['clang++','-std=c++20',str(h),'-o',str(exe)],check=True)
+subprocess.run([a.compiler,'-std=c++20',str(h),'-o',str(exe)],check=True)
 for enabled in (False,True):
- env=os.environ.copy();env.pop('LEGO_NATIVE_ASYNC_CPU_RESOURCES',None)
- if enabled:env['LEGO_NATIVE_ASYNC_CPU_RESOURCES']='1'
- subprocess.run([str(exe.resolve())],check=True,env=env)
+ for wait_unknown in (False,True):
+  env=os.environ.copy();env.pop('LEGO_NATIVE_ASYNC_CPU_RESOURCES',None)
+  env.pop('LEGO_NATIVE_WAIT_UNKNOWN_RESOURCES',None)
+  env.pop('LEGO_NATIVE_LOG_RESOURCE_WAITS',None)
+  if enabled:env['LEGO_NATIVE_ASYNC_CPU_RESOURCES']='1'
+  if wait_unknown:env['LEGO_NATIVE_WAIT_UNKNOWN_RESOURCES']='1'
+  subprocess.run([str(exe.resolve())],check=True,env=env)
 (a.output/'verification.json').write_text(json.dumps({'actual_native_hook_bodies':True,
  'opt_in_and_default_tested':True,'checks':['known CPU buffers/shaders','borrowed CPU textures',
  'all surface/resolved/owned/depth-alias texture exclusions','unknown resource fallback','explicit idle and fence waits',

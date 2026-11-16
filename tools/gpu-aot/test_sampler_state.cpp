@@ -116,4 +116,50 @@ int main() {
   d = DecodeTextureSampler(f);
   assert(d.maxLOD == 0.25f && d.mipmapMode == plume::RenderMipmapMode::NEAREST);
   std::puts("TU23 SetTexture differential: 100000 cases passed; sampler modes passed");
+  // A stale device fetch is not the resource used by the host SRV. Rebuild
+  // the resource-dependent sampler fields from that resource and TU23's
+  // separate min/max requests. Retain filters, wrap modes and LOD bias.
+  TextureFetchWords resource{0x88000002,0x10000052,0x007FE3FF,
+                            0x00000D10,0x00000E83,0x10800A00};
+  TextureFetchWords stale = resource;
+  stale[3] |= (1u<<19)|(1u<<21)|(1u<<23)|(5u<<25);
+  stale[4] = (stale[4]&~0x3FCu)|(8u<<2)|(9u<<6);
+  const auto stale_desc=DecodeTextureSampler(stale);
+  assert(stale_desc.minLOD==8 && stale_desc.maxLOD==9);
+  const auto restored=MergeTextureFetch(stale,resource,0,13);
+  const auto restored_desc=DecodeTextureSampler(restored);
+  assert(restored_desc.minLOD==0 && restored_desc.maxLOD==10);
+  assert(restored_desc.maxAnisotropy==stale_desc.maxAnisotropy);
+  assert(restored_desc.addressU==stale_desc.addressU);
+  assert(restored_desc.mipLODBias==stale_desc.mipLODBias);
+  const auto restricted=DecodeTextureSampler(MergeTextureFetch(stale,resource,3,6));
+  assert(restricted.minLOD==3 && restricted.maxLOD==6);
+  resource[4]=(resource[4]&~0x3FCu)|(4u<<2)|(8u<<6);
+  const auto streamed=DecodeTextureSampler(MergeTextureFetch(stale,resource,0,13));
+  assert(streamed.minLOD==4 && streamed.maxLOD==8);
+  std::puts("Bound resource sampler: stale clamp restored; explicit and streaming restrictions retained");
+  // Bias must touch only signed LOD bias, retaining the verified fetch state.
+  TextureFetchWords fsr=restored;
+  fsr[3]=(fsr[3]&~(3u<<19|3u<<21|3u<<23))|(1u<<19)|(1u<<21)|(1u<<23);
+  for(int original=-512;original<512;++original) {
+    for(float adjustment : {-3.0f,-1.5849625f,0.0f,1.0f,16.0f}) {
+      auto input=fsr;input[4]=(input[4]&~(1023u<<12))|((uint32_t(original)&1023u)<<12);
+      auto result=input;ApplyFsrTextureBias(result,adjustment);
+      assert((result[4]&~(1023u<<12))==(input[4]&~(1023u<<12)));
+      for(int w=0;w<6;++w)if(w!=4)assert(result[w]==input[w]);
+      int expected=std::clamp(original+int(std::round(adjustment*32)),-512,511);
+      assert(DecodeTextureSampler(result).mipLODBias==float(expected)/32);
+    }
+  }
+  for(int variant=0;variant<6;++variant) {
+    auto input=fsr;
+    if(variant==0)input[5]&=~(0x1FFFFu<<12); // no mip allocation
+    if(variant==1)input[5]=(input[5]&~(3u<<9))|(3u<<9); // cube map
+    if(variant==2)input[3]=(input[3]&~(3u<<23))|(2u<<23); // base-map only
+    if(variant==3)input[3]&=~(7u<<25|3u<<19|3u<<21); // point filtered
+    if(variant==4)input[4]&=~(15u<<6); // no permitted mip range
+    auto result=input;ApplyFsrTextureBias(result,variant==5?NAN:-1.5f);assert(result==input);
+  }
+  std::puts("FSR bias: 5120 signed/clamped cases; point/cube/base-only/restricted and nonfinite exclusions passed");
+
 }

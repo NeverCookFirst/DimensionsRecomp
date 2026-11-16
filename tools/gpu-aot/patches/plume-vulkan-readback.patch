@@ -1,0 +1,140 @@
+diff --git a/plume_vulkan.cpp b/plume_vulkan.cpp
+index 11abda8..93e34ea 100644
+--- a/plume_vulkan.cpp
++++ b/plume_vulkan.cpp
+@@ -3250,7 +3250,124 @@ namespace plume {
+             imageCopy.imageExtent.depth = srcLocation.placedFootprint.depth;
+             vkCmdCopyBufferToImage(vk, srcBuffer->vk, dstTexture->vk, toImageLayout(dstTexture->textureLayout), 1, &imageCopy);
+         }
+-        else {
++        else if ((dstLocation.type == RenderTextureCopyType::PLACED_FOOTPRINT) && (srcLocation.type == RenderTextureCopyType::SUBRESOURCE)) {
++            if ((dstBuffer == nullptr) || (srcTexture == nullptr)) {
++                assert(false && "Image-to-buffer copy requires a source texture and destination buffer.");
++                return;
++            }
++
++            const auto &footprint = dstLocation.placedFootprint;
++            if ((queue == nullptr) || (queue->type == RenderCommandListType::UNKNOWN) ||
++                (srcTexture->desc.format <= RenderFormat::UNKNOWN) || (srcTexture->desc.format >= RenderFormat::MAX) ||
++                (footprint.format <= RenderFormat::UNKNOWN) || (footprint.format >= RenderFormat::MAX) ||
++                (srcTexture->desc.multisampling.sampleCount != RenderSampleCount::COUNT_1)) {
++                assert(false && "Image-to-buffer copy requires a valid format, queue and single-sampled source.");
++                return;
++            }
++            if ((srcLocation.subresource.mipLevel >= srcTexture->desc.mipLevels) ||
++                (srcLocation.subresource.arrayIndex >= srcTexture->desc.arraySize)) {
++                assert(false && "Image-to-buffer source subresource is outside its texture.");
++                return;
++            }
++            const uint32_t blockWidth = RenderFormatBlockWidth(srcTexture->desc.format);
++            const uint32_t blockSize = RenderFormatSize(srcTexture->desc.format);
++            if ((blockWidth == 0) || (blockSize == 0) || ((blockWidth == 4) && (blockSize != 8) && (blockSize != 16))) {
++                assert(false && "Image-to-buffer copy requires a supported texel block size.");
++                return;
++            }
++            const VkImageAspectFlags aspect = toAspectFlags(srcTexture->desc.format, srcTexture->desc.flags);
++            // Buffer copies select exactly one aspect. The public copy location
++            // has no plane selector, so combined depth/stencil cannot be copied.
++            if ((aspect == 0) || ((aspect & (aspect - 1)) != 0) ||
++                (RenderFormatBlockWidth(footprint.format) != blockWidth) ||
++                (RenderFormatSize(footprint.format) != blockSize) ||
++                (RenderFormatIsDepth(srcTexture->desc.format) != ((aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0)) ||
++                (((aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0) && (queue->type != RenderCommandListType::DIRECT))) {
++                assert(false && "Image-to-buffer copy requires one aspect and a compatible footprint.");
++                return;
++            }
++
++            VkBufferImageCopy imageCopy = {};
++            imageCopy.imageSubresource.aspectMask = aspect;
++            imageCopy.imageSubresource.baseArrayLayer = srcLocation.subresource.arrayIndex;
++            imageCopy.imageSubresource.layerCount = 1;
++            imageCopy.imageSubresource.mipLevel = srcLocation.subresource.mipLevel;
++            const uint32_t mip = srcLocation.subresource.mipLevel;
++            const uint32_t width = mip < 32 ? std::max(1U, srcTexture->desc.width >> mip) : 1U;
++            const uint32_t height = mip < 32 ? std::max(1U, srcTexture->desc.height >> mip) : 1U;
++            const uint32_t depth = mip < 32 ? std::max(1U, srcTexture->desc.depth >> mip) : 1U;
++            if (srcBox != nullptr) {
++                if ((srcBox->left < 0) || (srcBox->top < 0) || (srcBox->front < 0) ||
++                    (srcBox->left >= srcBox->right) || (srcBox->top >= srcBox->bottom) ||
++                    (srcBox->front >= srcBox->back) || (srcBox->right > width) ||
++                    (srcBox->bottom > height) || (srcBox->back > depth)) {
++                    assert(false && "Image-to-buffer source box is outside its mip.");
++                    return;
++                }
++                imageCopy.imageOffset = { int32_t(srcBox->left), int32_t(srcBox->top), int32_t(srcBox->front) };
++                imageCopy.imageExtent = { uint32_t(srcBox->right - srcBox->left), uint32_t(srcBox->bottom - srcBox->top), uint32_t(srcBox->back - srcBox->front) };
++            }
++            else {
++                imageCopy.imageExtent = { width, height, depth };
++            }
++
++            // rowWidth is in texels, as in the upload path and D3D12's
++            // footprint conversion. Buffer offsets are in compressed blocks.
++            const uint64_t rowBlocks = (uint64_t(footprint.rowWidth) + blockWidth - 1) / blockWidth;
++            const uint64_t imageRows = (uint64_t(footprint.height) + blockWidth - 1) / blockWidth;
++            if ((footprint.width == 0) || (footprint.height == 0) || (footprint.depth == 0) ||
++                (footprint.rowWidth < footprint.width) || (rowBlocks * blockWidth > UINT32_MAX) ||
++                (imageRows * blockWidth > UINT32_MAX) ||
++                (uint64_t(dstX) + imageCopy.imageExtent.width > footprint.width) ||
++                (uint64_t(dstY) + imageCopy.imageExtent.height > footprint.height) ||
++                (uint64_t(dstZ) + imageCopy.imageExtent.depth > footprint.depth) ||
++                ((dstX % blockWidth) != 0) || ((dstY % blockWidth) != 0) ||
++                ((imageCopy.imageOffset.x % blockWidth) != 0) || ((imageCopy.imageOffset.y % blockWidth) != 0) ||
++                (((imageCopy.imageExtent.width % blockWidth) != 0) && (uint64_t(imageCopy.imageOffset.x) + imageCopy.imageExtent.width != width)) ||
++                (((imageCopy.imageExtent.height % blockWidth) != 0) && (uint64_t(imageCopy.imageOffset.y) + imageCopy.imageExtent.height != height))) {
++                assert(false && "Image-to-buffer copy does not fit its footprint or block alignment.");
++                return;
++            }
++            const uint64_t rowPitch = rowBlocks * blockSize;
++            if (rowPitch > INT32_MAX) {
++                assert(false && "Image-to-buffer row pitch exceeds Vulkan's signed 31-bit limit.");
++                return;
++            }
++            // Padding after the final copied row is not accessed. Check stride
++            // arithmetic first, then the exact last accessed byte below.
++            if ((footprint.offset > dstBuffer->desc.size) || (imageRows > UINT64_MAX / rowPitch)) {
++                assert(false && "Image-to-buffer footprint exceeds its buffer.");
++                return;
++            }
++            const uint64_t slicePitch = rowPitch * imageRows;
++            const uint64_t remaining = dstBuffer->desc.size - footprint.offset;
++            const uint64_t lastSlice = uint64_t(dstZ) + imageCopy.imageExtent.depth - 1;
++            if (lastSlice > remaining / slicePitch) {
++                assert(false && "Image-to-buffer slices exceed its buffer.");
++                return;
++            }
++            const uint64_t sliceEnd = lastSlice * slicePitch;
++            const uint64_t lastRow = uint64_t(dstY / blockWidth) + (uint64_t(imageCopy.imageExtent.height) + blockWidth - 1) / blockWidth - 1;
++            const uint64_t rowEnd = lastRow * rowPitch;
++            const uint64_t copiedRow = ((uint64_t(dstX) + imageCopy.imageExtent.width + blockWidth - 1) / blockWidth) * blockSize;
++            if ((rowEnd > remaining - sliceEnd) || (copiedRow > remaining - sliceEnd - rowEnd)) {
++                assert(false && "Image-to-buffer region exceeds its buffer.");
++                return;
++            }
++            imageCopy.bufferOffset = footprint.offset + uint64_t(dstZ) * slicePitch + uint64_t(dstY / blockWidth) * rowPitch + uint64_t(dstX / blockWidth) * blockSize;
++            // VUIDs07975/07978/07746 apply to the final offset, including
++            // destination coordinates. COPY is conservative if its selected
++            // queue family also happens to support graphics or compute.
++            const uint32_t offsetAlignment = ((aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0 || queue->type == RenderCommandListType::COPY) ? std::max(4U, blockSize) : blockSize;
++            if ((imageCopy.bufferOffset % offsetAlignment) != 0) {
++                assert(false && "Image-to-buffer final offset is not aligned for its aspect or queue.");
++                return;
++            }
++            imageCopy.bufferRowLength = uint32_t(rowBlocks * blockWidth);
++            imageCopy.bufferImageHeight = uint32_t(imageRows * blockWidth);
++            vkCmdCopyImageToBuffer(vk, srcTexture->vk, toImageLayout(srcTexture->textureLayout), dstBuffer->vk, 1, &imageCopy);
++        }
++        else if ((dstLocation.type == RenderTextureCopyType::SUBRESOURCE) && (srcLocation.type == RenderTextureCopyType::SUBRESOURCE)) {
+             VkImageCopy imageCopy = {};
+             imageCopy.srcSubresource.aspectMask = toAspectFlags(srcTexture->desc.format, srcTexture->desc.flags);
+             imageCopy.srcSubresource.baseArrayLayer = srcLocation.subresource.arrayIndex;
+@@ -3283,6 +3400,9 @@ namespace plume {
+ 
+             vkCmdCopyImage(vk, srcTexture->vk, toImageLayout(srcTexture->textureLayout), dstTexture->vk, toImageLayout(dstTexture->textureLayout), 1, &imageCopy);
+         }
++        else {
++            assert(false && "Unsupported texture copy location combination.");
++        }
+     }
+ 
+     void VulkanCommandList::copyBuffer(const RenderBuffer *dstBuffer, const RenderBuffer *srcBuffer) {

@@ -6,8 +6,13 @@
 // accent colour.
 
 #include "ui_theme.h"
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+#include "gpu_native/renderer_mode.h"
+#include "settings_registry.h"
+#endif
 
 #include <filesystem>
+#include <algorithm>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -118,6 +123,18 @@ void ConfigureSettings() {
           {"depth_of_field", "Depth of field blur",
            "The game's background blur. Off skips the pass entirely: the picture stays sharp "
            "at every distance and the GPU does less."},
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+          {"native_anisotropic_override", "Anisotropic filtering",
+           "Native texture filtering. Changes apply between frames; existing GPU descriptors stay valid.",
+           Choices{{"-2", "Use installation setting"},
+                   {"-1", "Game default"},
+                   {"0", "Off"},
+                   {"1", "1x"},
+                   {"2", "2x"},
+                   {"3", "4x"},
+                   {"4", "8x"},
+                   {"5", "16x"}}},
+#else
           {"anisotropic_override", "Anisotropic filtering",
            "Keeps textures sharp at oblique angles. Higher is prettier and slightly costlier.",
            Choices{{"-1", "Game default"},
@@ -127,6 +144,7 @@ void ConfigureSettings() {
                    {"3", "4x"},
                    {"4", "8x"},
                    {"5", "16x"}}},
+#endif
           {"frame_rate", "Frame rate target",
            "How fast the game logic is paced: 30 as on the console, or 60.",
            Choices{{"30", "30 FPS (as on console)"}, {"60", "60 FPS"}}},
@@ -144,6 +162,23 @@ void ConfigureSettings() {
   pres.pages.push_back(SettingsPage{
       "Graphics",
       {
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+          {"native_fsr3", "FSR 3 upscaling", "Temporal upscaling in the native renderer. Applies at the next frame boundary. Frame generation is disabled."},
+          {"native_fsr3_quality", "FSR 3 quality", "Changes scene resolution at the next frame boundary.",
+           Choices{{"native", "Native AA"}, {"quality", "Quality"}, {"balanced", "Balanced"},
+                   {"performance", "Performance"}, {"ultra_performance", "Ultra Performance"}}},
+          {"native_fsr3_sharpen", "FSR 3 sharpening", "Sharpen the upscaled image."},
+          {"native_fsr3_sharpness", "FSR 3 sharpness", "Strength from 0 to 1. Takes effect immediately."},
+          {"native_fsr3_mip_bias", "FSR texture detail adjustment", "Automatic detail bias follows render resolution. Positive values reduce texture shimmer; negative values retain finer texture detail. Live."},
+          {"native_fps_limit", "Native FPS cap", "Native presentation cap. 0 is uncapped. Takes effect immediately."},
+          {"native_show_fps", "FPS meter", "Show the FPS meter in the bottom-left corner."},
+          {"native_bloom", "Bloom glow", "Glow from the game's original bloom composition."},
+          {"native_cel_shading", "Cel shading", "Original follows each world. Everywhere uses cartoon variants on supported materials. Cel shading Off is unavailable because it removes required material lighting.",
+           Choices{{"original", "Original"}, {"everywhere", "Everywhere"}}},
+          {"native_vsync", "VSync", "Synchronize presentation to the monitor refresh rate. Off allows tearing and FPS above refresh. Applies immediately."},
+          {"native_scene_draw_distance_scale", "Object draw distance", "Object clip/LOD distance multiplier. Requires restart."},
+          {"native_level_render_distance_scale", "Level render distance", "Camera far-clip multiplier. Requires restart."},
+#endif
           {"present_effect", "Upscaling filter",
            "How the rendered frame is scaled to the window.",
            Choices{{"bilinear", "Bilinear (fastest)"},
@@ -167,6 +202,7 @@ void ConfigureSettings() {
   pres.pages.push_back(SettingsPage{
       "Audio",
       {
+          {"audio_volume", "Volume", "100 is the original volume; above 100 boosts it."},
           {"audio_mute", "Mute"},
       }});
 
@@ -216,6 +252,7 @@ void ConfigureSettings() {
            "Use the mouse as the right stick. Off leaves the camera to the keys bound to "
            "it."},
           {"mnk_sensitivity", "Mouse sensitivity"},
+          {"controller_vibration", "Controller vibration", "Off stops controller rumble."},
           {"guide_button", "Pass the Guide button to the game"},
       }});
 
@@ -302,6 +339,26 @@ void ConfigureSettings() {
   // is; showing it only invites the question.
   pres.hidden = {"vsync", "readback_memexport_batched", "readback_memexport_on_demand"};
 
+#ifdef LEGODIMENSIONS_NATIVE_GPU
+  if (!legodimensions::gpu_native::UsePm4Reference()) {
+    std::vector<std::string> sdk_only{"resolution", "resolution_scale", "present_max_output_height",
+        "present_effect", "present_letterbox", "present_dither", "d3d12_allow_variable_refresh_rate_and_tearing",
+        "framerate_limit", "async_shader_compilation", "store_shaders", "anisotropic_override",
+        // These select the SDK/PM4 device, not Native GPU's Plume device.
+        // In particular, this native build has no Vulkan implementation.
+        "gpu_backend", "d3d12_adapter"};
+    if (rex::cvar::Query<bool>("native_settings_frontend")) {
+      for (const auto& setting : legodimensions::settings::NativeSettingsCatalog())
+        sdk_only.emplace_back(setting.key);
+    }
+    for (auto& page : pres.pages) {
+      std::erase_if(page.items, [&](const SettingsItem& item) {
+        return std::find(sdk_only.begin(),sdk_only.end(),item.cvar)!=sdk_only.end();
+      });
+    }
+    pres.hidden.insert(pres.hidden.end(),sdk_only.begin(),sdk_only.end());
+  }
+#endif
   rex::ui::SettingsDialog::SetPresentation(std::move(pres));
 }
 

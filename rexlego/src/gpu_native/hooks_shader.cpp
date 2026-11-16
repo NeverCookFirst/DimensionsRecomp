@@ -7,6 +7,8 @@
 #include "gpu_native/shaders.h"
 #include "gpu_native/textures.h"
 #include "gpu_native/vertex_declarations.h"
+#include "gpu_native/native_worker.h"
+#include "gpu_native/native_recording.h"
 
 extern "C" void __imp__sub_83FC4CE0(PPCContext& __restrict ctx, u8* base);
 extern "C" void __imp__sub_83FC59D8(PPCContext& __restrict ctx, u8* base);
@@ -28,12 +30,22 @@ void SetPixelShaderHook(D3DDevice* device, u32 shader) {
   if (device) {
     device->pixel_shader = shader;
   }
+  if (device && NativeFullDrawPreparationEnabled() && NativeWorkerShouldQueue()) return;
+  if (NativeWorkerShouldQueue()) {
+    NativeWorkerSubmit([shader] { BindShader(ShaderStage::kPixel, shader); }, false, true);
+    return;
+  }
   BindShader(ShaderStage::kPixel, shader);
 }
 
 void SetVertexShaderHook(D3DDevice* device, u32 shader) {
   if (device) {
     device->vertex_shader = shader;
+  }
+  if (device && NativeFullDrawPreparationEnabled() && NativeWorkerShouldQueue()) return;
+  if (NativeWorkerShouldQueue()) {
+    NativeWorkerSubmit([shader] { BindShader(ShaderStage::kVertex, shader); }, false, true);
+    return;
   }
   BindShader(ShaderStage::kVertex, shader);
 }
@@ -47,13 +59,20 @@ REX_HOOK(sub_83FB6828, legodimensions::gpu_native::SetPixelShaderHook);
 REX_HOOK(sub_83FB6A30, legodimensions::gpu_native::SetVertexShaderHook);
 
 REX_HOOK_RAW(sub_83FB7658) {
-  legodimensions::gpu_native::InvalidatePlacementShader(ctx.r3.u32);
+  // Captured draws own their programs; only draws not yet captured need ordering.
+  legodimensions::gpu_native::NativeWorkerDrainCapture();
+  const u32 address = ctx.r3.u32;
+  legodimensions::gpu_native::InvalidatePlacementShader(address);
   __imp__sub_83FB7658(ctx, base);
+  legodimensions::gpu_native::RefreshPlacementShaderBinding(address);
 }
 
 REX_HOOK_RAW(sub_83FB67F0) {
-  legodimensions::gpu_native::InvalidatePlacementShader(ctx.r3.u32);
+  legodimensions::gpu_native::NativeWorkerDrainCapture();
+  const u32 address = ctx.r3.u32;
+  legodimensions::gpu_native::InvalidatePlacementShader(address);
   __imp__sub_83FB67F0(ctx, base);
+  legodimensions::gpu_native::RefreshPlacementShaderBinding(address);
 }
 
 // Resource AddRef/Release serve all D3D resource types. Only intercept objects
@@ -83,6 +102,8 @@ REX_HOOK_RAW(sub_83FC4CE0) {
 
 REX_HOOK_RAW(sub_83FC59D8) {
   const u32 resource = ctx.r3.u32;
+  if (!legodimensions::gpu_native::NativeDeferredReleaseEnabled())
+    legodimensions::gpu_native::NativeWorkerDrain();
   if (!legodimensions::gpu_native::IsNativeShader(resource)) {
     if (legodimensions::gpu_native::IsNativeBuffer(resource)) {
       ctx.r3.u64 = legodimensions::gpu_native::ReleaseNativeBuffer(resource);
@@ -98,6 +119,10 @@ REX_HOOK_RAW(sub_83FC59D8) {
           ReleaseNativeVertexDeclaration(resource);
       return;
     }
+    // Only a final XDK release frees memory queued draws may still read.
+    const auto* header = reinterpret_cast<const legodimensions::gpu_native::D3DResource*>(base + resource);
+    if (u32(header->reference_count) <= 1)
+      legodimensions::gpu_native::NativeWorkerDrain();
     __imp__sub_83FC59D8(ctx, base);
     return;
   }

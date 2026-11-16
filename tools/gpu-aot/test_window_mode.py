@@ -16,12 +16,24 @@ while depth:
     depth += (s[end] == '{') - (s[end] == '}')
     end += 1
 handler = s[start:end].replace(' override', '')
+start = s.index('  bool RequestFullscreen(bool fullscreen) {')
+i = s.index('{', start)
+depth, end = 1, i+1
+while depth:
+    depth += (s[end] == '{') - (s[end] == '}')
+    end += 1
+request = s[start:end]
 code = r'''
 #include "window_mode.h"
 #include <cassert>
+#include <cstdlib>
+#include <functional>
 #include <string>
 #include <iostream>
+#define REXLOG_INFO(...) ((void)0)
+#define REXLOG_WARN(...) ((void)0)
 int delegated=0, flags=0;
+std::function<void(bool)> flag_callback;
 namespace rex::ui {
 enum class VirtualKey { kReturn,kF4,kA };
 struct KeyEvent {
@@ -33,20 +45,22 @@ struct KeyEvent {
 };
 void ProcessKeyEvent(KeyEvent&){++delegated;}
 }
-namespace rex::cvar { void SetFlagByName(const char* name,const char* value){assert(std::string(name)=="fullscreen");assert(std::string(value)=="true"||std::string(value)=="false");++flags;} }
+namespace rex::cvar { bool SetFlagByName(const char* name,const char* value){assert(std::string(name)=="fullscreen");assert(std::string(value)=="true"||std::string(value)=="false");++flags;flag_callback(std::string(value)=="true");return true;} }
 struct Window {
  bool fs=false;unsigned w=900,h=600,changes=0,monitor=3;
  bool IsFullscreen(){return fs;}unsigned GetActualLogicalWidth(){return w;}unsigned GetActualLogicalHeight(){return h;}
+ bool HasFocus(){return true;}
  void SetFullscreen(bool v){fs=v;++changes;if(v){w=1920;h=1080;}}
  void SetDesiredLogicalSize(unsigned width,unsigned height){w=width;h=height;}
 };
 struct App {
  Window win;bool has_window=true;legodimensions::WindowedSize windowed_size_;
  Window* window(){return has_window?&win:nullptr;}
-''' + handler + r'''
+''' + request + '\n' + handler + r'''
 };
 int main(){
  App a;rex::ui::KeyEvent e;
+ flag_callback=[&](bool value){a.win.SetFullscreen(value);};
  a.OnKeyDown(e);assert(e.handled&&a.win.fs&&flags==1&&delegated==0&&a.win.monitor==3);
  e.repeat=true;a.OnKeyDown(e);assert(a.win.fs&&a.win.changes==1&&flags==1&&delegated==0);
  e.repeat=false;a.OnKeyDown(e);assert(!a.win.fs&&a.win.w==900&&a.win.h==600&&flags==2);

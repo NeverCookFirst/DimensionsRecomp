@@ -60,7 +60,8 @@ plume::RenderFormat ConvertGuestTextureFormat(u32 guest_format) {
       return RF::R16G16B16A16_SNORM;
     case D3DFormat::kD24FS8:
     case D3DFormat::kD24S8:
-      // LEGO uses stencil shadows, so retaining the stencil plane is required.
+      // Retain the established depth/alias representation. The UNORM24 storage
+      // candidate regressed level1 during the owner's October10 visual test.
       return RF::D32_FLOAT_S8_UINT;
     case D3DFormat::kR32F:
       return RF::R32_FLOAT;
@@ -143,6 +144,7 @@ plume::RenderFormat ConvertXenosTextureFormat(u32 xenos_format) {
 
 bool IsDepthFormat(plume::RenderFormat format) {
   return format == plume::RenderFormat::D32_FLOAT ||
+         format == plume::RenderFormat::D24_UNORM_S8_UINT ||
          format == plume::RenderFormat::D32_FLOAT_S8_UINT;
 }
 

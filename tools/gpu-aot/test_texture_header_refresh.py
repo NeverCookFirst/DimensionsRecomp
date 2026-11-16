@@ -17,11 +17,20 @@ parser.add_argument('--compiler', default='clang++')
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 text = (root / 'rexlego/src/gpu_native/textures.cpp').read_text()
-begin = text.index('void RefreshTextureHeader(u32 guest_address) {')
-end = text.index('\nTextureResourceView ResolveTextureResource', begin)
+begin = text.index('namespace {\nbool RefreshTextureResourceHeader(u32 guest_address,')
+end = text.index('\nNativeRenderExtent NativeTextureExtent', begin)
 body = text[begin:end]
-rows = re.findall(r'header changed guest=([0-9A-F]+).*?cached=([0-9A-F,]+) current=([0-9A-F,]+)',
-                  args.log.read_bytes().decode('utf-8', errors='replace'))
+rows = []
+with args.log.open(encoding='utf-8', errors='replace') as log:
+    for line in log:
+        match = re.search(r'header changed guest=([0-9A-F]+).*?cached=([0-9A-F,]+) current=([0-9A-F,]+)', line)
+        if match:
+            rows.append(match.groups())
+        elif '\ttexture_header_refresh\t' in line:
+            match = re.search(r'guest=\s*(\d+).*?cached=\s*([0-9a-f,]+)\s*current=\s*([0-9a-f,]+)', line)
+            assert match, line
+            guest, before, after = match.groups()
+            rows.append((f'{int(guest):X}', before.rstrip(',').upper(), after.rstrip(',').upper()))
 assert rows, 'Need actual runtime headers'
 args.output.mkdir(parents=True, exist_ok=True)
 harness = r'''
@@ -41,7 +50,7 @@ template<class T> std::string LongProbeHex(const T&) { return {}; }
 using u32=uint32_t;
 struct D3DTexture { struct { u32 common=3; } resource; struct { std::array<u32,6> dword; } format; } header;
 struct TextureResource {
-  bool owns_guest_memory=false,surface=false,resolved_on_host=false,guest_uploaded=true,upload_source_key_valid=true;
+  bool owns_guest_memory=false,surface=false,resolved_on_host=false,guest_uploaded=true,upload_source_key_valid=true,guest_backing_current=false;
   u32 adopted_header_type=3,descriptor_index=4,resolved_descriptor_index=5,sampled_descriptor_index=6,mirror_address=0;
   std::vector<u32> previous_surface_descriptors{7};
   std::mutex mutex; std::array<u32,6> guest_fetch;
@@ -65,11 +74,12 @@ std::shared_ptr<TextureResource> FindTexture(u32 a) { auto i=g_textures.find(a);
 void InvalidateFramebufferReferences(u32) { ++framebuffer_invalidations; }
 '''
 harness += body + r'''
-void Check(std::array<u32,6> before,std::array<u32,6> after,bool replace,bool host=false,bool owned=false,u32 type=3) {
+void Check(std::array<u32,6> before,std::array<u32,6> after,bool replace,bool host=false,bool owned=false,u32 type=3,bool uploaded=true,bool key_valid=true) {
   g_textures.clear(); retired.clear(); descriptors.clear(); framebuffer_invalidations=0;
   auto old=std::make_shared<TextureResource>(); old->guest_fetch=before;
   old->cpu_stamp=11; old->depth_alias_generation=12;
   old->resolved_on_host=host; old->owns_guest_memory=owned;
+  old->guest_uploaded=uploaded; old->upload_source_key_valid=key_valid;
   header.format.dword=after; header.resource.common=type; g_textures.emplace(1,old);
   RefreshTextureHeader(1);
   if(owned || (before==after && type==3)) {
@@ -82,7 +92,7 @@ void Check(std::array<u32,6> before,std::array<u32,6> after,bool replace,bool ho
     assert((descriptors==std::vector<u32>{4,5,6,7}) && framebuffer_invalidations==1);
   } else {
     assert(FindTexture(1)==old && old->guest_fetch==after);
-    assert(!old->upload_source_key_valid && old->guest_uploaded==host);
+    assert(old->upload_source_key_valid==key_valid && old->guest_uploaded==uploaded);
     assert(old->cpu_stamp==0 && old->depth_alias_generation==0);
     assert(retired.empty() && descriptors.empty());
   }
@@ -94,9 +104,10 @@ for guest, cached, current in rows:
     old, new = [[int(w, 16) for w in value.split(',')] for value in (cached, current)]
     assert len(old) == len(new) == 6
     # Observed shape change is independently visible in the runtime words.
-    replace = any(old[i] != new[i] for i in (0, 2, 3, 4))
-    assert (old[1] & 0xFFF) == (new[1] & 0xFFF)
-    assert (old[5] & 0xFFF) == (new[5] & 0xFFF)
+    replace = (any(old[i] != new[i] for i in (0, 2, 3, 4)) or
+               (old[1] & 0xFFF) != (new[1] & 0xFFF) or
+               (old[5] & 0xFFF) != (new[5] & 0xFFF) or
+               bool(old[5] >> 12) != bool(new[5] >> 12))
     replacements += replace
     relocations += not replace
     a, b = ['{' + ','.join(hex(w) + 'u' for w in value) + '}' for value in (old, new)]
@@ -110,6 +121,9 @@ Check({2,0xF4000052u,0x001FE0FFu,0xD10,0x200,0xA00},
 Check({2,0xF4000052u,0x001FE0FFu,0xD10,0x200,0xF4100A00u},
       {2,0xF4000052u,0x001FE0FFu,0xD10,0x200,0xA00},true);
 Check({2,3,4,5,6,7},{2,3,4,5,6,7},true,false,false,6);
+// A prior CPU overwrite/failed upload must stay dirty across relocation.
+Check({2,0xF4000052u,0x001FE0FFu,0xD10,0x200,0xF4100A00u},
+      {2,0xF400C052u,0x001FE0FFu,0xD10,0x200,0xF410CA00u},false,false,false,3,false,false);
 }
 '''
 source = args.output / 'refresh-harness.cpp'
@@ -118,7 +132,7 @@ exe = args.output / 'refresh-harness.exe'
 subprocess.run([args.compiler, '-std=c++20', '-DNOMINMAX', str(source), '-o', str(exe)], check=True)
 subprocess.run([str(exe.resolve())], check=True)
 report = {'runtime_header_pairs': len(rows), 'relocations': relocations,
-          'shape_replacements': replacements, 'fixture_calls': len(rows) * 4 + 3,
+          'shape_replacements': replacements, 'fixture_calls': len(rows) * 4 + 4,
           'production_body_extracted': True, 'gpu_fences_and_gameplay_verified': False}
 (args.output / 'verification.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
 print(json.dumps(report))

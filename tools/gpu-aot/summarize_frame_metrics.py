@@ -43,14 +43,72 @@ def stats(data):
  for key in ['cpu_resource_wait_skips','bindings_ms','begin_ms','pipeline_ms','issue_ms',
              'tail_ms','buffer_converted_bytes','frame_slot_wait_calls','frame_slot_wait_ms',
              'acquire_cpu_ms','present_submit_cpu_ms','swap_present_cpu_ms',
-             'buffer_watch_hits','buffer_watch_audits','buffer_watch_mismatches'] + [k for k in data[0] if k.startswith(('sync_', 'callbacks_'))]:
+             'buffer_watch_hits','buffer_watch_audits','buffer_watch_mismatches'] + [k for k in data[0] if k.startswith(('sync_', 'callbacks_', 'constants_'))]:
   if key in data[0]:result[key+'_mean']=mean(key)
+ if 'detailed_timing_enabled' in data[0]:
+  modes={r['detailed_timing_enabled'] for r in data}
+  result['detailed_timing_enabled']=bool(next(iter(modes))) if len(modes)==1 else None
+ if 'present_timing_enabled' in data[0]:
+  modes={r['present_timing_enabled'] for r in data}
+  measured=len(modes)==1 and next(iter(modes))==1
+  result['present_timing_enabled']=measured if len(modes)==1 else None
+  if not measured:result['swap_present_cpu_ms_mean']=None
  return result
-record_path=a.file.with_name(a.file.name.replace('-frames.csv','-process.json'))
+
+def presentation_report(data):
+ # Conditions are explicit. Equal output sizes alone do not distinguish a
+ # borderless transition, a different render scale, FSR or another monitor.
+ conditions=['output_width','output_height','scene_render_width','scene_render_height',
+  'present_source_width','present_source_height','fsr_enabled','spatial_fsr_presented',
+  'presentation_monitor_index','presentation_refresh_hz','native_fps_limit_cvar',
+  'native_vsync','presentation_focused','detailed_timing_enabled','present_timing_enabled']
+ mode='presentation_borderless'
+ fields=conditions+[mode]
+ result={'available':False,'missing_columns':sorted(set(fields)-set(data[0] if data else {})),
+  'groups':[],'segments':[],'matched_output_comparisons':[],
+  'scene_identity_requires_visual_confirmation':True,
+  'limitation':'Grouped timing observations are not proof of equal scene workload or a fullscreen/driver root cause. FPS-limit environment overrides must also be checked in run.json/game.log.'}
+ if not data or result['missing_columns']:return result
+ result['available']=True
+ groups={};segments=[]
+ for row in data:
+  key=tuple(row[k] for k in fields)
+  groups.setdefault(key,[]).append(row)
+  if not segments or segments[-1][0]!=key:segments.append((key,[]))
+  segments[-1][1].append(row)
+ for key,values in groups.items():
+  condition=dict(zip(fields,key));summary=stats(values);hz=condition['presentation_refresh_hz']
+  summary['intervals_near_refresh_percent']=(
+   100*sum(abs(r['interval_ms']-1000/hz)<=.05*(1000/hz) for r in values)/len(values)
+   if hz>1 else None)
+  result['groups'].append({'conditions':condition,'timing':summary})
+ for key,values in segments:
+  result['segments'].append({'conditions':dict(zip(fields,key)),
+   'first_frame':values[0]['frame'],'last_frame':values[-1]['frame'],'timing':stats(values)})
+ by_workload={}
+ for key,values in groups.items():
+  condition=dict(zip(fields,key))
+  if (condition['presentation_focused']!=1 or condition['native_vsync']!=0 or
+      condition['native_fps_limit_cvar']!=0 or condition[mode] not in (0,1)):
+   continue
+  # Very short transitions should not dominate a mode comparison.
+  if sum(r['interval_ms'] for r in values)<1000:continue
+  by_workload.setdefault(key[:-1],{})[condition[mode]]=values
+ for key,modes in by_workload.items():
+  if 0 not in modes or 1 not in modes:continue
+  windowed,borderless=stats(modes[0]),stats(modes[1])
+  result['matched_output_comparisons'].append({'conditions':dict(zip(conditions,key)),
+   'windowed':windowed,'borderless':borderless,
+   'borderless_fps_divided_by_windowed_fps':borderless['mean_fps']/windowed['mean_fps'],
+   'scene_identity_requires_visual_confirmation':True})
+ return result
+record_path=(a.file.with_name(a.file.name[:-len('-frames.csv')]+'-process.json')
+             if a.file.name.endswith('-frames.csv') else a.file.with_suffix('.process.json'))
 record=json.loads(record_path.read_text(encoding='utf-8-sig')) if record_path.exists() else None
 heavy_capture=bool(record and (record.get('mode')=='snapshot' or any(record.get(k) for k in
  ['longProbe','logoUploads','logoCaptureRenderDocDll','captureMissing','meshTrace','auditTextureWatch','auditBufferWatch','portraitTrace'])))
 report={'source':str(a.file),'whole_run':stats(rows),'tail':stats(tail),
+        'presentation':presentation_report(rows),
         'latest_frame':rows[-1]['frame'] if rows else None,
         'after_frame':a.after_frame,'through_frame':a.through_frame,
         'scene_identity_requires_visual_confirmation':True,

@@ -9,11 +9,29 @@
 
 #pragma once
 
+#include <functional>
+
+namespace rex {
+struct PathConfig;
+}
+
 namespace legodimensions::updates {
 
 // Starts the updater in the background when updates_check is on and the updater
 // is where the config says. It opens a window only if there is something new.
 // Never blocks: a slow or unreachable GitHub is the updater's problem.
-void CheckAtStartup();
+//
+// When the player accepts an update, the updater is started and then
+// close_game runs: the updater cannot replace the exe and DLLs while the game
+// holds them, and players asked for the game to get out of the way by itself.
+void CheckAtStartup(std::function<void()> close_game);
+
+// The installer writes absolute paths (C:\Games\Dimensions Recompiled\...) into
+// legodimensions.toml. If the folder was moved, or the game runs under a
+// different Proton/Wine prefix than the installer did (issue #21), every one
+// of them points nowhere. When game_data_root does not exist but a "game"
+// folder sits next to the executable, each path under the old install folder
+// is moved to the executable's folder. A working install is never touched.
+void RelocateMovedInstall(rex::PathConfig& paths);
 
 }  // namespace legodimensions::updates

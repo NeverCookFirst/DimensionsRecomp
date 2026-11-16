@@ -31,7 +31,7 @@ public static class SetupLog
         try
         {
             string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                                      "DimensionsRecompiled");
+                                      Product.Id);
             Directory.CreateDirectory(dir);
             FilePath = Path.Combine(dir, name + ".log");
             // One previous run is kept; beyond that the file only grows.

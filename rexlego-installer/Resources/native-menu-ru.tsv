@@ -1,0 +1,66 @@
+Video	Видео
+VIDEO	ВИДЕО
+Effects	Эффекты
+EFFECTS	ЭФФЕКТЫ
+Fullscreen	Полноэкранный режим
+VSync	Вертикальная синхронизация
+Frame rate limit	Ограничение частоты кадров
+Render resolution	Разрешение рендеринга
+FPS meter	Счётчик кадров
+Bloom glow	Свечение
+Cel shading	Мультяшная графика
+FSR 3 upscaling	Масштабирование FSR 3
+FSR 3 quality	Качество FSR 3
+FSR 3 sharpening	Резкость FSR 3
+FSR 3 sharpness	Уровень резкости FSR 3
+Texture detail	Детализация текстур
+Spatial upscaling	Пространственное масштабирование
+FSR 1 sharpness	Резкость FSR 1
+FSR 1 upscaling passes	Число проходов FSR 1
+Texture filtering	Фильтрация текстур
+Depth of field	Глубина резкости
+Apply	Применить
+Restore defaults	Сбросить настройки
+Back	Назад
+On	Вкл.
+Off	Выкл.
+Unlocked	Без ограничения
+Original	Оригинальная
+Everywhere	Везде
+Native resolution	Родное разрешение
+Quality	Качество
+Balanced	Баланс
+Performance	Производительность
+Ultra performance	Макс. производительность
+Bilinear	Билинейная
+Automatic	Автоматически
+Installation setting	Настройка установки
+Game setting	Настройка игры
+Credits	Авторы
+Quit Game	Выйти из игры
+Quit to desktop	Выйти на рабочий стол?
+Thanks for playing Dimensions Recompiled! Made by NeverCookFirst	Спасибо за игру в Dimensions Recompiled! Автор: NeverCookFirst
+Close	Закрыть
+Next	Далее
+Cancel	Отмена
+Continue	Продолжить
+Restore default settings	Восстановить настройки по умолчанию?
+Discard unsaved changes	Отменить несохранённые изменения?
+Discard	Отменить изменения
+Keep editing	Продолжить настройку
+Keep display settings	Сохранить параметры экрана?
+Keep	Сохранить
+Revert	Вернуть
+Changes restored	Изменения отменены
+Applying settings	Применение настроек
+Restoring settings	Восстановление настроек
+Settings saved	Настройки сохранены
+Defaults ready. Select Apply to save	Настройки сброшены. Выберите «Применить» для сохранения
+Could not save settings	Не удалось сохранить настройки
+Could not apply settings	Не удалось применить настройки
+Could not restore settings	Не удалось восстановить настройки
+Saved settings could not be loaded	Не удалось загрузить сохранённые настройки
+Retry save	Повторить сохранение
+Retry restore	Повторить восстановление
+VIDEO - Please wait...	ВИДЕО — подождите…
+EFFECTS - Please wait...	ЭФФЕКТЫ — подождите…

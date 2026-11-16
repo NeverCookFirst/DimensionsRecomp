@@ -7,6 +7,10 @@ float4 main(in float4 position : SV_Position,
             in float2 tex_coord : TEXCOORD) : SV_Target {
   Texture2D<float4> texture =
       g_Texture2DDescriptorHeap[g_PushConstants.ResourceDescriptorIndex];
-  return texture.Sample(g_SamplerDescriptorHeap[0], tex_coord) *
+  // Presentation-only ABI: ResourceDescriptorIndex2 carries the float X
+  // offset bits; Param1 carries Y. Other resolve shaders retain their ABI.
+  const float2 sample_offset = float2(asfloat(g_PushConstants.ResourceDescriptorIndex2),
+                                      g_PushConstants.Param1);
+  return texture.Sample(g_SamplerDescriptorHeap[0], tex_coord + sample_offset) *
          float4(g_PushConstants.Param0.xxx, 1.0);
 }

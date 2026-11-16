@@ -72,7 +72,13 @@ public static class Product
     /// as updates_repo, so an install can be pointed elsewhere without a new
     /// build, and into install.json so the updater still works if the toml is lost.
     /// </summary>
+#if NATIVE_GPU_EDITION
+    public const string Id = "DimensionsRecompiledNativeGPU";
+    public const string UpdateRepo = "";
+#else
+    public const string Id = "DimensionsRecompiled";
     public const string UpdateRepo = "NeverCookFirst/DimensionsRecomp";
+#endif
 }
 
 public readonly record struct InstallProgress(double Fraction, string Status);
@@ -319,6 +325,14 @@ public sealed class InstallJob
 
     void Run(IReadOnlyList<DlcSource> dlc)
     {
+        var existing = InstallManifest.Load(o.InstallDir);
+        if (existing is not null && existing.Product != Product.Id)
+            throw new IOException("Choose a folder for this edition. The selected folder belongs to a different edition.");
+#if NATIVE_GPU_EDITION
+        if (existing is null && Directory.Exists(o.InstallDir) &&
+            Directory.EnumerateFileSystemEntries(o.InstallDir).Any())
+            throw new IOException("Choose a new, empty Native GPU installation folder.");
+#endif
         Report("Preparing...");
         totalBytes = Math.Max(1, EstimateBytes(o, payload, dlc));
         if (o.DlcOnly) { RunDlcOnly(dlc); return; }
@@ -394,6 +408,19 @@ public sealed class InstallJob
         File.WriteAllText(Path.Combine(o.InstallDir, TomlConfig.FileName),
                           TomlConfig.Render(plan, WizardForm.AppName), new UTF8Encoding(false));
         File.WriteAllText(ReadmePath, BuildReadme(dlc.Count), new UTF8Encoding(false));
+#if NATIVE_GPU_EDITION
+        if (existing is not null)
+        {
+            foreach (string name in new[] { "Play Native GPU.cmd", "Launch-NativeGPU.ps1", "native-environment.json" })
+            {
+                var prior = existing.Find("game/" + name);
+                string path = Path.Combine(o.InstallDir, name);
+                if (prior is not null && File.Exists(path) &&
+                    InstallManifest.Sha256(path).Equals(prior.Sha, StringComparison.OrdinalIgnoreCase))
+                    File.Delete(path);
+            }
+        }
+#endif
         WriteInstallManifest(plan, dlc);
 
         if (o.DesktopShortcut)
@@ -602,6 +629,7 @@ public sealed class InstallJob
     {
         var manifest = new InstallManifest
         {
+            Product = Product.Id,
             Version = release?.Version ?? "0.0.0",
             InstalledUtc = DateTime.UtcNow.ToString("o"),
             UpdatedUtc = DateTime.UtcNow.ToString("o"),
@@ -621,6 +649,11 @@ public sealed class InstallJob
                       ?? throw new InvalidOperationException("README template missing from the installer.");
         using var r = new StreamReader(s);
         string text = r.ReadToEnd();
+#if NATIVE_GPU_EDITION
+        text = text.Replace("Start  legodimensions.exe  (or the desktop shortcut).",
+            "Start legodimensions.exe or use the desktop shortcut.\r\n"
+            + "     Each launch records game logs and metrics under logs. See KNOWN-BUGS.md.");
+#endif
         string toypadExe = o.IncludeToypad
             ? Directory.EnumerateFiles(ToypadDir, "*.exe").Select(Path.GetFileName).FirstOrDefault() ?? "LegoToypad.exe"
             : "";

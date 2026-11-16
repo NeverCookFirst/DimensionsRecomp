@@ -9,6 +9,8 @@ import subprocess
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('output', type=Path)
+p.add_argument('--compiler', default='clang++')
+p.add_argument('--plume-source', type=Path)
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 a.output.mkdir(parents=True, exist_ok=True)
@@ -23,11 +25,13 @@ def body(path, signature):
         end += 1
     return source[start:end]
 
-plume = body('thirdparty/plume/plume_d3d12.cpp',
+plume_path = a.plume_source or Path('thirdparty/plume/plume_d3d12.cpp')
+plume = body(plume_path,
              'void D3D12CommandQueue::waitForCommandFence(')
-resize = body('thirdparty/plume/plume_d3d12.cpp', 'bool D3D12SwapChain::resize(')
+resize = body(plume_path, 'bool D3D12SwapChain::resize(')
 native = '\n'.join(body('rexlego/src/gpu_native/device.cpp', sig) for sig in (
-    'void RefreshCompletedSubmissionsLocked(', 'bool WaitForSubmittedFramesLocked(',
+    'void RefreshCompletedSubmissionsLocked(', 'bool WaitForSubmissionLocked(',
+    'bool WaitForSubmittedFramesLocked(',
     'bool RebuildSwapChain('))
 source = r'''
 #include <algorithm>
@@ -84,8 +88,14 @@ struct D3D12SwapChain {
 '''+resize+r'''
 }
 struct SwapChain {bool resize_ok=true,empty=false;int resizes=0;bool resize();bool isEmpty(){return empty;}};
+// Disabled optional timestamp boundary; test_gpu_timestamps covers its real enabled implementation.
+struct GpuSubmissionTimestamps {
+ void Begin(auto*,u32,u64){};void End(auto*,u32,const char*,u32=~0u,u32=~0u){};
+ void Submitted(u32,u64){};void Complete(u32,u64,u64,u64){};
+};
 struct State {
- static constexpr u32 kFramesInFlight=3;
+ GpuSubmissionTimestamps* gpu_timestamps=nullptr;u32 present_number=0;
+ static constexpr u32 kFramesInFlight=3;u32 command_slot_count=kFramesInFlight;
  Backend backend=Backend::kD3D12;
  std::array<bool,3> frame_submitted{};
  std::array<std::unique_ptr<plume::D3D12CommandFence>,3> frame_fences;
@@ -160,8 +170,8 @@ int main(){
 h = a.output / 'resize-fences.cpp'
 h.write_text(source)
 exe = a.output / 'resize-fences.exe'
-subprocess.run(['clang++', '-std=c++20', '-DNOMINMAX', str(h), '-o', str(exe)], check=True)
-subprocess.run([str(exe.resolve())], check=True)
+subprocess.run([a.compiler, '-std=c++20', '-UNDEBUG', '-DNOMINMAX', str(h), '-o', str(exe)], check=True, timeout=45)
+subprocess.run([str(exe.resolve())], check=True, timeout=10)
 (a.output / 'verification.json').write_text(json.dumps({
     'actual_production_bodies': True, 'fake_gpu': True, 'passed': True,
     'checks': ['completed consumed event', 'stale event and newer fence', 'all three submissions before resize',

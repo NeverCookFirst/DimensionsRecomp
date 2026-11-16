@@ -59,6 +59,8 @@ public static class Updater
                 $"No {InstallManifest.FileName} in {installDir}.\r\n\r\nThis folder was not set up by the "
                 + "installer, or it was installed by a version older than 1.0.");
         }
+        if (install.Product != Product.Id)
+            return Fail(console, "This updater belongs to a different edition.");
         // Installs get moved. The recorded paths are only trustworthy when the
         // folder they point at is the one we were run from.
         if (!string.Equals(Path.GetFullPath(install.Paths.InstallDir), installDir, StringComparison.OrdinalIgnoreCase))
@@ -68,6 +70,8 @@ public static class Updater
         if (apply is not null) return ApplyLocal(install, apply, console);
 
         string feed = repo ?? (install.UpdateRepo.Length > 0 ? install.UpdateRepo : Product.UpdateRepo);
+        if (string.IsNullOrWhiteSpace(feed))
+            return quiet ? 0 : Fail(console, "An online update feed has not been configured for this edition.");
         ReleaseInfo? release;
         try
         {

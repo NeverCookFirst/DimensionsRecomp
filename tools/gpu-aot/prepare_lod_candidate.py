@@ -1,4 +1,4 @@
-"""Prepare an isolated explicit-LOD compiler and ABI candidate, not a live fix.
+"""Prepare an isolated explicit-LOD compiler candidate, not a live fix.
 
 Copies only the XenosRecomp module sources; dependencies use the existing local
 build. All outputs stay under scratch. Does not change the compiler checkout,
@@ -7,6 +7,7 @@ native source, runtime shader bank, config, or game executable.
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 
@@ -35,10 +36,12 @@ def main():
         manifest[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
         shutil.copyfile(path, source_dir / name)
     compiler = (source_dir / 'shader_recompiler.cpp').read_text()
-    compiler = replace_once(compiler,
-        'if (instr.opcode != FetchOpcode::TextureFetch && instr.opcode != FetchOpcode::GetTextureWeights)\n        return;',
-        'if (instr.opcode != FetchOpcode::TextureFetch && instr.opcode != FetchOpcode::GetTextureWeights &&\n'
-        '        instr.opcode != FetchOpcode::SetTextureLod)\n        return;')
+    opcode_anchor = ('if (instr.opcode != FetchOpcode::TextureFetch && instr.opcode != FetchOpcode::GetTextureWeights' +
+        (' &&\n        instr.opcode != FetchOpcode::GetTextureGradients' if
+         'instr.opcode != FetchOpcode::GetTextureGradients' in compiler else '') + ')\n        return;')
+    compiler = replace_once(compiler, opcode_anchor,
+        opcode_anchor.replace(')\n        return;',
+            ' &&\n        instr.opcode != FetchOpcode::SetTextureLod)\n        return;'))
     # The same register LOD state is shared by all texture units. It is updated
     # under instruction predication, not under the predicate of the later fetch.
     compiler = replace_once(compiler, '    std::string constName;\n', '''    if (instr.opcode == FetchOpcode::SetTextureLod)
@@ -68,8 +71,10 @@ def main():
     compiler = replace_once(compiler, '    out += ").";\n', '''    if (explicitLod)
     {
         // Instruction bias is signed fixed point with four fractional bits.
-        print(", {} + g_FetchLodBias({}) + {}", instr.useRegLod ? "textureLod" : "0.0",
-            uint32_t(instr.constIndex), float(instr.lodBias) / 16.0f);
+        // SampleLevel applies the native sampler MipLODBias itself.
+        // Adding the fetch bias here would count it twice.
+        print(", {} + {}", instr.useRegLod ? "textureLod" : "0.0",
+            float(instr.lodBias) / 16.0f);
     }
     out += ").";
 ''')
@@ -80,17 +85,6 @@ def main():
     (source_dir / 'shader_recompiler.cpp').write_text(compiler)
 
     common = (source_dir / 'shader_common.h').read_text()
-    common = replace_once(common,
-        '#define g_ColorOutputScale        vk::RawBufferLoad<float4>(g_PushConstants.SharedConstants + 608)',
-        '#define g_ColorOutputScale        vk::RawBufferLoad<float4>(g_PushConstants.SharedConstants + 608)\n'
-        '#define g_FetchLodBias(i)          vk::RawBufferLoad<float>(g_PushConstants.SharedConstants + 624 + (i)*4)')
-    color_anchor = ('#define LEGO_SHARED_CONSTANTS() float4 g_ColorOutputScale : packoffset(c38);'
-                    if not args.base_source else '    float4 g_ColorOutputScale : packoffset(c38);')
-    common = replace_once(common,
-        color_anchor,
-        color_anchor + ' \\\n'
-        '    float4 g_FetchLodBiasArr[8] : packoffset(c39);\n'
-        '#define g_FetchLodBias(i) (g_FetchLodBiasArr[(i) / 4][(i) % 4])')
     common = replace_once(common, 'float4 tfetchVertex2D(', '''float4 tfetchLevel2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float2 texCoord, float2 offset, float lod)
 {
     Texture2D<float4> texture = g_Texture2DDescriptorHeap[resourceDescriptorIndex];
@@ -112,25 +106,6 @@ float4 tfetchVertex3D(''')
 float4 tfetchVertexCube(''')
     (source_dir / 'shader_common.h').write_text(common)
 
-    # This ABI change must accompany the candidate shaders at eventual runtime.
-    # Keep it as an isolated source copy until the sampler-only A/B is observed.
-    draw = (root / 'rexlego/src/gpu_native/draw.cpp').read_text()
-    if 'float fetch_lod_bias[32]' not in draw:
-        draw = replace_once(draw, '  float color_output_scale[4]{1, 1, 1, 1};\n',
-                            '  float color_output_scale[4]{1, 1, 1, 1};\n  float fetch_lod_bias[32]{};\n')
-        draw = replace_once(draw, 'static_assert(sizeof(SharedConstants) == 624);',
-                            'static_assert(sizeof(SharedConstants) == 752);\n'
-                            'static_assert(offsetof(SharedConstants, fetch_lod_bias) == 624);')
-        draw = replace_once(draw, '    shared.samplers[i] = HostDevice::RegisterSampler(fetch);',
-                            '    shared.samplers[i] = HostDevice::RegisterSampler(fetch);\n'
-                            '    const int32_t lod_bias = int32_t((fetch[4] >> 12) & 1023);\n'
-                            '    shared.fetch_lod_bias[i] = float(lod_bias >= 512 ? lod_bias - 1024 : lod_bias) / 32.0f;')
-    else:
-        assert 'sizeof(SharedConstants) == 752' in draw
-        assert 'offsetof(SharedConstants, fetch_lod_bias) == 624' in draw
-    draw = draw.replace('shared_bytes=624', 'shared_bytes=752')
-    (source_dir / 'draw-candidate.cpp').write_text(draw)
-
     dep = checkout / 'thirdparty'
     old_build = checkout / 'out/build/lego-release'
     cmake = '''cmake_minimum_required(VERSION 3.25)
@@ -146,13 +121,20 @@ add_custom_command(TARGET lod_compiler POST_BUILD COMMAND ${CMAKE_COMMAND} -E co
 '''
     cmake = cmake.replace('@SMOL@', (dep / 'smol-v/source').as_posix())
     cmake = cmake.replace('@DEP@', dep.as_posix()).replace('@BUILD@', old_build.as_posix())
+    if args.base_source and (module / 'CMakeLists.txt').is_file():
+        # Preserve the selected compiler's already configured local dependency
+        # paths. A validation checkout need not share research/reblue's layout.
+        cmake = (module / 'CMakeLists.txt').read_text()
+        names = re.findall(r'add_executable\((\w+)\s', cmake)
+        if len(names) != 1:
+            raise ValueError('Expected one standalone compiler target')
+        cmake = re.sub(r'\b'+names[0]+r'\b', 'lod_compiler', cmake)
     (source_dir / 'CMakeLists.txt').write_text(cmake)
     (source_dir / 'README.txt').write_text('''ISOLATED CANDIDATE — NOT APPLIED TO NATIVE.
-Compile with XENOS_RECOMP_LEGO_NATIVE_SCALE=1. New HLSL requires an extra
-32 float fetch biases at SharedConstants offset624, total752 bytes.
-draw-candidate.cpp shows the matching upload change. Do not replace the live
-shader cache without this ABI update. Current sampler-only executable and
-archives remain unchanged. Supports explicit LOD on currently supported
+Compile with XENOS_RECOMP_LEGO_NATIVE_SCALE=1. Shared ABI remains624 bytes.
+Native sampler bias is applied by SampleLevel; only register and instruction
+bias belong in its explicit LOD argument. Windowless GPU regression detects
+double bias. Current executable and archives remain unchanged. Supports explicit LOD on currently supported
 2D/3D/cube helpers; relative setTexLOD, explicit gradients, instruction filter
 overrides, texcoord-denorm, and 1D helper coverage remain separate limitations.
 ''')
