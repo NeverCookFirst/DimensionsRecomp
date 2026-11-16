@@ -7,14 +7,29 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest"><b>Download</b></a>
-  &nbsp;&middot;&nbsp;
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/NeverCookFirst/DimensionsRecomp?style=for-the-badge&logo=github"></a>
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/forks"><img alt="Forks" src="https://img.shields.io/github/forks/NeverCookFirst/DimensionsRecomp?style=for-the-badge&logo=github"></a>
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases/tag/v0.2.0"><img alt="Release" src="https://img.shields.io/github/v/release/NeverCookFirst/DimensionsRecomp?style=for-the-badge&logo=github"></a>
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/NeverCookFirst/DimensionsRecomp/total?style=for-the-badge&logo=github"></a>
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/NeverCookFirst/DimensionsRecomp?style=for-the-badge&logo=github"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases/download/v0.2.0/DimensionsRecompiled-NativeGPU-Setup.exe"><img alt="Download Native GPU 0.2.0" src="https://img.shields.io/badge/Download-Native_GPU_0.2.0-blue?style=for-the-badge"></a>
+  <a href="https://github.com/NeverCookFirst/DimensionsRecomp/releases/download/v0.1.38/DimensionsRecompiled-Setup.exe"><img alt="Download latest non-native GPU build 0.1.38" src="https://img.shields.io/badge/Download-Non--Native_GPU_0.1.38-grey?style=for-the-badge"></a>
+</p>
+
+<p align="center">
+  <a href="PROJECT-HANDOFF.md">My final release and project handoff</a>
+ &nbsp;&middot;&nbsp;
   <a href="docs/how-to-mod.md">How to make mods</a>
-  &nbsp;&middot;&nbsp;
+ &nbsp;&middot;&nbsp;
   <a href="README-dev.md">Build it yourself</a>
-  &nbsp;&middot;&nbsp;
+ &nbsp;&middot;&nbsp;
   <a href="https://discord.com/invite/PuXpBMFE4P">LEGO Dimensions Discord</a>
 </p>
+
+> **Final release.** Native GPU 0.2.0 is the experimental Windows Direct3D 12 edition. The original 0.1.38 build remains available as a separate download.
 
 ---
 
@@ -66,6 +81,8 @@ argue with you. Judge it by whether it works.
 
 ## Install
 
+For Native GPU 0.2.0, use the Native GPU download above, choose a separate folder, and launch `legodimensions.exe`. This edition requires Windows x64 with AVX2 and Direct3D 12. The instructions below also cover the required disc and TU23 inputs.
+
 **No game data is included here.** You bring your own, and the installer checks
 that it is the right one before it does anything.
 
@@ -91,7 +108,7 @@ Have ready:
   writes nothing else, and leaves your saves, settings and mods alone.
 
 Then just run
-[`DimensionsRecompiled-Setup.exe`](https://github.com/NeverCookFirst/DimensionsRecomp/releases/latest)
+[`DimensionsRecompiled-Setup.exe`](https://github.com/NeverCookFirst/DimensionsRecomp/releases/download/v0.1.38/DimensionsRecompiled-Setup.exe)
 and follow the wizard. It writes a `README.txt` next to the game with the
 hotkeys, settings and save locations.
 
